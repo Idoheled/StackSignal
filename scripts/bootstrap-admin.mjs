@@ -2,7 +2,7 @@
 // Run locally with Node 24. Secrets belong in your ignored .env.setup file, never in chat or git.
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { randomBytes } from "node:crypto";
-import { SEED_SOURCES } from "../lib/domain.ts";
+import { importTeamLibrary } from "./import-team-library.mjs";
 if (existsSync(".env.setup")) process.loadEnvFile(".env.setup");
 const base = process.env.SUPABASE_URL,
   key = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -70,33 +70,8 @@ if (!owner) {
     "Administrator created. Temporary credentials are in .bootstrap-credentials.txt (local file, mode 0600).",
   );
 } else console.log("Administrator already exists; password preserved.");
-const sources = await request("/rest/v1/ss_sources?select=url");
-const urls = new Set(sources.map((s) => s.url));
-const missing = SEED_SOURCES.filter((s) => !urls.has(s[1])).map((s) => ({
-  name: s[0],
-  url: s[1],
-  type: s[2],
-  topic: s[3],
-  interval_minutes: 120,
-}));
-if (missing.length) await request("/rest/v1/ss_sources", "POST", missing);
-const folders = await request(
-  "/rest/v1/ss_folders?parent_id=is.null&deleted_at=is.null&select=name",
-);
-const names = new Set(folders.map((f) => f.name));
-const desired = [
-  "Inbox",
-  "Inference & serving",
-  "Networking & fabric",
-  "Platforms",
-  "Hardware",
-  "Models & research",
-  "Operations",
-];
-const fresh = desired
-  .filter((n) => !names.has(n))
-  .map((name) => ({ name, created_by: owner }));
-if (fresh.length) await request("/rest/v1/ss_folders", "POST", fresh);
+const imported = await importTeamLibrary(request);
+console.log("Library import:", JSON.stringify(imported));
 console.log(
-  `Ready: ${SEED_SOURCES.length} source definitions and starter collections. Verify source health after the first scan.`,
+  "Verify source health after the first scan. Publication dates are never inferred from chat timestamps.",
 );

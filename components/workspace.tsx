@@ -90,23 +90,15 @@ import {
   Note,
   Source,
   TOPICS,
-  PREVIEW_ARTICLES,
-  SEED_SOURCES,
   folderPath,
   basicRelevance,
 } from "@/lib/domain";
+import { linkReviewLabel, canonicalLink } from "@/lib/links";
 import { api, act, dateLabel } from "@/lib/client";
 import { Access, SecurityGate } from "./access";
 import AdminPanel from "./admin-panel";
 type View = "feed" | "library" | "hidden" | "sources" | "admin" | "trash";
 type Confirm = { title: string; body: string; run: () => Promise<void> };
-const DEMO_FOLDERS: Folder[] = [
-  { id: "inbox", name: "Inbox", parent_id: null },
-  { id: "inference", name: "Inference & serving", parent_id: null },
-  { id: "optimization", name: "Optimization", parent_id: "inference" },
-  { id: "networking", name: "Networking & fabric", parent_id: null },
-  { id: "platforms", name: "Platforms", parent_id: null },
-];
 const topicIcons: Record<string, typeof Cpu> = {
   Inference: Layers3,
   Platforms: Server,
@@ -120,6 +112,7 @@ export default function Workspace() {
     [session, setSession] = useState<any>(null),
     [loadingSession, setLoadingSession] = useState(true),
     [preview, setPreview] = useState(false),
+    [previewData, setPreviewData] = useState<any>(null),
     [fatal, setFatal] = useState("");
   const refreshSession = useCallback(async () => {
     try {
@@ -178,7 +171,14 @@ export default function Workspace() {
       <Access
         status={status}
         onLogin={refreshSession}
-        onPreview={() => setPreview(true)}
+        onPreview={async () => {
+          try {
+            setPreviewData(await api("preview"));
+            setPreview(true);
+          } catch (e) {
+            setFatal((e as Error).message);
+          }
+        }}
       />
     );
   if (session && (session.must_change_password || session.mfa_required))
@@ -193,6 +193,7 @@ export default function Workspace() {
   return (
     <Hub
       preview={preview}
+      previewData={previewData}
       member={
         session?.member || {
           id: "preview",
@@ -208,34 +209,42 @@ export default function Workspace() {
 }
 function Hub({
   preview,
+  previewData,
   member,
   onLogout,
   onSessionEnded,
 }: {
   preview: boolean;
+  previewData: any;
   member: any;
   onLogout: () => void;
   onSessionEnded: () => void;
 }) {
-  const [view, setView] = useState<View>("feed"),
+  const [view, setView] = useState<View>(preview ? "library" : "feed"),
     [mode, setMode] = useState("week"),
     [topic, setTopic] = useState("All topics"),
     [query, setQuery] = useState(""),
     [debounced, setDebounced] = useState(""),
     [folder, setFolder] = useState(""),
     [sort, setSort] = useState("relevance"),
-    [unread, setUnread] = useState(false);
+    [unread, setUnread] = useState(false),
+    [kind, setKind] = useState("All types"),
+    [needsReview, setNeedsReview] = useState(false);
   const [items, setItems] = useState<Article[]>([]),
     [total, setTotal] = useState(0),
     [offset, setOffset] = useState(0),
-    [folders, setFolders] = useState<Folder[]>(preview ? DEMO_FOLDERS : []),
+    [folders, setFolders] = useState<Folder[]>(
+      preview ? previewData.folders : [],
+    ),
     [sources, setSources] = useState<Source[]>([]),
     [stats, setStats] = useState<any>({}),
     [busy, setBusy] = useState(false),
     [refresh, setRefresh] = useState(0),
     [error, setError] = useState(""),
     [toast, setToast] = useState("");
-  const [demoArticles, setDemoArticles] = useState<Article[]>(PREVIEW_ARTICLES),
+  const [demoArticles, setDemoArticles] = useState<Article[]>(
+      preview ? previewData.articles : [],
+    ),
     [demoNotes, setDemoNotes] = useState<Note[]>([]),
     [trashed, setTrashed] = useState<any>({ folders: [], notes: [] }),
     [selected, setSelected] = useState<Article | null>(null),
@@ -256,7 +265,7 @@ function Hub({
   }, [query]);
   useEffect(() => {
     setOffset(0);
-  }, [view, mode, topic, debounced, folder, sort, unread]);
+  }, [view, mode, topic, debounced, folder, sort, unread, kind, needsReview]);
   useEffect(() => {
     if (!toast) return;
     const t = setTimeout(() => setToast(""), 4200);
@@ -375,14 +384,14 @@ function Hub({
       }
     }
     if (action === "submit") {
-      const u = new URL(p.url);
+      const u = new URL(canonicalLink(p.url));
       if (u.protocol !== "https:") throw new Error("Use an HTTPS link.");
       const relevance = basicRelevance(p.title + " " + p.url);
       setDemoArticles((as) => [
         {
           id,
           title: p.title || u.hostname,
-          url: p.url,
+          url: u.toString(),
           source: u.hostname,
           published_at: null,
           discovered_at: new Date().toISOString(),
@@ -419,14 +428,10 @@ function Hub({
       try {
         if (preview) {
           setSources(
-            SEED_SOURCES.map((s, i) => ({
+            previewData.sources.map((s: Source, i: number) => ({
+              ...s,
               id: String(i),
-              name: s[0],
-              url: s[1],
-              type: s[2],
-              topic: s[3],
               active: true,
-              interval_minutes: 240,
               last_success_at: null,
               last_error: null,
             })),
@@ -434,7 +439,7 @@ function Hub({
           setStats({
             week: 0,
             saved: demoArticles.filter((a) => a.saved).length,
-            sources: SEED_SOURCES.length,
+            sources: previewData.sources.length,
           });
           let list = demoArticles.filter((a) =>
             view === "hidden" ? a.hidden : !a.hidden,
@@ -462,6 +467,23 @@ function Hub({
               a.title.toLowerCase().includes(debounced.toLowerCase()) &&
               (!unread || !a.read),
           );
+          if (kind !== "All types") list = list.filter((a) => a.kind === kind);
+          if (needsReview)
+            list = list.filter((a) =>
+              ["submitted", "unresolved", "title-match"].includes(
+                a.reference_meta?.link_status || "",
+              ),
+            );
+          if (view === "feed" && mode !== "archive")
+            list = list.filter((a) => {
+              const value = mode === "updates" ? a.updated_at : a.published_at;
+              return (
+                value &&
+                Date.parse(value) > Date.now() - 7 * 86400000 &&
+                Date.parse(value) <= Date.now() &&
+                a.score >= 45
+              );
+            });
           list.sort((a, b) =>
             sort === "relevance"
               ? b.score - a.score
@@ -483,6 +505,8 @@ function Hub({
                 folder,
                 sort,
                 unread,
+                kind,
+                needs_review: needsReview,
                 offset,
                 limit: 30,
               })
@@ -517,6 +541,8 @@ function Hub({
     folder,
     sort,
     unread,
+    kind,
+    needsReview,
     offset,
     refresh,
     preview,
@@ -813,8 +839,8 @@ function Hub({
           <div className="preview-banner">
             <Sparkles size={14} />
             <span>
-              Interactive preview · public reference links, not this week’s
-              news. Changes last until you leave.
+              Your imported reading list · preview changes last until you leave.
+              Live scanning starts after account setup.
             </span>
             <button onClick={onLogout}>
               Back to login <ArrowRight size={13} />
@@ -979,6 +1005,48 @@ function Hub({
                       )}
                     </span>
                     <div>
+                      <select
+                        aria-label="Filter content type"
+                        value={kind}
+                        onChange={(e) => setKind(e.target.value)}
+                        className="content-filter"
+                      >
+                        {[
+                          "All types",
+                          "Documentation",
+                          "Repository",
+                          "Release",
+                          "Pull request",
+                          "Issue",
+                          "Article",
+                          "Benchmark",
+                          "Paper",
+                          "Model card",
+                          "Guide",
+                          "Configuration",
+                          "Validated design",
+                          "White paper",
+                          "Discussion",
+                          "PDF",
+                          "Video",
+                          "Playlist",
+                          "News",
+                          "Project",
+                          "Security program",
+                          "Submitted link",
+                          "Discovery",
+                        ].map((value) => (
+                          <option key={value}>{value}</option>
+                        ))}
+                      </select>
+                      <label className="check-label">
+                        <input
+                          type="checkbox"
+                          checked={needsReview}
+                          onChange={(e) => setNeedsReview(e.target.checked)}
+                        />{" "}
+                        Needs review
+                      </label>
                       <label className="check-label">
                         <input
                           type="checkbox"
@@ -1052,6 +1120,9 @@ function Hub({
                             <span className="source-name">{a.source}</span>
                             <span className="source-separator">/</span>
                             <span>{a.kind}</span>
+                            {a.reference_meta?.link_status === "unresolved" && (
+                              <span className="review-pill">Short link</span>
+                            )}
                             <span className="signal-date">
                               {a.published_at
                                 ? dateLabel(a.published_at)
@@ -1081,7 +1152,7 @@ function Hub({
                             >
                               <Sparkles size={13} />
                               {a.analysis_status === "reference"
-                                ? "Profile match"
+                                ? "Team reference"
                                 : a.analysis_status === "ai"
                                   ? "AI assisted match"
                                   : "Topic match"}
@@ -1301,7 +1372,7 @@ function Hub({
                     <p>
                       {s.topic} <span>·</span>{" "}
                       {s.type === "github"
-                        ? "GitHub releases"
+                        ? "GitHub activity"
                         : s.type === "rss"
                           ? "RSS feed"
                           : "Documentation changes"}
@@ -1325,6 +1396,7 @@ function Hub({
           {view === "admin" && member.role === "admin" && (
             <AdminPanel
               preview={preview}
+              previewProfile={previewData?.profile}
               sources={sources}
               notify={notify}
               confirm={confirm}
@@ -1431,6 +1503,31 @@ function Hub({
                 Read original <ArrowUpRight size={16} />
               </a>
               <p>{picked.summary}</p>
+              {picked.reference_meta?.origin && (
+                <div className="reference-provenance">
+                  <strong>{linkReviewLabel(picked.reference_meta)}</strong>
+                  <p>{picked.reference_meta.note}</p>
+                  {picked.reference_meta.checked_at && (
+                    <small>
+                      Availability checked{" "}
+                      {dateLabel(picked.reference_meta.checked_at)}. This does
+                      not validate technical claims.
+                    </small>
+                  )}
+                  {picked.reference_meta.original_urls
+                    ?.filter((url) => url !== picked.url)
+                    .map((url) => (
+                      <a
+                        key={url}
+                        href={url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        Original shared link <ExternalLink size={12} />
+                      </a>
+                    ))}
+                </div>
+              )}
               <div className="why-box">
                 <span>
                   <Sparkles size={15} /> Why this matters

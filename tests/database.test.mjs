@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { readFile, readdir } from "node:fs/promises";
+import { teamImportPayload } from "../scripts/import-team-library.mjs";
 import { PGlite } from "@electric-sql/pglite";
 import { pgcrypto } from "@electric-sql/pglite/contrib/pgcrypto";
 test("PostgreSQL access, isolation, invitation and concurrency invariants", async () => {
@@ -9,12 +10,11 @@ test("PostgreSQL access, isolation, invitation and concurrency invariants", asyn
     await db.exec(
       `create role anon;create role authenticated;create role service_role bypassrls;create schema auth;create schema extensions;create table auth.users(id uuid primary key);create function auth.uid() returns uuid language sql stable as $$select (current_setting('request.jwt.claims',true)::jsonb->>'sub')::uuid$$;create function auth.jwt() returns jsonb language sql stable as $$select current_setting('request.jwt.claims',true)::jsonb$$;grant usage on schema auth to authenticated,anon;grant execute on all functions in schema auth to authenticated,anon;`,
     );
-    await db.exec(
-      await readFile(
-        new URL("../supabase/migrations/001_stacksignal.sql", import.meta.url),
-        "utf8",
-      ),
-    );
+    const migrations = new URL("../supabase/migrations/", import.meta.url);
+    for (const name of (await readdir(migrations))
+      .filter((n) => n.endsWith(".sql"))
+      .sort())
+      await db.exec(await readFile(new URL(name, migrations), "utf8"));
     const owner = "10000000-0000-4000-8000-000000000001",
       writer = "10000000-0000-4000-8000-000000000002",
       reader = "10000000-0000-4000-8000-000000000003";
@@ -52,6 +52,56 @@ test("PostgreSQL access, isolation, invitation and concurrency invariants", asyn
     async function fails(fn, fragment) {
       await assert.rejects(fn, fragment ? new RegExp(fragment) : undefined);
     }
+    const payload = teamImportPayload();
+    await db.exec("set role service_role");
+    const firstImport = (
+      await db.query("select ss_import_team($1::jsonb) result", [
+        JSON.stringify(payload),
+      ])
+    ).rows[0].result;
+    assert.equal(firstImport.articles_created, 136);
+    assert.equal(firstImport.folders_created, 29);
+    assert.equal(firstImport.sources_created, 57);
+    assert.equal(firstImport.bookmarks_created, 136);
+    await db.query(
+      "update ss_folders set name='My custom inference folder' where import_key='team-folder:inference'",
+    );
+    const secondImport = (
+      await db.query("select ss_import_team($1::jsonb) result", [
+        JSON.stringify(payload),
+      ])
+    ).rows[0].result;
+    assert.equal(secondImport.already_applied, true);
+    assert.equal(
+      (
+        await db.query(
+          "select name from ss_folders where import_key='team-folder:inference'",
+        )
+      ).rows[0].name,
+      "My custom inference folder",
+    );
+    assert.equal(
+      (
+        await db.query(
+          "select count(*)::int n from ss_articles where published_at is not null",
+        )
+      ).rows[0].n,
+      0,
+    );
+    await as(reader, "aal1");
+    const importedLibrary = await action("library", { kind: "Pull request" });
+    assert.equal(importedLibrary.total, 6);
+    const pendingLinks = await action("library", { needs_review: true });
+    assert.equal(pendingLinks.total, 133);
+    assert.equal((await action("feed", { mode: "week" })).total, 0);
+    await fails(() =>
+      db.query("select ss_import_team($1::jsonb)", [JSON.stringify(payload)]),
+    );
+    await db.exec("reset role");
+    // Leave one isolated fixture set for the pre-existing access-control tests.
+    await db.exec(
+      "delete from ss_jobs; delete from ss_bookmarks; delete from ss_articles; delete from ss_folders; delete from ss_sources; delete from ss_imports;",
+    );
     await db.exec("set role anon");
     await fails(() => action("feed"));
     await fails(() => db.query("select * from ss_members"));

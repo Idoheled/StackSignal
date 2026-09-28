@@ -69,7 +69,7 @@ export function Access({
   onLogin,
   onPreview,
 }: {
-  status: { configured: boolean; site_key?: string };
+  status: { configured: boolean; site_key?: string; preview_enabled?: boolean };
   onLogin: () => void;
   onPreview: () => void;
 }) {
@@ -233,12 +233,13 @@ export function Access({
           {!status.configured && (
             <>
               <div className="setup-hint">
-                Account service setup is pending. Explore the interface with
-                public reference links.
+                Account service setup is pending.
               </div>
-              <button className="text-button" onClick={onPreview}>
-                Preview workspace <ArrowRight size={14} />
-              </button>
+              {status.preview_enabled && (
+                <button className="text-button" onClick={onPreview}>
+                  Explore your library <ArrowRight size={14} />
+                </button>
+              )}
             </>
           )}
           {mode === "login" && status.configured && (

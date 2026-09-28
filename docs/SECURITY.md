@@ -17,7 +17,7 @@ TLS/HSTS, nosniff, no-referrer, restricted browser permissions, no-store HTML/AP
 
 Cloudflare provides network-level protection on its platform; the app adds per-IP/login/member limits backed by atomic database counters. This reduces abuse but is not an unlimited DDoS guarantee or a replacement for an independently reviewed WAF configuration. Rate-limiter/database failures fail requests closed. Turnstile must also be configured in Supabase Auth to guard direct password authentication.
 
-Private access on the owner preview uses the hosting platform's outer access boundary. A standalone deployment removes that outer boundary and relies on this application's login, MFA and database policies. It remains invitation-only; assets and the login shell are intentionally public. The in-memory public-reference preview is offered only when the backend is unconfigured.
+Private access on the owner preview uses the hosting platform's outer access boundary. A standalone deployment removes that outer boundary and relies on this application's login, MFA and database policies. It remains invitation-only; assets and the login shell are intentionally public. The imported in-memory preview requires both an unconfigured backend and an exact `STACKSIGNAL_PRIVATE_PREVIEW_ORIGIN` match. This flag is enabled only behind the owner-private hosting gate. It must not be set on an open deployment. The catalog is absent from public client bundles; normal library data is read through authenticated server requests.
 
 ## Tests completed in this workspace
 
@@ -35,3 +35,5 @@ Actual Supabase Auth/Turnstile/TOTP interoperation, first administrator bootstra
 Use separate API projects/keys dedicated to this application, MFA on hosting/database accounts and a private repository. Keep no secrets in source, screenshots, API responses, audit content or GitHub Actions logs. CI may build/test; do not use CI as a continuous production crawler. Never paste infrastructure secrets or raw confidential chats into a free model service.
 
 Sensitive provider configuration is a security boundary: changing roles, auth password policy, CAPTCHA settings, database grants or the collector allowlist deserves review. This implementation is a tested starting point, not a claim that unauthorized access is impossible.
+
+Team imports use an invoker-security, service-only function. The payload is transactionally applied, keyed and hashed; re-running an identical batch does not overwrite user edits. Supabase project provisioning and its live Security Advisor remain pending until the organization is selected.

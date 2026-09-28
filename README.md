@@ -48,7 +48,7 @@ The managed Sites preview uses the bundled build workflow. For your own Cloudfla
 |---|---|
 | `components/workspace.tsx`, `admin-panel.tsx`, `access.tsx` | Application and account flows |
 | `lib/server/` | Secure session gateway, request validation and Auth integration |
-| `supabase/migrations/001_stacksignal.sql` | Data model, RLS, authorization RPCs, queues and maintenance |
+| `supabase/migrations/` | Data model, RLS, authorization RPCs, queues and maintenance |
 | `supabase/functions/collector/` | Feed, release, documentation and discovery ingestion |
 | `supabase/functions/_shared/` | Bounded, text-only source extraction and URL allowlist |
 | `scripts/` | Bootstrap, secret generation/upload and standalone build |
@@ -56,8 +56,8 @@ The managed Sites preview uses the bundled build workflow. For your own Cloudfla
 
 ## Scope and remaining validation
 
-The source catalogue starts with 22 official feeds/releases/docs. It is extensible; it cannot discover every new page on the internet. Additional Cisco/Dell/HPE topics are in the relevance profile; add the exact vendor sources and discovery queries your team trusts. Search discovery requires its optional provider.
+The tailored catalog contains 136 public links, organized into 29 folders, and 57 release/feed/documentation/issue watches. It covers the team’s stated stack from NIC/NUMA topology to KServe, llm-d, Dynamo, KV cache and token policies. Fifteen Google short links remain unresolved and five primary-page alternatives are labelled as title matches. See [docs/COVERAGE.md](docs/COVERAGE.md). It does not claim to discover every new page on the web; broader search uses an optional capped provider.
 
 Live provider integration, scheduled collection, backup restoration, and a 100-user load test must be verified against the actual configured accounts. The current checks do not amount to an independent penetration test. See [docs/SECURITY.md](docs/SECURITY.md) for the precise trust boundaries and known limits.
 
-Share your selected links and redacted chats when ready. They can refine the source catalogue and profile; do not upload credentials, infrastructure secrets or confidential third-party data.
+The supplied chats were used only to derive technical interests. Raw messages, colleague identities, internal environment names and private topology are not part of the imported data. Public link labels do not endorse benchmark claims.

@@ -1983,3 +1983,48 @@ td .text-button {
 .profile-name:hover {
   color: var(--primary);
 }
+.content-filter {
+  background: var(--surface, #101c2a);
+  color: inherit;
+  border: 1px solid var(--border, #253443);
+  border-radius: 8px;
+  padding: 7px 10px;
+  font-size: 13px;
+  max-width: 165px;
+}
+.reference-provenance {
+  padding: 16px;
+  border: 1px solid var(--border, #253443);
+  border-radius: 12px;
+  margin: 18px 0;
+  background: rgba(99, 148, 180, 0.06);
+}
+.reference-provenance strong {
+  font-size: 14px;
+}
+.reference-provenance p,
+.reference-provenance small {
+  font-size: 13px;
+  line-height: 1.65;
+}
+.reference-provenance a {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+  color: #8ebcf0;
+  font-size: 13px;
+}
+.review-pill {
+  color: #d9b276;
+}
+@media (max-width: 760px) {
+  .results-row {
+    gap: 14px;
+    flex-wrap: wrap;
+  }
+  .results-row > div {
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+}

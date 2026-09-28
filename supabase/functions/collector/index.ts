@@ -9,6 +9,8 @@ import {
   parseFeed,
   meaningfulChange,
 } from "../_shared/content.ts";
+import { canonicalLink } from "../../../lib/links.ts";
+import { githubItems, githubAPIForLink } from "../_shared/github.ts";
 import { basicRelevance, TOPIC_TERMS } from "../../../lib/domain.ts";
 const env = (k: string) => Deno.env.get(k) || "";
 const SUPABASE = env("SUPABASE_URL"),
@@ -100,6 +102,15 @@ async function fetchPublic(input: string, etag?: string) {
     if (etag) headers["If-None-Match"] = etag;
     if (host === "api.github.com" && env("GITHUB_READ_TOKEN"))
       headers.Authorization = "Bearer " + env("GITHUB_READ_TOKEN");
+    if (
+      host === "api.github.com" &&
+      !(await budget(
+        "github:" + new Date().toISOString().slice(0, 13),
+        env("GITHUB_READ_TOKEN") ? 3000 : 45,
+        3600,
+      ))
+    )
+      throw new Error("GitHub hourly budget reached; retrying later");
     const res = await fetch(url, {
       headers,
       redirect: "manual",
@@ -245,30 +256,26 @@ async function analysis(title: string, text: string, profile: any) {
   }
 }
 async function ingest(item: any, profile: any) {
-  let u: URL;
+  let url: string;
   try {
-    u = new URL(item.url);
-    if (
-      u.protocol !== "https:" ||
-      u.username ||
-      u.password ||
-      (u.port && u.port !== "443")
-    )
-      return;
-    u.hash = "";
-    for (const k of [...u.searchParams.keys()])
-      if (k.startsWith("utm_")) u.searchParams.delete(k);
+    url = canonicalLink(item.url);
   } catch {
     return;
   }
-  const url = u.toString(),
-    old = await db(
-      "ss_articles?url=eq." +
-        encodeURIComponent(url) +
-        "&select=id,content_hash,published_at,updated_at",
-    );
+  const u = new URL(url);
+  const old = await db(
+    "ss_articles?url=eq." +
+      encodeURIComponent(url) +
+      "&select=id,title,kind,topic,content_hash,published_at,updated_at,reference_meta",
+  );
   const hash = await digest(
-    item.title + " " + item.summary + " " + (item.text || ""),
+    item.title +
+      " " +
+      item.summary +
+      " " +
+      (item.text || "") +
+      " " +
+      (item.updated_at || ""),
   );
   if (old[0]?.content_hash === hash) return;
   // Unknown publisher dates stay null. Discovery time never becomes publication time.
@@ -277,16 +284,28 @@ async function ingest(item: any, profile: any) {
   const a = await analysis(item.title, full, profile);
   const record = {
     url,
-    title: String(item.title || u.hostname).slice(0, 500),
+    title: String(item.title || old[0]?.title || u.hostname).slice(0, 500),
     source: item.source || u.hostname,
-    kind: item.kind || "Article",
+    kind: item.kind || old[0]?.kind || "Article",
     author: item.author || null,
     published_at: published,
     updated_at: item.updated_at || old[0]?.updated_at || null,
-    topic: item.topic || a.topic,
     ...a,
+    topic: item.topic || old[0]?.topic || a.topic,
     summary: a.summary || String(item.summary || "").slice(0, 600),
     content_hash: hash,
+    ...(old[0]?.reference_meta?.origin
+      ? {
+          reference_meta: {
+            ...old[0].reference_meta,
+            link_status:
+              old[0].reference_meta.link_status === "title-match"
+                ? "title-match"
+                : "checked",
+            checked_at: new Date().toISOString(),
+          },
+        }
+      : {}),
   };
   if (old[0]) await db("ss_articles?id=eq." + old[0].id, "PATCH", record);
   else await db("ss_articles", "POST", record);
@@ -300,52 +319,35 @@ async function sourceJob(job: any, profile: any) {
     const res = await fetchPublic(source.url, source.etag);
     if (!res.unchanged) {
       if (source.type === "github") {
-        const releases = JSON.parse(res.text);
-        if (!Array.isArray(releases))
-          throw new Error("Invalid GitHub releases response");
-        for (const x of releases
-          .filter((x) => !x.draft && !x.prerelease)
-          .slice(0, 12)) {
-          if (
-            !dateISO(x.published_at) ||
-            Date.parse(x.published_at) < Date.now() - 90 * 86400000
-          )
-            continue;
-          await db("ss_jobs", "POST", {
-            kind: "analyze",
-            payload: {
-              title:
-                source.name.replace(/ releases$/, "") +
-                " · " +
-                (x.name || x.tag_name),
-              url: x.html_url,
-              published_at: x.published_at,
-              author: x.author?.login,
-              summary: textOnly(x.body || "").slice(0, 500),
-              text: textOnly(x.body || ""),
-              source: source.name.replace(/ releases$/, ""),
-              topic: source.topic,
-              kind: "Release",
-            },
-          });
-        }
+        const entries = githubItems(JSON.parse(res.text), source);
+        if (entries.length)
+          await db(
+            "ss_jobs",
+            "POST",
+            entries.map((payload) => ({ kind: "analyze", payload })),
+          );
       } else if (source.type === "rss") {
-        for (const item of parseFeed(res.text).slice(0, 20)) {
-          if (
-            item.published_at &&
-            Date.parse(item.published_at) < Date.now() - 90 * 86400000
-          )
-            continue;
-          await db("ss_jobs", "POST", {
-            kind: "analyze",
-            payload: {
-              ...item,
-              source: source.name,
-              topic: source.topic,
-              kind: "Article",
-            },
-          });
-        }
+        const entries = parseFeed(res.text)
+          .slice(0, 20)
+          .filter(
+            (item) =>
+              !item.published_at ||
+              Date.parse(item.published_at) >= Date.now() - 90 * 86400000,
+          );
+        if (entries.length)
+          await db(
+            "ss_jobs",
+            "POST",
+            entries.map((item) => ({
+              kind: "analyze",
+              payload: {
+                ...item,
+                source: source.name,
+                topic: source.topic,
+                kind: "Article",
+              },
+            })),
+          );
       } else {
         const m = htmlMeta(res.text);
         const changed =
@@ -382,15 +384,32 @@ async function sourceJob(job: any, profile: any) {
   }
 }
 async function articleJob(job: any, profile: any) {
+  const apiURL = githubAPIForLink(job.payload.url);
+  if (apiURL) {
+    const res = await fetchPublic(apiURL);
+    const source = {
+      url: apiURL,
+      name: new URL(job.payload.url).pathname.split("/").slice(1, 3).join("/"),
+      topic: job.payload.topic || "",
+    };
+    for (const item of githubItems(JSON.parse(res.text), source))
+      await ingest(item, profile);
+    return;
+  }
+  if (new URL(job.payload.url).pathname.toLowerCase().endsWith(".pdf"))
+    throw new Error(
+      "PDF saved as a reference; automatic PDF extraction is not enabled",
+    );
   const res = await fetchPublic(job.payload.url);
   const m = htmlMeta(res.text);
   await ingest(
     {
       ...m,
       url: job.payload.url,
-      title: m.title || new URL(res.url).hostname,
+      title: m.title || job.payload.title,
       source: new URL(res.url).hostname,
-      kind: "Article",
+      kind: job.payload.kind,
+      topic: job.payload.topic,
     },
     profile,
   );
@@ -488,7 +507,7 @@ Deno.serve(async (request) => {
           .slice(0, 20)
           .map((query: string) => ({ kind: "discovery", payload: { query } })),
       );
-    const jobs = await rpc("ss_claim_jobs", { batch_size: 4 });
+    const jobs = await rpc("ss_claim_jobs", { batch_size: 8 });
     const start = Date.now();
     for (const job of jobs) {
       if (Date.now() - start > 85000) {

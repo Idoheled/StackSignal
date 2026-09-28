@@ -12,10 +12,11 @@
     "start": "node --import ./scripts/sites-env.mjs ./node_modules/wrangler/bin/wrangler.js dev --config dist/server/wrangler.json --local --persist-to .wrangler/state --ip 127.0.0.1 --inspector-port 0",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
     "db:generate": "drizzle-kit generate",
-    "test": "node --experimental-transform-types --test tests/security.test.ts tests/database.test.mjs",
+    "test": "node --experimental-transform-types --test tests/security.test.ts tests/database.test.mjs tests/knowledge.test.ts",
     "typecheck": "tsc --noEmit",
     "build:standalone": "node scripts/build-standalone.mjs",
-    "bootstrap": "node scripts/bootstrap-admin.mjs"
+    "bootstrap": "node scripts/bootstrap-admin.mjs",
+    "import:team": "node scripts/import-team-library.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",

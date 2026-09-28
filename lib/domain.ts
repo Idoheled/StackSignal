@@ -1,3 +1,4 @@
+import { COVERAGE_TERMS, TEAM_SOURCES } from "./coverage.ts";
 export type Role = "admin" | "maintainer" | "reader";
 export type Member = {
   id: string;
@@ -24,6 +25,13 @@ export type Article = {
   evidence?: string;
   analysis_status?: string;
   score: number;
+  reference_meta?: {
+    origin?: string;
+    original_urls?: string[];
+    link_status?: string;
+    checked_at?: string;
+    note?: string;
+  };
   liked?: boolean;
   hidden?: boolean;
   saved?: boolean;
@@ -72,215 +80,13 @@ export const TOPICS = [
   "Models & research",
   "Operations",
 ];
-export const TOPIC_TERMS: Record<string, string[]> = {
-  Inference: [
-    "vllm",
-    "sglang",
-    "tensorrt",
-    "inference",
-    "prefill",
-    "decode",
-    "kv cache",
-    "speculative decoding",
-    "quantization",
-    "batching",
-    "llm serving",
-  ],
-  Platforms: [
-    "openshift",
-    "hypershift",
-    "kubernetes",
-    "kubevirt",
-    "operator",
-    "gpu operator",
-    "scheduling",
-    "container",
-    "helm",
-  ],
-  Networking: [
-    "roce",
-    "infiniband",
-    "rdma",
-    "pfc",
-    "ecn",
-    "aci",
-    "nccl",
-    "lossless",
-    "congestion",
-    "sr-iov",
-    "cilium",
-  ],
-  Hardware: [
-    "redfish",
-    "bare metal",
-    "firmware",
-    "provisioning",
-    "numa",
-    "kernel",
-    "cuda",
-    "nvidia",
-    "dell",
-    "hpe",
-    "cisco",
-    "nic",
-  ],
-  "Models & research": [
-    "llm",
-    "language model",
-    "benchmark",
-    "model weights",
-    "model card",
-    "evaluation",
-    "reasoning model",
-    "hugging face",
-  ],
-  Operations: [
-    "token quota",
-    "admission control",
-    "load balancing",
-    "rate limiting",
-    "observability",
-    "monitoring",
-    "fairness",
-    "gateway",
-    "latency",
-    "multi-tenant",
-  ],
-};
-export const SEED_SOURCES: string[][] = [
-  [
-    "vLLM releases",
-    "https://api.github.com/repos/vllm-project/vllm/releases",
-    "github",
-    "Inference",
-  ],
-  [
-    "SGLang releases",
-    "https://api.github.com/repos/sgl-project/sglang/releases",
-    "github",
-    "Inference",
-  ],
-  [
-    "TensorRT-LLM releases",
-    "https://api.github.com/repos/NVIDIA/TensorRT-LLM/releases",
-    "github",
-    "Inference",
-  ],
-  [
-    "llama.cpp releases",
-    "https://api.github.com/repos/ggml-org/llama.cpp/releases",
-    "github",
-    "Inference",
-  ],
-  [
-    "Kubernetes releases",
-    "https://api.github.com/repos/kubernetes/kubernetes/releases",
-    "github",
-    "Platforms",
-  ],
-  [
-    "GPU Operator releases",
-    "https://api.github.com/repos/NVIDIA/gpu-operator/releases",
-    "github",
-    "Platforms",
-  ],
-  [
-    "Network Operator releases",
-    "https://api.github.com/repos/Mellanox/network-operator/releases",
-    "github",
-    "Networking",
-  ],
-  [
-    "NCCL releases",
-    "https://api.github.com/repos/NVIDIA/nccl/releases",
-    "github",
-    "Networking",
-  ],
-  [
-    "Cilium releases",
-    "https://api.github.com/repos/cilium/cilium/releases",
-    "github",
-    "Networking",
-  ],
-  [
-    "KubeVirt releases",
-    "https://api.github.com/repos/kubevirt/kubevirt/releases",
-    "github",
-    "Platforms",
-  ],
-  [
-    "NVIDIA engineering",
-    "https://developer.nvidia.com/blog/feed/",
-    "rss",
-    "Hardware",
-  ],
-  [
-    "Kubernetes engineering",
-    "https://kubernetes.io/feed.xml",
-    "rss",
-    "Platforms",
-  ],
-  [
-    "Hugging Face engineering",
-    "https://huggingface.co/blog/feed.xml",
-    "rss",
-    "Models & research",
-  ],
-  [
-    "Red Hat engineering",
-    "https://www.redhat.com/en/rss/blog",
-    "rss",
-    "Platforms",
-  ],
-  [
-    "Envoy releases",
-    "https://api.github.com/repos/envoyproxy/envoy/releases",
-    "github",
-    "Operations",
-  ],
-  [
-    "LiteLLM releases",
-    "https://api.github.com/repos/BerriAI/litellm/releases",
-    "github",
-    "Operations",
-  ],
-  [
-    "DCGM exporter releases",
-    "https://api.github.com/repos/NVIDIA/dcgm-exporter/releases",
-    "github",
-    "Operations",
-  ],
-  [
-    "Metal3 releases",
-    "https://api.github.com/repos/metal3-io/baremetal-operator/releases",
-    "github",
-    "Hardware",
-  ],
-  [
-    "KServe releases",
-    "https://api.github.com/repos/kserve/kserve/releases",
-    "github",
-    "Platforms",
-  ],
-  [
-    "llm-d releases",
-    "https://api.github.com/repos/llm-d/llm-d/releases",
-    "github",
-    "Inference",
-  ],
-  [
-    "HyperShift documentation",
-    "https://hypershift-docs.netlify.app/",
-    "page",
-    "Platforms",
-  ],
-  [
-    "vLLM documentation",
-    "https://docs.vllm.ai/en/latest/",
-    "page",
-    "Inference",
-  ],
-];
+export const TOPIC_TERMS = COVERAGE_TERMS;
+export const SEED_SOURCES = TEAM_SOURCES.map((s) => [
+  s.name,
+  s.url,
+  s.type,
+  s.topic,
+]);
 export const PREVIEW_ARTICLES: Article[] = [
   {
     id: "vllm",
@@ -405,7 +211,28 @@ export function basicRelevance(
         ? new RegExp("\\b" + t + "\\b").test(input)
         : input.includes(t),
     );
-    const score = hits.length * 10 + (weights[topic] || 0);
+    const broad = new Set([
+      "nvidia",
+      "dell",
+      "hpe",
+      "cisco",
+      "nic",
+      "kernel",
+      "operator",
+      "monitoring",
+      "latency",
+      "gateway",
+      "benchmark",
+      "llm",
+      "agent",
+    ]);
+    const points = hits.reduce(
+      (sum, term) => sum + (broad.has(term) ? 3 : 16),
+      0,
+    );
+    const score = hits.length
+      ? points + Math.max(-20, Math.min(20, weights[topic] || 0))
+      : 0;
     tags.push(...hits);
     if (score > max) {
       max = score;
@@ -414,7 +241,7 @@ export function basicRelevance(
   }
   return {
     topic: best,
-    score: Math.min(95, Math.max(15, 35 + max)),
+    score: tags.length ? Math.min(95, Math.max(15, 30 + max)) : 15,
     tags: [...new Set(tags)].slice(0, 8),
     reason: tags.length
       ? `Matches ${tags.slice(0, 3).join(", ")} in the team coverage profile.`

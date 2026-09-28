@@ -20,6 +20,8 @@ export type Config = {
   TURNSTILE_SITE_KEY?: string;
   TURNSTILE_SECRET_KEY?: string;
   ENVIRONMENT?: string;
+  // Enable only on the owner-private Sites deployment; never on an open production origin.
+  STACKSIGNAL_PRIVATE_PREVIEW_ORIGIN?: string;
 };
 type Session = {
   access_token: string;
@@ -165,7 +167,34 @@ export function createService(c: Config, network: typeof fetch = fetch) {
           configured: isConfigured(c),
           site_key: c.TURNSTILE_SITE_KEY || null,
           username_login: true,
+          preview_enabled:
+            !isConfigured(c) &&
+            c.STACKSIGNAL_PRIVATE_PREVIEW_ORIGIN ===
+              new URL(request.url).origin,
         });
+      if (path === "preview" && request.method === "GET" && !isConfigured(c)) {
+        if (
+          c.STACKSIGNAL_PRIVATE_PREVIEW_ORIGIN !== new URL(request.url).origin
+        )
+          throw new HttpError(
+            404,
+            "Private preview is not enabled on this deployment.",
+          );
+        const { TEAM_ARTICLES, STARTER_FOLDERS, IMPORT_STATS } = await import(
+          "../team-library.ts"
+        );
+        const { TEAM_SOURCES, TEAM_PROFILE, TEAM_STACK } = await import(
+          "../coverage.ts"
+        );
+        return respond({
+          articles: TEAM_ARTICLES,
+          folders: STARTER_FOLDERS,
+          sources: TEAM_SOURCES,
+          profile: TEAM_PROFILE,
+          stack: TEAM_STACK,
+          stats: IMPORT_STATS,
+        });
+      }
       if (!isConfigured(c))
         throw new HttpError(
           503,

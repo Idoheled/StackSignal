@@ -1,6 +1,10 @@
 # Deploy StackSignal on your free accounts
 
-The code and preview are ready. The live team service needs accounts that you own. Cloudflare, Supabase and optional API credentials are not connected to this conversation. Complete the following locally; **do not paste secrets in chat**. The owner-private preview remains available while you set this up.
+The owner-private website and tailored library preview are deployed. Supabase is connected through the account integration; its Free organization currently has no project. The project, live Auth, collector and Turnstile configuration are still pending. The integration requires the organization to be selected before project creation.
+
+The assistant can apply the prepared migrations, deploy the collector and inspect the database through that connection. Provider sign-in, terms acceptance and account ownership steps must be completed in the provider’s secure interface. No password or API key needs to be pasted into chat.
+
+The steps below are the reproducible fallback for someone deploying from the source archive. The existing private website remains available throughout setup.
 
 ## 1. Get the source and tools
 
@@ -17,7 +21,7 @@ This creates `.env.setup` with random 256-bit session and collector secrets, fil
 ## 2. Create a Supabase Free project
 
 1. Create a project at https://supabase.com/dashboard. Keep the database password in your password manager; choose the region nearest your team.
-2. In the SQL editor, run `supabase/migrations/001_stacksignal.sql` once. This is the initial migration, not a repeatable reset script.
+2. Apply every SQL file in `supabase/migrations/` in filename order, exactly once. There are two migrations: the original schema and the team-library import/update. These are migrations, not repeatable reset scripts.
 3. Copy the project's URL and **legacy anon** and **service_role** API keys into `.env.setup`. The current gateway uses the JWT-format legacy keys. Do not use a publishable key in the service-role field.
 4. In Authentication settings, disable **Allow new users to sign up**. Disable unused identity providers, anonymous sign-ins and phone sign-ins. Keep email/password auth available internally; usernames map to non-deliverable internal identifiers. There is no public signup form or email login UI.
 5. Set password minimum length to **16** and enable **Require current password when changing password**. Set access-token lifetime to 3600 seconds and retain refresh-token rotation/reuse detection. Avoid email-based reauthentication: these internal accounts have no mailbox. Application sessions are bounded to 12 hours.
@@ -35,7 +39,7 @@ pnpm build:standalone
 pnpm exec wrangler deploy --config dist/server/wrangler.json
 ```
 
-This first deployment has no backend secrets and **fails closed**. Only the login shell and public-reference preview are available. Copy the exact HTTPS URL printed by Wrangler into `APP_ORIGIN` in `.env.setup`, with no trailing slash.
+This first deployment has no backend secrets and **fails closed**. Only the login shell is available. The imported reading list preview is disabled on standalone/public deployments. Copy the exact HTTPS URL printed by Wrangler into `APP_ORIGIN` in `.env.setup`, with no trailing slash.
 
 In Cloudflare Turnstile, create a **Managed** widget and authorize that exact hostname. Put its site key and secret key into `.env.setup`.
 
@@ -57,7 +61,9 @@ The script passes secrets over stdin to Wrangler. It does not put secret values 
 node scripts/bootstrap-admin.mjs
 ```
 
-The script creates exactly one `administrator` account, a random temporary password, starter collections, and 22 source definitions. Re-running it preserves the owner password and avoids duplicate sources.
+The script creates exactly one `administrator` account and a random temporary password, then atomically imports 136 public references, 29 folders and 57 source watches. Re-running it preserves the owner password, renamed folders, and any existing content. An import batch cannot silently change after it has been applied.
+
+For an existing administrator, run `node scripts/import-team-library.mjs` to import the library. The equivalent prepared SQL is `supabase/seed-team.sql`; it must run with administrative privileges after administrator creation. Source fetches are queued only for approved hosts. Fifteen short links remain unresolved and five alternatives are explicitly labelled as title matches. All imported publication dates start unknown; sharing timestamps are not used as publication dates.
 
 Open the local `.bootstrap-credentials.txt` file. Sign into the website with that username/password, choose your permanent passphrase, sign in again, and enroll TOTP using your authenticator. Save the authenticator secret in a secure password manager before completing enrollment. Delete the temporary credential file after the password change.
 
@@ -86,7 +92,7 @@ Enable **Cron**, **pg_net** and **Vault** integrations in your Supabase project.
 | `stacksignal_collector_url` | `https://YOUR_PROJECT_REF.supabase.co/functions/v1/collector` |
 | `stacksignal_collector_secret` | The `COLLECTOR_SECRET` from your local setup file |
 
-Run `supabase/cron.sql` once in the SQL editor. It invokes the worker every five minutes. Each invocation processes a small batch; sources default to checks every two hours and administrators may reduce an interval to 30 minutes. Backlog or source throttling may increase discovery latency.
+Run `supabase/cron.sql` once in the SQL editor. It invokes the worker every five minutes. Each invocation processes up to eight jobs. Core runtime releases are checked every two hours, most operators every four hours, and documentation/selected issues every twelve hours; administrators may reduce an interval to 30 minutes. GitHub requests share a conservative hourly budget, and sources with an existing pending job are not queued again. Backlog or source throttling may increase discovery latency.
 
 Verify the cron run history and collector function logs. Open Sources in StackSignal: the first successful polls should acquire timestamps, followed by new items as queued extraction finishes. Undated material appears in All discoveries, not This week. A source that errors is visible as needing attention; it is not silently reported healthy.
 
@@ -94,8 +100,8 @@ Verify the cron run history and collector function logs. Open Sources in StackSi
 
 You can skip this entire step. The app still collects configured RSS/release/documentation sources and uses deterministic topic scoring.
 
-- **Tavily:** create a free API key, add `TAVILY_API_KEY`. Default ceiling is 800 basic searches/month. Queries run once daily; additional source feeds run independently. Do not enable automatic paid overages. Only generic administrator-authored search queries leave the workspace.
-- **Gemini:** create an API key in Google AI Studio for a project eligible for the free API tier. Select a currently supported free model and put its exact model ID in `GEMINI_MODEL`, with its key in `GEMINI_API_KEY`. Keep billing disabled for a strict zero-spend setup. The app starts at 20 calls/day and falls back to topic rules after quota limits or provider errors. Your consumer Pro subscription does not remove API quotas. The collector sends only public article text and a generic technical taxonomy, never your notes, feedback rationale, usernames or chats.
+- **Tavily:** create a free API key, add `TAVILY_API_KEY`. Search calls start disabled. Set a ceiling of at most 800 basic searches/month after configuring the provider. Queries run once daily; additional source feeds run independently. Do not enable automatic paid overages. Only generic administrator-authored search queries leave the workspace.
+- **Gemini:** create an API key in Google AI Studio for a project eligible for the free API tier. Select a currently supported free model and put its exact model ID in `GEMINI_MODEL`, with its key in `GEMINI_API_KEY`. Keep billing disabled for a strict zero-spend setup. AI calls start disabled. After configuring the provider, choose a small daily ceiling such as 20; the app falls back to topic rules after quota limits or provider errors. Your consumer Pro subscription does not remove API quotas. The collector sends only public article text and a generic technical taxonomy, never your notes, feedback rationale, usernames or chats.
 - **GitHub:** public releases work without a token. `GITHUB_READ_TOKEN` is optional if you need a higher API limit; use minimal read-only privileges, no repository write access.
 
 Re-run `node scripts/upload-collector-secrets.mjs` after changing optional keys. Update usage ceilings in Administration → Coverage. Provider-side limits are authoritative; the local ceilings are an additional safeguard.
@@ -134,3 +140,7 @@ Free-tier services have no uptime guarantee. Monitor database usage, job failure
 The in-app export is a content export, not a full disaster-recovery backup. It omits other members' private notes and all credentials. Keep a separate encrypted database backup using Supabase's supported CLI/database export procedure, and protect it as sensitive. Free plans may not offer downloadable managed backups.
 
 For a member who forgot a password, use the admin-generated one-hour recovery link. It does not reset their TOTP factor. If the owner loses their password or authenticator, recovery requires your Supabase project's privileged dashboard/Admin API access; there is no application backdoor or email fallback. Secure those provider accounts with MFA and retain recovery codes.
+
+## Private import preview
+
+`STACKSIGNAL_PRIVATE_PREVIEW_ORIGIN` is set only on the owner-private Sites deployment. It allows a no-store preview response on that exact origin while the backend is unconfigured. The imported catalog is served by the Worker, not embedded in public JavaScript assets. Remove this variable before making any deployment public. Once Auth is configured, the preview endpoint closes and all library reads require a valid application session. Never copy this variable into standalone production configuration.

@@ -1,3 +1,4 @@
+import { canonicalLink } from "../links.ts";
 // Shared between the Worker and security tests. No application secrets are embedded here.
 export class HttpError extends Error {
   constructor(

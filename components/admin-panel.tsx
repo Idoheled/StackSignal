@@ -25,6 +25,7 @@ import { act, dateLabel } from "@/lib/client";
 import { Source, TOPICS } from "@/lib/domain";
 type Props = {
   preview: boolean;
+  previewProfile?: unknown;
   sources: Source[];
   notify: (s: string) => void;
   confirm: (t: string, b: string, run: () => Promise<void>) => void;
@@ -51,12 +52,15 @@ const EMPTY = {
 };
 export default function AdminPanel({
   preview,
+  previewProfile,
   sources,
   notify,
   confirm,
   onRefresh,
 }: Props) {
-  const [data, setData] = useState<any>(EMPTY),
+  const [data, setData] = useState<any>(
+      preview && previewProfile ? { ...EMPTY, profile: previewProfile } : EMPTY,
+    ),
     [error, setError] = useState(""),
     [dialog, setDialog] = useState<any>(null),
     [link, setLink] = useState(""),

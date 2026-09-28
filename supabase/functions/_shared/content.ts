@@ -1,3 +1,4 @@
+import { canonicalLink } from "../../../lib/links.ts";
 // Text-only extraction. Source markup is never rendered or executed in the application.
 export const TRUSTED_HOSTS = [
   "api.github.com",
@@ -37,6 +38,24 @@ export const TRUSTED_HOSTS = [
   "lwn.net",
   "pytorch.org",
   "blog.vllm.ai",
+  "vllm.ai",
+  "developers.redhat.com",
+  "access.redhat.com",
+  "infohub.delltechnologies.com",
+  "networking-docs.nvidia.com",
+  "enterprise-support.nvidia.com",
+  "forums.developer.nvidia.com",
+  "lws.sigs.k8s.io",
+  "mlcommons.org",
+  "man7.org",
+  "netbox.readthedocs.io",
+  "netboxlabs.com",
+  "theforeman.org",
+  "docs.theforeman.org",
+  "kuadrant.io",
+  "theagentrouter.ai",
+  "containers.github.io",
+  "uccl-project.github.io",
 ];
 export function safeURL(input: string, hosts: string[] = TRUSTED_HOSTS) {
   const u = new URL(input);
@@ -52,7 +71,7 @@ export function safeURL(input: string, hosts: string[] = TRUSTED_HOSTS) {
   for (const k of [...u.searchParams.keys()])
     if (k.startsWith("utm_") || ["gclid", "fbclid"].includes(k))
       u.searchParams.delete(k);
-  return u.toString();
+  return canonicalLink(u.toString());
 }
 export function publicIPv4(ip: string) {
   const n = ip.split(".").map(Number);
