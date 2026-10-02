@@ -15,6 +15,9 @@ test("PostgreSQL access, isolation, invitation and concurrency invariants", asyn
       .filter((n) => n.endsWith(".sql"))
       .sort())
       await db.exec(await readFile(new URL(name, migrations), "utf8"));
+    const bootstrapProfile = (await db.query("select value from ss_settings where key='profile'")).rows[0].value;
+    assert.equal(bootstrapProfile.gemini_daily_limit, 0);
+    assert.equal(bootstrapProfile.search_monthly_limit, 0);
     const owner = "10000000-0000-4000-8000-000000000001",
       writer = "10000000-0000-4000-8000-000000000002",
       reader = "10000000-0000-4000-8000-000000000003";

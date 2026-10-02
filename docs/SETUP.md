@@ -1,6 +1,6 @@
 # Deploy StackSignal on your free accounts
 
-The owner-private website and tailored library preview are deployed. Supabase is connected through the account integration; its Free organization currently has no project. The project, live Auth, collector and Turnstile configuration are still pending. The integration requires the organization to be selected before project creation.
+The owner-private website and tailored library preview are deployed. On October 2, 2026, the existing Free organization was used to create the **StackSignal** project in Frankfurt (`eu-central-1`), with project reference `plbjscbpvfozqvexmqhk`. The database schema and collector function are deployed. The collector rejects unauthenticated requests and remains inactive until its secret and schedule are configured. Live Auth, administrator creation, the database content import and Turnstile configuration are still pending provider dashboard access.
 
 The assistant can apply the prepared migrations, deploy the collector and inspect the database through that connection. Provider sign-in, terms acceptance and account ownership steps must be completed in the provider’s secure interface. No password or API key needs to be pasted into chat.
 
@@ -21,7 +21,7 @@ This creates `.env.setup` with random 256-bit session and collector secrets, fil
 ## 2. Create a Supabase Free project
 
 1. Create a project at https://supabase.com/dashboard. Keep the database password in your password manager; choose the region nearest your team.
-2. Apply every SQL file in `supabase/migrations/` in filename order, exactly once. There are two migrations: the original schema and the team-library import/update. These are migrations, not repeatable reset scripts.
+2. Apply every SQL file in `supabase/migrations/` in filename order, exactly once. These are migrations, not repeatable reset scripts. The existing project already has its schema; check migration history before applying anything again.
 3. Copy the project's URL and **legacy anon** and **service_role** API keys into `.env.setup`. The current gateway uses the JWT-format legacy keys. Do not use a publishable key in the service-role field.
 4. In Authentication settings, disable **Allow new users to sign up**. Disable unused identity providers, anonymous sign-ins and phone sign-ins. Keep email/password auth available internally; usernames map to non-deliverable internal identifiers. There is no public signup form or email login UI.
 5. Set password minimum length to **16** and enable **Require current password when changing password**. Set access-token lifetime to 3600 seconds and retain refresh-token rotation/reuse detection. Avoid email-based reauthentication: these internal accounts have no mailbox. Application sessions are bounded to 12 hours.
