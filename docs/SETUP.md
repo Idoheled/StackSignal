@@ -1,6 +1,6 @@
 # Deploy StackSignal on your free accounts
 
-The owner-private website and tailored library preview are deployed. On October 2, 2026, the existing Free organization was used to create the **StackSignal** project in Frankfurt (`eu-central-1`), with project reference `plbjscbpvfozqvexmqhk`. The database schema and collector function are deployed. The collector rejects unauthenticated requests and remains inactive until its secret and schedule are configured. Live Auth, administrator creation, the database content import and Turnstile configuration are still pending provider dashboard access.
+The owner-private website and tailored library preview are deployed. On October 2, 2026, the existing Free organization was used to create the **StackSignal** project in Frankfurt (`eu-central-1`), with project reference `plbjscbpvfozqvexmqhk`. The database schema, collector, administrator and full library import are live. Public signup is disabled, minimum password length is 16, current-password verification is enabled, and TOTP is available. On October 3, protected website runtime settings, the hosted scheduler extensions and encrypted Vault secrets were configured. The five-minute collector job is prepared **paused**. Its Edge Function secret and Turnstile configuration remain outstanding. Do not regenerate secrets or reset/recreate the administrator. See [OPERATIONS.md](OPERATIONS.md) before continuing.
 
 The assistant can apply the prepared migrations, deploy the collector and inspect the database through that connection. Provider sign-in, terms acceptance and account ownership steps must be completed in the provider’s secure interface. No password or API key needs to be pasted into chat.
 
@@ -85,14 +85,16 @@ Replace `YOUR_PROJECT_REF` with the identifier in your Supabase project URL. `SU
 
 The function checks its own 256-bit `x-collector-secret` for every invocation; disabling the platform JWT check does **not** make the handler publicly callable without that secret.
 
-Enable **Cron**, **pg_net** and **Vault** integrations in your Supabase project. In Vault, create:
+Apply `supabase/hosted/*_hosted_collector_runtime.sql` once to enable **Cron** and **pg_net**; **Vault** is provided by Supabase. This hosted infrastructure script is separate from the application migrations because the embedded PostgreSQL test runtime cannot run background workers. Check the hosted migration history before applying it. In Vault, create:
 
 | Secret name | Value |
 |---|---|
 | `stacksignal_collector_url` | `https://YOUR_PROJECT_REF.supabase.co/functions/v1/collector` |
 | `stacksignal_collector_secret` | The `COLLECTOR_SECRET` from your local setup file |
 
-Run `supabase/cron.sql` once in the SQL editor. It invokes the worker every five minutes. Each invocation processes up to eight jobs. Core runtime releases are checked every two hours, most operators every four hours, and documentation/selected issues every twelve hours; administrators may reduce an interval to 30 minutes. GitHub requests share a conservative hourly budget, and sources with an existing pending job are not queued again. Backlog or source throttling may increase discovery latency.
+Run `supabase/cron.sql` in the SQL editor. It prepares a **paused** job and preserves an existing job on repeat runs. First install the matching Edge Function secret and verify an authenticated invocation returns success. Then use the activation statement at the bottom of that file. The active job invokes the worker every five minutes and keeps seven days of its scheduler run history. Each invocation processes up to eight jobs. Core runtime releases are checked every two hours, most operators every four hours, and documentation/selected issues every twelve hours; administrators may reduce an interval to 30 minutes. GitHub requests share a conservative hourly budget, and sources with an existing pending job are not queued again. Backlog or source throttling may increase discovery latency.
+
+Keep `net`, `cron` and `vault` out of the exposed Data API schemas. The managed `pg_net` extension retains platform-owned database role grants; do not assume a privilege-revocation command changed these. The October 3 live check confirmed that anonymous Data API requests to all three internal schemas return `406/PGRST106`, and article access is denied with `401/42501`.
 
 Verify the cron run history and collector function logs. Open Sources in StackSignal: the first successful polls should acquire timestamps, followed by new items as queued extraction finishes. Undated material appears in All discoveries, not This week. A source that errors is visible as needing attention; it is not silently reported healthy.
 

@@ -2,7 +2,7 @@
 
 Private engineering intelligence, from silicon to tokens. Built for a small expert AI infrastructure team: a rolling weekly feed, explainable relevance, shared nested collections, recursive saved-title search, private notes, team discussion, and owner-controlled invitations.
 
-**Delivery status:** the application, database migration, collector, setup scripts and private interactive preview are implemented. Production authentication, scheduled collection and external providers require your own account configuration. The preview contains explicitly labelled public reference material and temporary, in-memory interactions; it is not a live news feed or a substitute for the secured database.
+**Delivery status (October 3, 2026):** the private site is published, the Supabase database and collector are deployed, and the administrator plus all 136 links, 29 folders and 57 source watches exist in the live database. Signup is disabled and the 16-character password policy is saved. The site has its protected database/session configuration. Turnstile and the collector's Edge Function secret still need activation; the five-minute collector schedule is prepared and paused. See [docs/OPERATIONS.md](docs/OPERATIONS.md) for the exact continuation checkpoint. The private preview still uses temporary, in-memory interactions until login is configured; it is not a live news feed.
 
 ## Start here
 

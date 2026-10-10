@@ -28,7 +28,11 @@ Private access on the owner preview uses the hosting platform's outer access bou
 
 ## Not yet verified with live accounts
 
-Actual Supabase Auth/Turnstile/TOTP interoperation, first administrator bootstrap, external source availability, deployed cron executions, optional Gemini/Tavily responses and quotas, full backup restoration, independent penetration testing and 100-user traffic/load behavior. The gateway fails closed until all required configuration exists. Complete the go-live checks in SETUP.md before onboarding the full team.
+Actual Supabase Auth/Turnstile/TOTP interoperation, external source availability, deployed cron executions, optional Gemini/Tavily responses and quotas, full backup restoration, independent penetration testing and 100-user traffic/load behavior. Administrator bootstrap and the live import succeeded on October 2; neither needs to run again. The gateway fails closed until all required configuration exists. Complete the go-live checks in SETUP.md before onboarding the full team.
+
+On October 3, live anonymous API probes denied article access (`401/42501`) and rejected `net`, `cron` and `vault` as unexposed schemas (`406/PGRST106`). Vault and Cron deny client schema access. The platform-owned `pg_net` extension retains default SQL grants, including queue access, which the project role cannot revoke; its isolation therefore also depends on keeping it outside the Data API, exposing no arbitrary SQL proxy and protecting privileged database credentials.
+
+The live Auth advisor also reports leaked-password protection as disabled. Supabase provides its HaveIBeenPwned integration only on Pro and higher plans; this zero-spend deployment does not enable that paid feature. The application enforces length/common-pattern checks and writer MFA, but those checks are not a comprehensive leaked-password database. See [Supabase password security](https://supabase.com/docs/guides/auth/password-security).
 
 ## Operational cautions
 
