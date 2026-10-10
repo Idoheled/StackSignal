@@ -108,8 +108,8 @@ export function createService(c: Config, network: typeof fetch = fetch) {
         "Too many attempts. Please wait before trying again.",
       );
   }
-  async function captcha(token: string, request: Request) {
-    if (!token || token.length > 4096)
+  async function captcha(token: string, request: Request, action: string) {
+    if (!token || token.length > 2048)
       throw new HttpError(400, "Complete the security check.");
     const data = new URLSearchParams({
       secret: c.TURNSTILE_SECRET_KEY!,
@@ -124,8 +124,14 @@ export function createService(c: Config, network: typeof fetch = fetch) {
     const result = (await res.json()) as {
       success?: boolean;
       hostname?: string;
+      action?: string;
     };
-    if (!result.success || result.hostname !== new URL(c.APP_ORIGIN!).hostname)
+    if (
+      !res.ok ||
+      result.success !== true ||
+      result.hostname !== new URL(c.APP_ORIGIN!).hostname ||
+      result.action !== action
+    )
       throw new HttpError(400, "Security check expired. Please try again.");
   }
   function tokenSession(x: any): Session {
@@ -215,8 +221,8 @@ export function createService(c: Config, network: typeof fetch = fetch) {
         if (request.method !== "POST")
           throw new HttpError(405, "POST required.");
         await guardRate("authip:" + ipHash, 60, 900);
-        if (path !== "login") await captcha(String(p.captcha || ""), request);
-        else if (!p.captcha || String(p.captcha).length > 4096)
+        if (path !== "login") await captcha(String(p.captcha || ""), request, path);
+        else if (!p.captcha || String(p.captcha).length > 2048)
           throw new HttpError(400, "Complete the security check.");
         const uname = normalizeUsername(String(p.username || ""));
         if (!validUsername(uname))

@@ -20,10 +20,12 @@ declare global {
 }
 export function Captcha({
   siteKey,
+  action,
   onToken,
   reset,
 }: {
   siteKey: string;
+  action: "login" | "register" | "recover";
   onToken: (s: string) => void;
   reset: number;
 }) {
@@ -37,6 +39,7 @@ export function Captcha({
       if (!stopped && box.current && window.turnstile)
         id = window.turnstile.render(box.current, {
           sitekey: siteKey,
+          action,
           theme: "dark",
           callback: (t: string) => callback.current(t),
           "expired-callback": () => callback.current(""),
@@ -61,7 +64,7 @@ export function Captcha({
       stopped = true;
       if (id && window.turnstile) window.turnstile.remove(id);
     };
-  }, [siteKey, reset]);
+  }, [siteKey, action, reset]);
   return <div ref={box} className="captcha" />;
 }
 export function Access({
@@ -207,6 +210,7 @@ export function Access({
             {status.configured && status.site_key && (
               <Captcha
                 siteKey={status.site_key}
+                action={mode}
                 onToken={setCaptcha}
                 reset={reset}
               />

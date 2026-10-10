@@ -12,51 +12,38 @@ Check live state before repeating setup. This file contains no credentials.
 | Supabase organization | Existing organization `cvgjoziulovsxkrotbhr` |
 | Administrator | `administrator`, first password change required |
 | Imported content | 136 articles, 136 saves, 29 folders, 57 source watches |
-| Collector | Active deployment, version 1; invocation secret not installed yet |
-| Collector schedule | `stacksignal-collector`, `*/5 * * * *`, **inactive** |
-| Optional AI/search budgets | Both zero |
+| Collector | Active version 1; invocation secret installed and matches Vault |
+| Collector schedule | `stacksignal-collector`, `*/5 * * * *`, active |
+| Optional AI/search budgets | Both zero; no Gemini or Tavily credentials installed |
+| Turnstile | Managed widget `0x4AAAAAAFS_RfYW2IMG-0bL`, exact Site hostname only |
 
 ## Completed and verified
 
-- Application migrations applied once: `stacksignal_initial`, `team_library_import`, `provider_readiness`. The hosted extension migration `hosted_collector_runtime` is also applied. Remote migration timestamps were assigned by the deployment service and differ from source filenames; reconcile by name before using CLI migration commands.
-- Administrator created and library imported on October 2. The same counts and mandatory password-change flag were checked on October 3.
-- Public signup and anonymous identities disabled. Minimum password length 16 and current-password verification enabled. TOTP enabled; access tokens last one hour with refresh rotation. Application sessions are bounded to 12 hours.
-- Auth Site URL is the exact private site origin. No wildcard redirects.
-- Existing random session/collector secrets were preserved. Runtime environment revision 2 contains Supabase URL, legacy anon/service-role keys, APP_ORIGIN and SESSION_SECRET. Sensitive entries are masked server secrets.
-- `pg_cron` and `pg_net` enabled. Collector URL and invocation secret stored in Vault under `stacksignal_collector_url` and `stacksignal_collector_secret`.
-- The scheduler is prepared paused; setup is idempotent and does not reset an existing job.
-- Anonymous article reads denied; internal `net`, `cron`, `vault` schemas rejected by the Data API. Live security advisor results are explained in SECURITY.md.
+- Existing account, library, secrets and provider resources preserved; no repeat import or bootstrap. Supabase resumed from INACTIVE to ACTIVE_HEALTHY.
+- Migrations: `stacksignal_initial`, `team_library_import`, `provider_readiness`, `hosted_collector_runtime`. Remote timestamps differ from source filenames; reconcile by name before CLI migration commands.
+- Public signup and anonymous identities disabled. Minimum password length 16, current-password verification and TOTP enabled. Application sessions bounded to 12 hours. Auth Site URL is the exact private origin.
+- Supabase Auth CAPTCHA enabled with the existing Turnstile widget. Direct password endpoint rejects missing and invalid tokens (`captcha_failed`), with no invalid-secret response. A genuine human challenge/login remains to be tested.
+- Runtime environment revision 3 adds Turnstile site/secret keys and removes STACKSIGNAL_PRIVATE_PREVIEW_ORIGIN. Secrets remain server-only. This source version must be deployed with revision 3; verify the deployment response and live /api/status.
+- Collector custom invocation secret installed through Management API and its SHA-256 matches the Vault value. Unauthorized invocation returns 401; authenticated invocation returns 200. Two manual runs completed seven jobs each. KServe release watch succeeded at 10:16:42 UTC. Imported metadata fetching also succeeded; HTTP 429 on an upstream source remains queued for bounded retry.
+- To validate one live watch before activation, its existing pending job was moved ahead of the metadata backlog. No content or job was fabricated. All other sources still require their first poll; initial enrichment will drain over multiple scheduled runs.
+- Existing Cron job activated after collector validation. It invokes the existing Edge Function through pg_net using Vault credentials. Verify scheduled execution and HTTP response separately; a queued HTTP request is not proof of collection success.
+- Anonymous article access denied; internal net, cron, vault schemas unexposed to Data API. See SECURITY.md for limits and advisor results.
+- Recovery/registration Turnstile verification requires HTTP success, strict boolean success, exact hostname and matching action. Login delegates CAPTCHA verification once to Supabase Auth to avoid token replay. Seventeen security/database/knowledge tests passed.
 
-## Remaining activation steps
+## Remaining checks and owner actions
 
-1. Add the existing `COLLECTOR_SECRET` from the local ignored setup file to Supabase Edge Function Secrets. Do not generate a different value; it must match Vault. Do not assume a dashboard session persisted across turns. Saving a new security credential through browser UI requires an action-time confirmation under the browser policy.
-2. Invoke the collector once with its secret, inspect job/source outcomes and verify unauthorized calls remain denied. Then activate the existing Cron job. A successful HTTP response alone is not proof that every source worked.
-3. Cloudflare Turnstile is provisioned: Managed widget `0x4AAAAAAFS_RfYW2IMG-0bL`, account `49c94d7ba2a9124b3e0ddea7a329ad05`, restricted to `stacksignal.idoheled456.chatgpt.site`, no pre-clearance. Reuse this widget. Its secret passed the provider validation probe and is in the ignored setup file. A real protected request and replay rejection remain untested. Do not retry the dashboard's cloud-browser verification loop.
-4. Configure that widget in Supabase Auth CAPTCHA settings and add its site/secret keys to the site's runtime configuration. Redeploy to apply the environment revision. Remove the private preview flag once real authentication is configured.
-5. Verify real username/password login, first password change, authenticator enrollment, invitations and role isolation. Password entry/change and authenticator enrollment must remain in the user's secure interface.
-6. Complete the remaining integration/load/backup checks before onboarding the full team. The current Site's outer audience is still owner-only; team access needs an explicit audience decision or the documented standalone deployment.
+1. Verify this deployment uses runtime revision 3, configured login, disabled preview and anonymous data denial.
+2. Observe an actual Cron invocation and inspect source errors; do not claim all 57 sources are healthy from one successful watch.
+3. Owner performs real username/password login, first password change and authenticator enrollment through the Site. Then test invitations and role isolation with real accounts. Never request authenticator seeds/codes in chat.
+4. Complete backup restore, traffic/load and independent security review before full-team onboarding. Current outer hosting audience remains owner-only; team access requires an explicit audience decision or standalone deployment. App invitations alone do not bypass the hosting gate.
+5. Revoke temporary Cloudflare and Supabase setup API tokens once provider work is complete. Preserve runtime keys required by the application. Store credentials in the owner's password manager.
 
 ## Private local state
 
-The ignored `.env.setup` contains the existing integration credentials. The ignored `.bootstrap-credentials.txt` contains the temporary administrator password. Both have mode 0600. Do not print, commit, archive, upload as documents or regenerate them during continuation. Store final credentials in the owner's password manager and remove the temporary credential file after the first password change. The workspace is transient; this source checkpoint intentionally contains no recovery secrets.
+Ignored .env.setup and .bootstrap-credentials.txt have mode 0600. Do not print, commit, archive, upload as documents or regenerate their contents. Remove the temporary administrator credential file after first password change. The workspace is transient; this checkpoint intentionally contains no recovery secrets.
 
-## Honest current status
+## Cloudflare setup and model choice
 
-The private preview is available. Live login and automatic discovery are **not yet ready**. No scheduled collection has run, no live source-health success is claimed, and the 100-user target has not yet been load-tested. Existing content and provider accounts must be preserved on continuation.
+Official agent-setup instructions installed 16 skills and registered the MCP server in the existing Codex configuration. CLI OAuth uses a workspace-local callback and is not authenticated. Scoped REST access is verified; MCP authentication is not. No installable Cloudflare plugin was found by Plugin Management. Do not retry the cloud-browser dashboard verification loop.
 
-## October 10 resume
-
-- Local source, ignored credential files, the private Site and runtime environment revision 2 were preserved. No accounts, imports, migrations or secrets were recreated.
-- Supabase reported `INACTIVE`, and SQL reads timed out. The existing project was resumed through the provider connection; initially it reported `COMING_UP`. Check for `ACTIVE_HEALTHY` and verify the existing data before further database changes.
-- Plugin Management returned no installable Cloudflare plugin. The result is not an exhaustive statement about every third-party plugin; no unknown connector was installed or granted credentials.
-- The Cloudflare login was not opened or retried. Phone Chrome can be used for the one-time widget setup; there is no requirement to switch to a PC for that action.
-- Keep Sol 6.1 High for routine implementation and provider setup. Recommend an explicit user switch to Astra 6 for a final deep security/architecture review if that remains useful before onboarding. Do not delegate or change models automatically.
-
-## October 10 Cloudflare provisioning
-
-- Supabase returned `ACTIVE_HEALTHY` after resume. Live reads confirmed 136 articles, 136 saves, 29 folders, 57 sources and one member; no sources had been polled and Cron remained inactive.
-- Private publication succeeded at source commit `d78854c3d44ce2470123475d3355c5375250fe1e`, applying environment revision 2. Audience was preserved.
-- Followed the official Cloudflare agent-setup prompt: installed 16 skills in `~/.agents/skills` and registered the MCP server in the existing Codex configuration. CLI OAuth used a workspace-local callback and is not authenticated. A scoped token supplied by the owner allowed direct Turnstile API setup; API access is verified, whereas the MCP bearer-token connection is not verified.
-- The Turnstile widget and keys now exist. They have not been activated in Sites or Supabase Auth; do not enable app login while the provider CAPTCHA setting is still off. The existing private preview remains available.
-- The remaining provider API operations require a Supabase Management API credential. Prefer a short-lived scoped PAT restricted to project `plbjscbpvfozqvexmqhk`, with **Auth Config**, **Project Settings**, and **Edge Function Secrets**, all Read-write. Supabase requires Project Settings Read-write in addition to Auth Config for auth configuration updates. Existing connected tools remain sufficient for SQL and deployment work, but do not expose Auth configuration or Edge Function secret installation.
-- Preserve existing integration secrets and the administrator. Do not regenerate keys or import again. Do not commit uploaded credential attachments, include them in deployment archives, or quote their contents. Revoke temporary setup tokens after provider configuration is complete.
+Keep Sol 6.1 High for routine implementation/setup. An explicit switch to Astra 6 may help with a final deep security/architecture review. Do not change models or delegate automatically. No PC is needed for current owner login/setup checks.

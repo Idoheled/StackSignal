@@ -225,3 +225,33 @@ test("forged session cookies do not reach identity provider", async () => {
   assert.equal(res.status, 401);
   assert.equal(calls, 0);
 });
+
+test("recovery CAPTCHA binds successful verification to the hostname and action", async () => {
+  for (const [verification, status, accepted] of [
+    [{ success: true, hostname: "stacksignal.example.com", action: "recover" }, 200, true],
+    [{ success: true, hostname: "evil.example", action: "recover" }, 200, false],
+    [{ success: true, hostname: "stacksignal.example.com", action: "register" }, 200, false],
+    [{ success: true, hostname: "stacksignal.example.com" }, 200, false],
+    [{ success: "true", hostname: "stacksignal.example.com", action: "recover" }, 200, false],
+    [{ success: true, hostname: "stacksignal.example.com", action: "recover" }, 503, false],
+  ] as const) {
+    let reachedRecovery = false;
+    const handler = createService(config, async (input) => {
+      const url = String(input);
+      if (url.includes("ss_rate_limit")) return Response.json(true);
+      if (url.includes("siteverify")) return Response.json(verification, { status });
+      if (url.includes("/ss_recovery?")) {
+        reachedRecovery = true;
+        return Response.json([]);
+      }
+      throw new Error("Unexpected network request");
+    });
+    const response = await handler(new Request(origin + "/api/recover", {
+      method: "POST",
+      headers: { origin, "content-type": "application/json" },
+      body: JSON.stringify({ username: "engineer", password: "River!Fabric!Quartz!9284", captcha: "test-only", token: "expired-recovery" }),
+    }));
+    assert.equal(reachedRecovery, accepted);
+    assert.equal(response.status, 400);
+  }
+});
