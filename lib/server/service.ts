@@ -1,3 +1,5 @@
+import { githubWatchURL } from "../source-config.ts";
+import { safeURL } from "../../supabase/functions/_shared/content.ts";
 import { normalizeUsername, validUsername, strongPassword } from "../domain.ts";
 import {
   API_HEADERS,
@@ -554,6 +556,8 @@ export function createService(c: Config, network: typeof fetch = fetch) {
         "member_update",
         "source_save",
         "source_toggle",
+        "source_delete",
+        "source_scan",
         "profile_save",
         "rescan",
         "export",
@@ -563,7 +567,11 @@ export function createService(c: Config, network: typeof fetch = fetch) {
         throw new HttpError(400, "Unknown action.");
       if (["submit", "source_save"].includes(action))
         payload.url = publicHttpsURL(String(payload.url || ""));
-      if (["invite", "recovery", "submit", "rescan", "export"].includes(action))
+      if (action === "source_save") {
+        try { payload.url = payload.type === "github" ? githubWatchURL(payload.url) : safeURL(payload.url); }
+        catch (e) { throw new HttpError(400, (e as Error).message); }
+      }
+      if (["invite", "recovery", "submit", "rescan", "source_scan", "source_save", "source_delete", "export"].includes(action))
         await guardRate("sensitive:" + user.id + ":" + action, 10, 600);
       const out = await rpc("ss_api", { action, p: payload }, s.access_token);
       return respond(out);

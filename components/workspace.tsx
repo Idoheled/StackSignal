@@ -476,7 +476,9 @@ function Hub({
             );
           if (view === "feed" && mode !== "archive")
             list = list.filter((a) => {
-              const value = mode === "updates" ? a.updated_at : a.published_at;
+              if (mode === "releases" && a.reference_meta?.alert_kind !== "release") return false;
+              if (mode === "radar" && !["discovery","source_watch"].includes(a.reference_meta?.origin || "")) return false;
+              const value = mode === "radar" ? a.discovered_at : mode === "updates" ? a.updated_at : a.published_at;
               return (
                 value &&
                 Date.parse(value) > Date.now() - 7 * 86400000 &&
@@ -924,11 +926,16 @@ function Hub({
           )}
           {["feed", "library", "hidden"].includes(view) && (
             <>
+              {view === "feed" && !preview && stats.release_unread > 0 && <button className="release-alert" onClick={() => {setMode("releases");setUnread(true);setTopic("All topics");setKind("All types");setQuery("");setNeedsReview(false);}}>
+                <Radio size={18} /><span><strong>{stats.release_unread} unread release{stats.release_unread === 1 ? "" : "s"}</strong> from projects you follow this week</span><ArrowRight size={17} />
+              </button>}
               <div className="discovery-toolbar">
                 {view === "feed" ? (
                   <Tabs value={mode} onValueChange={setMode}>
                     <TabsList className="feed-tabs">
                       <TabsTrigger value="week">This week</TabsTrigger>
+                      <TabsTrigger value="releases">Releases</TabsTrigger>
+                      <TabsTrigger value="radar">New to radar</TabsTrigger>
                       <TabsTrigger value="updates">Updated docs</TabsTrigger>
                       <TabsTrigger value="archive">All discoveries</TabsTrigger>
                     </TabsList>
@@ -998,6 +1005,10 @@ function Hub({
                           ·{" "}
                           {mode === "week"
                             ? "published in the past 7 days"
+                            : mode === "releases"
+                              ? "followed releases published in the past 7 days"
+                            : mode === "radar"
+                              ? "first discovered in the past 7 days · may be older"
                             : mode === "updates"
                               ? "changed in the past 7 days"
                               : "including undated references"}
@@ -1141,6 +1152,9 @@ function Hub({
                               "Metadata extraction is queued. Open the original for details."}
                           </p>
                           <div className="tag-row">
+                            {a.reference_meta?.alert_kind === "release" && <span className="release-label">{a.reference_meta.prerelease ? "PRERELEASE" : "FOLLOWED RELEASE"}</span>}
+                            {mode === "radar" && view === "feed" && <span>Found {dateLabel(a.discovered_at)}</span>}
+                            {a.reference_meta?.signals?.slice(0,2).map(signal => <span className="signal-label" key={signal}>{signal}</span>)}
                             {a.tags.slice(0, 3).map((t) => (
                               <span key={t}>{t}</span>
                             ))}
@@ -1365,7 +1379,7 @@ function Hub({
                           : s.last_error
                             ? "Attention"
                             : s.last_success_at
-                              ? "Healthy"
+                              ? Date.now()-Date.parse(s.last_success_at) > Math.max(3600000,s.interval_minutes*120000) ? "Delayed" : "Healthy"
                               : "Awaiting scan"}
                       </span>
                     </div>
@@ -1385,6 +1399,7 @@ function Hub({
                         View source <ExternalLink size={12} />
                       </a>
                     </div>
+                    <p className="subtle">Last check: {dateLabel(s.last_success_at)}{s.last_item_count != null ? " · " + s.last_item_count + " items in last response" : ""}</p>
                     {s.last_error && (
                       <p className="source-error">{s.last_error}</p>
                     )}
@@ -1502,7 +1517,14 @@ function Hub({
               >
                 Read original <ArrowUpRight size={16} />
               </a>
+              {picked.reference_meta?.repository && member.role === "admin" && <button className="secondary-button follow-project" disabled={sources.some(s => s.url === "https://api.github.com/repos/"+picked.reference_meta?.repository+"/releases")}
+                onClick={() => confirm("Follow this project’s releases?", "Stable releases will appear in your suggestions. You can change the interval and prerelease setting in Administration → Coverage.", async () => {
+                  await perform("source_save", {name:picked.reference_meta!.repository+" releases",url:"https://github.com/"+picked.reference_meta!.repository,type:"github",topic:picked.topic,interval_minutes:240,priority:"normal",include_prereleases:false}); reload();notify("Project added to release watches");
+                })}><Radio size={15} />{sources.some(s => s.url === "https://api.github.com/repos/"+picked.reference_meta?.repository+"/releases") ? "Release watch configured" : "Follow project releases"}</button>}
               <p>{picked.summary}</p>
+              {picked.reference_meta?.prerelease && <div className="notice">Prerelease: assess compatibility before adopting it.</div>}
+              {picked.reference_meta?.date_basis === "change_detected" && <p className="subtle">Updated time records when StackSignal detected a substantial page change; it is not a publisher-supplied release date.</p>}
+              {picked.reference_meta?.discovery_lane === "repository_search" && <p className="subtle">Found through public project discovery. {picked.reference_meta.stars?.toLocaleString()} stars · License: {picked.reference_meta.license}. Activity and stars are discovery signals, not an endorsement.</p>}
               {picked.reference_meta?.origin && (
                 <div className="reference-provenance">
                   <strong>{linkReviewLabel(picked.reference_meta)}</strong>

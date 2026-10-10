@@ -1,10 +1,10 @@
 # Deploy StackSignal on your free accounts
 
-The owner-private website and tailored library preview are deployed. On October 2, 2026, the existing Free organization was used to create the **StackSignal** project in Frankfurt (`eu-central-1`), with project reference `plbjscbpvfozqvexmqhk`. The database schema, collector, administrator and full library import are live. Public signup is disabled, minimum password length is 16, current-password verification is enabled, and TOTP is available. On October 3, protected website runtime settings, the hosted scheduler extensions and encrypted Vault secrets were configured. The five-minute collector job is prepared **paused**. Its Edge Function secret and Turnstile configuration remain outstanding. Do not regenerate secrets or reset/recreate the administrator. See [OPERATIONS.md](OPERATIONS.md) before continuing.
+The existing private website, Supabase Free project (`plbjscbpvfozqvexmqhk`, Frankfurt), administrator and original library import are live. On October 10 the owner completed the password change and TOTP enrollment, Turnstile protection was verified, and the collector's five-minute schedule was activated. Runtime environment revision 3 contains the required integration secrets. Do not re-bootstrap the administrator, regenerate runtime secrets, or repeat the historical import. See [OPERATIONS.md](OPERATIONS.md) before continuing.
 
 The assistant can apply the prepared migrations, deploy the collector and inspect the database through that connection. Provider sign-in, terms acceptance and account ownership steps must be completed in the provider’s secure interface. No password or API key needs to be pasted into chat.
 
-The steps below are the reproducible fallback for someone deploying from the source archive. The existing private website remains available throughout setup.
+The steps below are for a new independent deployment. They are not outstanding setup tasks for the existing site.
 
 ## 1. Get the source and tools
 
@@ -146,3 +146,15 @@ For a member who forgot a password, use the admin-generated one-hour recovery li
 ## Private import preview
 
 `STACKSIGNAL_PRIVATE_PREVIEW_ORIGIN` is set only on the owner-private Sites deployment. It allows a no-store preview response on that exact origin while the backend is unconfigured. The imported catalog is served by the Worker, not embedded in public JavaScript assets. Remove this variable before making any deployment public. Once Auth is configured, the preview endpoint closes and all library reads require a valid application session. Never copy this variable into standalone production configuration.
+
+## Release alerts and discovery controls
+
+In **Administration → Coverage**, add a public GitHub repository URL (for example `https://github.com/kserve/kserve`) and select **GitHub project / releases**. Choose stable-only or include prereleases, a priority and a polling interval. Click an existing source to edit it, request another check or remove its watch; removing a watch preserves articles, bookmarks and notes. Pause/resume and removal require confirmation.
+
+**Discover → Releases** lists followed releases published in the past week. The unread-release banner is personal and clears as those links are opened. **New to radar** shows recently discovered projects/publications, including older material that is newly useful to the team. It does not pretend that discovery time is publication time. **All discoveries** keeps the full retained archive searchable.
+
+Public project search runs daily with up to twelve editable GitHub queries, bounded rate limits and alternating recency/popularity ordering. Four additional feeds cover arXiv distributed systems/machine learning, PyTorch and NetBox. All watches are editable. Automatic fetching stays on the approved public publisher hosts in `supabase/functions/_shared/content.ts`; adding another domain requires an operator review/change to that allowlist, not browser access to arbitrary internal URLs.
+
+Review match reasons and use Helpful / Not relevant. Personal ranking responds to your topic/tag feedback, and future analysis also uses bounded aggregate technical-tag feedback. Coverage preferences set the match threshold and topic priorities. **Health & audit** shows delayed sources, job failures, discovery success/partial results and provider budgets. None of these signals establishes that a benchmark claim has been independently reproduced.
+
+No Gemini or external web-search API is enabled. Public feeds, release polling, local relevance and GitHub project discovery work without those services. They expand coverage but cannot guarantee every relevant document or project across the web.

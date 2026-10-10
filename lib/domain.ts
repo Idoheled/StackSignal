@@ -31,6 +31,16 @@ export type Article = {
     link_status?: string;
     checked_at?: string;
     note?: string;
+    source_id?: string;
+    repository?: string;
+    tag?: string;
+    prerelease?: boolean;
+    alert_kind?: string;
+    signals?: string[];
+    discovery_lane?: string;
+    stars?: number;
+    license?: string;
+    date_basis?: string;
   };
   liked?: boolean;
   hidden?: boolean;
@@ -70,6 +80,10 @@ export type Source = {
   last_success_at: string | null;
   last_error: string | null;
   next_check_at?: string;
+  include_prereleases?: boolean;
+  priority?: "core" | "normal" | "explore";
+  last_item_count?: number;
+  revision?: number;
 };
 export const TOPICS = [
   "All topics",

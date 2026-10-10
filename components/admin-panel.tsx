@@ -22,6 +22,7 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { act, dateLabel } from "@/lib/client";
+import { DEFAULT_REPO_QUERIES } from "@/lib/source-config";
 import { Source, TOPICS } from "@/lib/domain";
 type Props = {
   preview: boolean;
@@ -43,8 +44,11 @@ const EMPTY = {
       "OpenShift HyperShift GPU operator release",
       "RoCE InfiniBand NCCL performance",
     ],
-    gemini_daily_limit: 20,
-    search_monthly_limit: 800,
+    gemini_daily_limit: 0,
+    search_monthly_limit: 0,
+    repo_discovery: true,
+    repo_queries: DEFAULT_REPO_QUERIES,
+    min_score: 55,
   },
   jobs: {},
   usage: [],
@@ -65,7 +69,8 @@ export default function AdminPanel({
     [dialog, setDialog] = useState<any>(null),
     [link, setLink] = useState(""),
     [busy, setBusy] = useState(false),
-    [refresh, setRefresh] = useState(0);
+    [refresh, setRefresh] = useState(0),
+    [sourceQuery, setSourceQuery] = useState("");
   useEffect(() => {
     if (preview) return;
     act("admin")
@@ -339,7 +344,10 @@ export default function AdminPanel({
               void checked(async () => {
                 await run("profile_save", {
                   interests: d.get("interests"),
-                  priorities: data.profile.priorities || {},
+                  priorities: Object.fromEntries(TOPICS.slice(1).map(t => [t, Number(d.get("priority:"+t))])),
+                  repo_discovery: d.get("repo_discovery") === "on",
+                  repo_queries: String(d.get("repo_queries") || "").split("\n").map(x => x.trim()).filter(Boolean),
+                  min_score: Number(d.get("min_score")),
                   queries: String(d.get("queries"))
                     .split("\n")
                     .map((x) => x.trim())
@@ -360,8 +368,18 @@ export default function AdminPanel({
                 defaultValue={data.profile.interests}
               />
             </label>
+            <div className="radar-settings">
+              <div><h3>Look beyond the watchlist</h3><p className="subtle">Discover active public projects daily. No AI key or paid search is required. Queries are sent to GitHub: use public technical terms only.</p></div>
+              <label className="check-label"><input type="checkbox" name="repo_discovery" defaultChecked={data.profile.repo_discovery !== false} /> Enable project discovery</label>
+              <label>Repository discovery queries <span className="optional">One per line · up to 12 · 160 characters each</span>
+                <textarea name="repo_queries" rows={5} defaultValue={(data.profile.repo_queries || DEFAULT_REPO_QUERIES).join("\n")} />
+              </label>
+              <label>Minimum match score <input type="number" name="min_score" min={45} max={85} defaultValue={data.profile.min_score || 55} /></label>
+              <p className="subtle">Higher values produce a narrower feed. All discoveries remain searchable in the archive. Match scores measure relevance, not factual accuracy.</p>
+              <div className="form-grid">{TOPICS.slice(1).map(t => <label key={t}>{t} priority<input type="number" min={-20} max={20} name={"priority:"+t} defaultValue={data.profile.priorities?.[t] || 0} /></label>)}</div>
+            </div>
             <label>
-              Discovery queries{" "}
+              Optional web-search queries{" "}
               <span className="optional">One per line · up to 20</span>
               <textarea
                 name="queries"
@@ -401,14 +419,15 @@ export default function AdminPanel({
             </button>
           </form>
           <div className="section-line">
-            <h3>Source registry</h3>
+            <div><h3>Source & project registry</h3><p>Edit any watch, choose release channels, or pause collection.</p></div>
             <button
               className="secondary-button"
               onClick={() => setDialog({ type: "source" })}
             >
-              <Plus size={15} /> Add source
+              <Plus size={15} /> Add source / follow project
             </button>
           </div>
+          <label className="search-box source-search"><Radio size={15} /><input aria-label="Find a source or project" placeholder="Find a source or project…" value={sourceQuery} onChange={e => setSourceQuery(e.target.value)} /></label>
           <div className="table-scroll">
             <table>
               <thead>
@@ -420,7 +439,7 @@ export default function AdminPanel({
                 </tr>
               </thead>
               <tbody>
-                {sources.map((s) => (
+                {sources.filter(s => (s.name+" "+s.url+" "+s.topic).toLowerCase().includes(sourceQuery.toLowerCase())).map((s) => (
                   <tr key={s.id}>
                     <td>
                       <button
@@ -430,8 +449,8 @@ export default function AdminPanel({
                         {s.name}
                       </button>
                     </td>
-                    <td>{s.type}</td>
-                    <td>{s.interval_minutes} min</td>
+                    <td>{s.type === "github" ? "GitHub" : s.type}<small className="cell-detail">{s.priority || "normal"}{s.type === "github" ? (s.include_prereleases ? " · incl. previews" : " · stable") : ""}</small></td>
+                    <td>{s.interval_minutes} min<small className="cell-detail">{s.last_success_at ? "Checked " + dateLabel(s.last_success_at) : "Awaiting first check"}</small>{s.last_error && <small className="source-error">{s.last_error}</small>}</td>
                     <td>
                       <button
                         className="text-button"
@@ -480,6 +499,17 @@ export default function AdminPanel({
               </strong>
               <span>database MB / 500 MB free</span>
             </div>
+          </div>
+          <div className="radar-settings">
+            <h3>Discovery coverage</h3>
+            <p className="subtle">Project search: {data.profile.repo_discovery === false ? "paused" : "enabled"} · Last success: {dateLabel(data.discovery_health?.repository_last_success)}</p>
+            {data.discovery_health?.repository_last_error && <p className="source-error">{data.discovery_health.repository_last_error}</p>}
+            {data.discovery_health?.repository_partial && <p className="subtle">GitHub reported partial search results. The next daily search will continue coverage.</p>}
+            <div className="coverage-grid">{TOPICS.slice(1).map(t => {
+              const watches = sources.filter(s => s.topic === t && s.active);
+              return <div key={t}><strong>{t}</strong><span>{watches.length} active watches · {watches.filter(s => s.last_error || !s.last_success_at || Date.now()-Date.parse(s.last_success_at) > Math.max(3600000,s.interval_minutes*120000)).length} awaiting / delayed</span></div>;
+            })}</div>
+            <p className="subtle">Coverage comes from your watchlist, publication feeds and daily public project search. Optional web search and AI need separately configured API keys; a subscription does not activate them here.</p>
           </div>
           <div className="health-actions">
             <button
@@ -588,7 +618,7 @@ export default function AdminPanel({
             <DialogDescription>
               {dialog?.type === "invite"
                 ? "They choose their own username and password. Share the link through a trusted private channel."
-                : "Use an official RSS feed, GitHub releases API URL or documentation page. The collector only fetches approved public hosts."}
+                : "Paste a public GitHub project URL to follow releases, or add an official RSS feed or documentation page. Existing library links are kept when a watch is removed. Automatic fetches use approved publisher hosts."}
             </DialogDescription>
           </DialogHeader>
           {error && (
@@ -617,6 +647,8 @@ export default function AdminPanel({
                       type: d.get("type"),
                       topic: d.get("topic"),
                       interval_minutes: Number(d.get("interval_minutes")),
+                      include_prereleases: d.get("include_prereleases") === "on",
+                      priority: d.get("priority"),
                     });
                   setDialog(null);
                   notify("Saved");
@@ -667,10 +699,10 @@ export default function AdminPanel({
                       Type
                       <select
                         name="type"
-                        defaultValue={dialog.source?.type || "rss"}
+                        defaultValue={dialog.source?.type || "github"}
                       >
                         <option value="rss">RSS / Atom</option>
-                        <option value="github">GitHub releases</option>
+                        <option value="github">GitHub project / releases</option>
                         <option value="page">Documentation page</option>
                       </select>
                     </label>
@@ -685,6 +717,8 @@ export default function AdminPanel({
                       />
                     </label>
                   </div>
+                  <label>Priority<select name="priority" defaultValue={dialog.source?.priority || "normal"}><option value="core">Core stack</option><option value="normal">Normal</option><option value="explore">Explore</option></select></label>
+                  <label className="check-label"><input type="checkbox" name="include_prereleases" defaultChecked={dialog.source?.include_prereleases || false} /> Include GitHub prereleases (clearly labeled)</label>
                   <label>
                     Topic
                     <select
@@ -698,6 +732,10 @@ export default function AdminPanel({
                   </label>
                 </>
               )}
+              {dialog.type === "source" && dialog.source && <div className="source-manage-actions">
+                <button type="button" className="secondary-button" disabled={busy || !dialog.source.active} onClick={() => void checked(async () => { await run("source_scan",{id:dialog.source.id}); notify("Check queued for the next collector run"); })}><RefreshCw size={14} /> Check next run</button>
+                <button type="button" className="text-button" disabled={busy} onClick={() => confirm("Remove this watch?", "Collection stops for this source. Its existing articles, saved links and notes stay in the library.", async () => { await run("source_delete",{id:dialog.source.id,confirmed:true}); setDialog(null); notify("Watch removed; library preserved"); })}>Remove watch</button>
+              </div>}
               <button className="primary" disabled={busy}>
                 {busy ? (
                   <Loader2 size={15} className="spin" />

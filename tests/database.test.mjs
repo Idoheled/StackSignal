@@ -8,7 +8,7 @@ test("PostgreSQL access, isolation, invitation and concurrency invariants", asyn
   const db = new PGlite({ extensions: { pgcrypto } });
   try {
     await db.exec(
-      `create role anon;create role authenticated;create role service_role bypassrls;create schema auth;create schema extensions;create table auth.users(id uuid primary key);create function auth.uid() returns uuid language sql stable as $$select (current_setting('request.jwt.claims',true)::jsonb->>'sub')::uuid$$;create function auth.jwt() returns jsonb language sql stable as $$select current_setting('request.jwt.claims',true)::jsonb$$;grant usage on schema auth to authenticated,anon;grant execute on all functions in schema auth to authenticated,anon;`,
+      `create role anon;create role authenticated;create role service_role bypassrls;create schema auth;create schema extensions;create table auth.users(id uuid primary key);create table auth.sessions(id uuid primary key,user_id uuid,not_after timestamptz);create table auth.mfa_factors(user_id uuid,factor_type text,status text);create function auth.uid() returns uuid language sql stable as $$select (current_setting('request.jwt.claims',true)::jsonb->>'sub')::uuid$$;create function auth.jwt() returns jsonb language sql stable as $$select current_setting('request.jwt.claims',true)::jsonb$$;grant usage on schema auth to authenticated,anon;grant execute on all functions in schema auth to authenticated,anon;`,
     );
     const migrations = new URL("../supabase/migrations/", import.meta.url);
     for (const name of (await readdir(migrations))
@@ -32,6 +32,8 @@ test("PostgreSQL access, isolation, invitation and concurrency invariants", asyn
           ["admin", "maintainer", "reader"][i],
         ],
       );
+      await db.query("insert into auth.sessions(id,user_id) values($1,$1)", [id]);
+      await db.query("insert into auth.mfa_factors values($1,'totp','verified')", [id]);
       await db.query(
         "insert into ss_sessions(session_id,user_id) values($1,$1)",
         [id],
@@ -111,6 +113,17 @@ test("PostgreSQL access, isolation, invitation and concurrency invariants", asyn
     await as(owner, "aal1");
     await fails(() => action("feed"), "MFA");
     assert.equal((await action("me")).role, "admin");
+    await db.exec("reset role");
+    await db.query("delete from auth.sessions where id=$1", [owner]);
+    await as(owner);
+    await fails(() => action("me"), "Authentication");
+    await db.exec("reset role");
+    await db.query("insert into auth.sessions(id,user_id) values($1,$1)", [owner]);
+    await db.query("delete from auth.mfa_factors where user_id=$1", [owner]);
+    await as(owner);
+    await fails(() => action("feed"), "MFA");
+    await db.exec("reset role");
+    await db.query("insert into auth.mfa_factors values($1,'totp','verified')", [owner]);
     await as(owner);
     const parent = (await action("folder_save", { name: "Platforms" })).id;
     const child = (
@@ -272,7 +285,63 @@ test("PostgreSQL access, isolation, invitation and concurrency invariants", asyn
       (await db.query("select * from ss_claim_jobs(5)")).rows.length,
       1,
     );
+    await db.query("update ss_folders set deleted_at=now()-interval '31 days' where id=$1", [child]);
     await db.query("select ss_maintenance()");
+    assert.equal((await db.query("select count(*)::int n from ss_bookmarks where folder_id=$1", [child])).rows[0].n, 0);
+    assert.equal((await db.query("select count(*)::int n from ss_articles where id=$1", [article])).rows[0].n, 1);
+
+    await as(reader);
+    await fails(() => action("source_save", { name: "no", url:"https://github.com/a/b", type:"github",topic:"Platforms",interval_minutes:240 }), "Read-only");
+    await as(owner);
+    const watchPayload = {name:"NCCL releases",url:"https://github.com/NVIDIA/nccl",type:"github",topic:"Networking",interval_minutes:240};
+    const watch = (await action("source_save",watchPayload)).id;
+    let watchRow = (await action("sources")).find(x=>x.id===watch);
+    assert.equal(watchRow.url,"https://api.github.com/repos/NVIDIA/nccl/releases");
+    assert.equal(watchRow.include_prereleases,false);
+    await fails(() => action("source_toggle",{id:watch,active:false}),"Confirmation");
+    await action("source_toggle",{id:watch,active:false,confirmed:true});
+    await action("source_save",{...watchPayload,id:watch,include_prereleases:true,priority:"core"});
+    watchRow = (await action("sources")).find(x=>x.id===watch);
+    assert.equal(watchRow.active,false,"editing a paused watch must not resume it");
+    assert.equal(watchRow.include_prereleases,true);
+    assert.equal(watchRow.priority,"core");
+    const previousProfile = (await action("admin")).profile;
+    await action("profile_save",{min_score:60});
+    const profile = (await action("admin")).profile;
+    assert.equal(profile.min_score,60);
+    assert.equal(profile.repo_discovery,true);
+    assert.equal(profile.gemini_daily_limit,0);
+    assert.deepEqual(profile.priorities, previousProfile.priorities);
+    await fails(() => action("profile_save",{repo_queries:["a".repeat(161)]}),"Invalid");
+    await fails(() => action("profile_save",{min_score:99}),"Invalid");
+    await fails(() => action("source_delete",{id:watch}),"Confirmation");
+    await db.exec("reset role");
+    await db.query("update ss_articles set reference_meta=$2::jsonb,published_at=now(),score=88 where id=$1", [article,JSON.stringify({alert_kind:"release",source_id:watch,origin:"source_watch"})]);
+    await db.query("delete from ss_feedback where article_id=$1",[article]);
+    await as(owner);
+    assert.equal((await action("feed",{mode:"releases"})).total,1);
+    assert.equal((await action("stats")).release_unread,1);
+    await action("read",{article_id:article});
+    assert.equal((await action("stats")).release_unread,0);
+    await action("source_delete",{id:watch,confirmed:true});
+    assert.equal((await action("feed",{mode:"releases"})).total,1,"removing a watch preserves its links");
+    await db.exec("reset role");
+    await db.query("update ss_articles set reference_meta='{\"origin\":\"discovery\"}',published_at=null where id=$1",[article]);
+    await as(owner);
+    assert.equal((await action("feed",{mode:"radar"})).total,1);
+    assert.equal((await action("feed",{mode:"week"})).total,0,"discovery never invents a publication date");
+    await db.exec("reset role");
+    await db.exec("delete from ss_jobs");
+    await db.query("select ss_queue_item('analyze',$1::jsonb)",[JSON.stringify({url:"https://github.com/a/b"})]);
+    await db.query("select ss_queue_item('analyze',$1::jsonb)",[JSON.stringify({url:"https://github.com/a/b"})]);
+    assert.equal((await db.query("select count(*)::int n from ss_jobs")).rows[0].n,1);
+    await db.exec("insert into ss_jobs(kind,available_at) select 'article',now()-interval '1 day' from generate_series(1,20); insert into ss_jobs(kind) values('source'),('discovery')");
+    const fair = (await db.query("select * from ss_claim_jobs(4)")).rows;
+    assert.deepEqual(new Set(fair.map(j=>j.kind)),new Set(['article','source','analyze','discovery']));
+    await as(reader);
+    await fails(()=>db.query("select ss_feedback_weights()"));
+    await fails(()=>db.query("select ss_queue_item('article','{}')"));
+
     console.log(
       "Verified: RLS, MFA gate, read-only restrictions, private notes, recursive title search, cycle prevention, trash/restore, confirmation, single-use invites, immediate revocation, bounded quotas, job leases.",
     );

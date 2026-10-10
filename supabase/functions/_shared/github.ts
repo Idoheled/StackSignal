@@ -4,7 +4,7 @@ import { canonicalLink } from "../../../lib/links.ts";
 /** Parse documented GitHub API objects. PR creation is not a software release or a merge. */
 export function githubItems(
   value: unknown,
-  source: { url: string; name: string; topic: string },
+  source: { url: string; name: string; topic: string; id?: string; include_prereleases?: boolean; priority?: string },
   now = Date.now(),
 ) {
   const endpoint = new URL(source.url);
@@ -17,12 +17,12 @@ export function githubItems(
       "Supported GitHub sources: release lists, release tags, individual issues or pull requests",
     );
   const values = Array.isArray(value) ? value : [value];
-  return values.slice(0, 12).flatMap((x: any) => {
+  return values.slice(0, 100).flatMap((x: any) => {
     if (
       !x ||
       typeof x.html_url !== "string" ||
       x.draft ||
-      (releases && x.prerelease)
+      (releases && x.prerelease && !source.include_prereleases)
     )
       return [];
     let url: string;
@@ -68,6 +68,13 @@ export function githubItems(
           updated_at && Date.parse(updated_at) <= now ? updated_at : null,
         summary: summary.slice(0, 600),
         text: summary,
+        priority: source.priority,
+        reference_meta: {
+          origin: source.id ? "source_watch" : "github",
+          source_id: source.id,
+          repository: endpoint.pathname.split("/").slice(2, 4).join("/"),
+          ...(releases ? { alert_kind: source.id ? "release" : undefined, tag: String(x.tag_name || "").slice(0,120), prerelease: !!x.prerelease } : {}),
+        },
       },
     ];
   });

@@ -23,6 +23,7 @@ export const TRUSTED_HOSTS = [
   "www.hpe.com",
   "developer.hpe.com",
   "arxiv.org",
+  "rss.arxiv.org",
   "export.arxiv.org",
   "openreview.net",
   "lmsys.org",

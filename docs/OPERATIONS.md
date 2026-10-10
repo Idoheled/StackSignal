@@ -1,50 +1,45 @@
-# StackSignal continuation checkpoint — October 10, 2026
+# StackSignal operations checkpoint — October 10, 2026
 
-Check live state before repeating setup. This file contains no credentials.
+## Preserve this deployment
 
-## Existing resources
+- Website: https://stacksignal.idoheled456.chatgpt.site
+- Sites project: `appgprj_6ab7758753248191afc68fe0a1584d9d`. The hosting audience is still custom, owner-only. Do not broaden it or create another project when resuming.
+- Supabase Free project: `plbjscbpvfozqvexmqhk`, Frankfurt, existing organization `cvgjoziulovsxkrotbhr`.
+- Runtime environment revision 3 holds the app origin, encrypted-session key, Supabase keys and Turnstile keys. The private-preview flag is absent. Never print or regenerate runtime secrets during continuation.
+- Existing owner `administrator` is active, has changed the temporary password, and completed a fresh TOTP enrollment at 10:44–10:45 UTC on October 10. The obsolete temporary administrator credential file was removed. Do not bootstrap/reset this account.
+- The original import contains 136 links, 136 bookmarks, 29 folders and 57 watches. It is immutable and already applied. Collection has since expanded the article count. Do not re-run the import with a changed batch payload.
 
-| Resource | Current value |
-|---|---|
-| Private site | https://stacksignal.idoheled456.chatgpt.site |
-| Site project | `appgprj_6ab7758753248191afc68fe0a1584d9d` |
-| Supabase project | `plbjscbpvfozqvexmqhk`, Frankfurt, Free |
-| Supabase organization | Existing organization `cvgjoziulovsxkrotbhr` |
-| Administrator | `administrator`, first password change required |
-| Imported content | 136 articles, 136 saves, 29 folders, 57 source watches |
-| Collector | Active version 1; invocation secret installed and matches Vault |
-| Collector schedule | `stacksignal-collector`, `*/5 * * * *`, active |
-| Optional AI/search budgets | Both zero; no Gemini or Tavily credentials installed |
-| Turnstile | Managed widget `0x4AAAAAAFS_RfYW2IMG-0bL`, exact Site hostname only |
+## Security review and discovery release
 
-## Completed and verified
+The `security_review` migration is already applied. It requires an existing, unexpired provider Auth session in addition to the app session, checks a currently verified TOTP factor for writers, and repairs expired-trash cleanup of bookmarks.
 
-- Existing account, library, secrets and provider resources preserved; no repeat import or bootstrap. Supabase resumed from INACTIVE to ACTIVE_HEALTHY.
-- Migrations: `stacksignal_initial`, `team_library_import`, `provider_readiness`, `hosted_collector_runtime`. Remote timestamps differ from source filenames; reconcile by name before CLI migration commands.
-- Public signup and anonymous identities disabled. Minimum password length 16, current-password verification and TOTP enabled. Application sessions bounded to 12 hours. Auth Site URL is the exact private origin.
-- Supabase Auth CAPTCHA enabled with the existing Turnstile widget. Direct password endpoint rejects missing and invalid tokens (`captcha_failed`), with no invalid-secret response. A genuine human challenge/login remains to be tested.
-- Runtime environment revision 3 adds Turnstile site/secret keys and removes STACKSIGNAL_PRIVATE_PREVIEW_ORIGIN. Secrets remain server-only. This source version must be deployed with revision 3; verify the deployment response and live /api/status.
-- Collector custom invocation secret installed through Management API and its SHA-256 matches the Vault value. Unauthorized invocation returns 401; authenticated invocation returns 200. Two manual runs completed seven jobs each. KServe release watch succeeded at 10:16:42 UTC. Imported metadata fetching also succeeded; HTTP 429 on an upstream source remains queued for bounded retry.
-- To validate one live watch before activation, its existing pending job was moved ahead of the metadata backlog. No content or job was fabricated. All other sources still require their first poll; initial enrichment will drain over multiple scheduled runs.
-- Existing Cron job activated after collector validation. The first scheduled execution at 10:20 UTC succeeded; pg_net recorded HTTP 200 with `{"ok":true,"processed":7}` and no transport error. It invokes the existing Edge Function using Vault credentials.
-- Source commit `08b12a3093e09ff2ad1758ac0092e840d7c137d7` was published successfully with environment revision 3. Live status confirms configured username login and disabled preview. Anonymous `/api/me` and `/api/preview` return 401; missing-CAPTCHA login returns 400. The outer audience remains owner-only.
-- Anonymous article access denied; internal net, cron, vault schemas unexposed to Data API. See SECURITY.md for limits and advisor results.
-- Recovery/registration Turnstile verification requires HTTP success, strict boolean success, exact hostname and matching action. Login delegates CAPTCHA verification once to Supabase Auth to avoid token replay. Seventeen security/database/knowledge tests passed.
+The `discovery_radar` migration is now applied. It adds release-channel and watch-priority controls, source revisions, confirmation-protected watch deletion, profile merging/validation, fair job claims, duplicate-safe job enqueueing, service-only aggregate tag feedback and release/radar feed modes. It preserves existing accounts, folders, saved links, notes and read states. It also adds four validated publication feeds (arXiv distributed systems/machine learning, PyTorch, NetBox), bringing the registry to 61 sources.
 
-## Remaining checks and owner actions
+Collector version 3 is active, with custom 256-bit invocation authentication (`verify_jwt=false` is intentional; the handler requires the collector secret). Its bundle includes the new relevance and source configuration modules. Stable releases are the default; public project discovery runs daily without an API key, with eight initial editable queries. Optional Gemini and Tavily calls remain disabled (ceilings zero, no API keys assumed). Source checks run on the existing `stacksignal-collector` Cron job every five minutes using Vault credentials. Publisher quotas defer work without consuming retry attempts.
 
-1. Preserve runtime revision 3 and private access. On continuation, check deployment and live status before changing configuration.
-2. Inspect source errors and the initial backlog; do not claim all 57 sources are healthy from one successful watch. First scheduled collection has been verified.
-3. Owner performs real username/password login, first password change and authenticator enrollment through the Site. Then test invitations and role isolation with real accounts. Never request authenticator seeds/codes in chat.
-4. Complete backup restore, traffic/load and independent security review before full-team onboarding. Current outer hosting audience remains owner-only; team access requires an explicit audience decision or standalone deployment. App invitations alone do not bypass the hosting gate.
-5. Revoke temporary Cloudflare and Supabase setup API tokens once provider work is complete. Preserve runtime keys required by the application. Store credentials in the owner's password manager.
+Twenty automated tests passed: real PGlite migration/RLS/permission tests; invite and MFA/session safeguards; note isolation; watch lifecycle; release/date semantics; deduplication; queue fairness; and mocked collector authentication, quota and discovery flows. App and collector TypeScript checks passed. The production build passed, and public asset inspection confirmed the private reference catalog stays server-side. Security headers now use per-response script nonces. See SECURITY.md for remaining development-tool advisories and verification limits.
 
-## Private local state
+Source and deployment IDs for this release are available from Sites version history; always reconcile the current live version and Git status before repeating publication. The `security_review` and `discovery_radar` live migration timestamps differ from local filenames; reconcile by migration name, not by blindly pushing all local migrations.
 
-Ignored .env.setup and .bootstrap-credentials.txt have mode 0600. Do not print, commit, archive, upload as documents or regenerate their contents. Remove the temporary administrator credential file after first password change. The workspace is transient; this checkpoint intentionally contains no recovery secrets.
+## What the owner can do now
 
-## Cloudflare setup and model choice
+- Discover → This week / Releases / New to radar / Updated docs / All discoveries.
+- Administration → Coverage: add or edit a source, paste a GitHub repository URL, choose stable/prerelease, priority and interval, pause/resume or remove a watch. Removing a watch keeps its library content.
+- Administration → Coverage: edit the public repository queries, team interests, topic weights and minimum match score. Queries must contain generic public terms, not internal addresses or secrets.
+- Administration → Health & audit: inspect delayed sources, failed metadata jobs, daily repository search status and request budgets. Individual upstream failures do not mean the whole collector stopped.
+- Helpful / Not relevant feedback affects personal ranking; future analysis also uses bounded technical-tag feedback. Private notes and raw chats are not sent to external models/search providers.
 
-Official agent-setup instructions installed 16 skills and registered the MCP server in the existing Codex configuration. CLI OAuth uses a workspace-local callback and is not authenticated. Scoped REST access is verified; MCP authentication is not. No installable Cloudflare plugin was found by Plugin Management. Do not retry the cloud-browser dashboard verification loop.
+## Remaining operating decisions
 
-Keep Sol 6.1 High for routine implementation/setup. An explicit switch to Astra 6 may help with a final deep security/architecture review. Do not change models or delegate automatically. No PC is needed for current owner login/setup checks.
+1. Team access still needs a hosting audience decision or standalone deployment. Application invitation links alone do not bypass the owner-only hosting gate. Do not silently publish the library or add external visitors.
+2. Confirm the interface on the owner's phone after publication. Browser automation is unavailable in this managed workspace; production build, HTTP checks and actual collector/database checks are used instead. Team invitation acceptance still needs a real second account.
+3. Backup restoration, independent penetration testing and 100-user load behavior have not been certified. The free project has no uptime guarantee. Review storage usage and source freshness regularly.
+4. Supabase's paid leaked-password database feature is not enabled under the zero-spend requirement. The app enforces length/common-pattern checks and writer MFA. Full-web/semantic AI services remain optional and have separate API quotas; a Gemini consumer subscription is not an unlimited API entitlement.
+5. Revoke temporary Cloudflare/Supabase setup API tokens once provider setup work is complete; retain the distinct runtime keys used by the app. Keep account recovery material in the owner's password manager.
+6. The next chat/link import should extract public technical sources, deduplicate them and use a new immutable import key. Preserve administrator-edited preferences and watch states. Do not import interpersonal messages or internal topology.
+
+## Continuation guidance
+
+Use the Sites source helper with a fresh short-lived credential. Do not print or persist the credential. Read only needed state, preserve the existing audience, test changes, then publish the exact pushed commit. Ignored `.env.setup` contains runtime secrets; it must stay out of Git, artifacts, logs and responses. No cloud-browser Cloudflare login attempts are needed: scoped provider APIs have been used successfully.
+
+The owner selected Astra 6 for this security/architecture pass. Sol 6.1 High is sufficient for routine source imports and UI maintenance; do not switch models or spawn agents automatically.
