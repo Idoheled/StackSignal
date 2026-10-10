@@ -26,14 +26,15 @@ Check live state before repeating setup. This file contains no credentials.
 - Runtime environment revision 3 adds Turnstile site/secret keys and removes STACKSIGNAL_PRIVATE_PREVIEW_ORIGIN. Secrets remain server-only. This source version must be deployed with revision 3; verify the deployment response and live /api/status.
 - Collector custom invocation secret installed through Management API and its SHA-256 matches the Vault value. Unauthorized invocation returns 401; authenticated invocation returns 200. Two manual runs completed seven jobs each. KServe release watch succeeded at 10:16:42 UTC. Imported metadata fetching also succeeded; HTTP 429 on an upstream source remains queued for bounded retry.
 - To validate one live watch before activation, its existing pending job was moved ahead of the metadata backlog. No content or job was fabricated. All other sources still require their first poll; initial enrichment will drain over multiple scheduled runs.
-- Existing Cron job activated after collector validation. It invokes the existing Edge Function through pg_net using Vault credentials. Verify scheduled execution and HTTP response separately; a queued HTTP request is not proof of collection success.
+- Existing Cron job activated after collector validation. The first scheduled execution at 10:20 UTC succeeded; pg_net recorded HTTP 200 with `{"ok":true,"processed":7}` and no transport error. It invokes the existing Edge Function using Vault credentials.
+- Source commit `08b12a3093e09ff2ad1758ac0092e840d7c137d7` was published successfully with environment revision 3. Live status confirms configured username login and disabled preview. Anonymous `/api/me` and `/api/preview` return 401; missing-CAPTCHA login returns 400. The outer audience remains owner-only.
 - Anonymous article access denied; internal net, cron, vault schemas unexposed to Data API. See SECURITY.md for limits and advisor results.
 - Recovery/registration Turnstile verification requires HTTP success, strict boolean success, exact hostname and matching action. Login delegates CAPTCHA verification once to Supabase Auth to avoid token replay. Seventeen security/database/knowledge tests passed.
 
 ## Remaining checks and owner actions
 
-1. Verify this deployment uses runtime revision 3, configured login, disabled preview and anonymous data denial.
-2. Observe an actual Cron invocation and inspect source errors; do not claim all 57 sources are healthy from one successful watch.
+1. Preserve runtime revision 3 and private access. On continuation, check deployment and live status before changing configuration.
+2. Inspect source errors and the initial backlog; do not claim all 57 sources are healthy from one successful watch. First scheduled collection has been verified.
 3. Owner performs real username/password login, first password change and authenticator enrollment through the Site. Then test invitations and role isolation with real accounts. Never request authenticator seeds/codes in chat.
 4. Complete backup restore, traffic/load and independent security review before full-team onboarding. Current outer hosting audience remains owner-only; team access requires an explicit audience decision or standalone deployment. App invitations alone do not bypass the hosting gate.
 5. Revoke temporary Cloudflare and Supabase setup API tokens once provider work is complete. Preserve runtime keys required by the application. Store credentials in the owner's password manager.
