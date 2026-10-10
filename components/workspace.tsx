@@ -1,4 +1,5 @@
 "use client";
+import { sameGitHubWatch } from "@/lib/source-config";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Activity,
@@ -1517,10 +1518,10 @@ function Hub({
               >
                 Read original <ArrowUpRight size={16} />
               </a>
-              {picked.reference_meta?.repository && member.role === "admin" && <button className="secondary-button follow-project" disabled={sources.some(s => s.url === "https://api.github.com/repos/"+picked.reference_meta?.repository+"/releases")}
+              {picked.reference_meta?.repository && member.role === "admin" && <button className="secondary-button follow-project" disabled={sources.some(s => sameGitHubWatch(s.url,"https://github.com/"+picked.reference_meta?.repository))}
                 onClick={() => confirm("Follow this project’s releases?", "Stable releases will appear in your suggestions. You can change the interval and prerelease setting in Administration → Coverage.", async () => {
                   await perform("source_save", {name:picked.reference_meta!.repository+" releases",url:"https://github.com/"+picked.reference_meta!.repository,type:"github",topic:picked.topic,interval_minutes:240,priority:"normal",include_prereleases:false}); reload();notify("Project added to release watches");
-                })}><Radio size={15} />{sources.some(s => s.url === "https://api.github.com/repos/"+picked.reference_meta?.repository+"/releases") ? "Release watch configured" : "Follow project releases"}</button>}
+                })}><Radio size={15} />{sources.some(s => sameGitHubWatch(s.url,"https://github.com/"+picked.reference_meta?.repository)) ? "Release watch configured" : "Follow project releases"}</button>}
               <p>{picked.summary}</p>
               {picked.reference_meta?.prerelease && <div className="notice">Prerelease: assess compatibility before adopting it.</div>}
               {picked.reference_meta?.date_basis === "change_detected" && <p className="subtle">Updated time records when StackSignal detected a substantial page change; it is not a publisher-supplied release date.</p>}

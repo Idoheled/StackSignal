@@ -1,6 +1,10 @@
 import { dateISO, textOnly } from "./content.ts";
 import { canonicalLink } from "../../../lib/links.ts";
 
+export function isPrerelease(value: { prerelease?: boolean; tag_name?: string }) {
+  return value.prerelease === true || /(?:^|[\d._-])(?:alpha|beta|rc|preview|pre|dev|nightly|canary)(?:[._-]?\d+)?(?:[._+-]|$)/i.test(String(value.tag_name || ""));
+}
+
 /** Parse documented GitHub API objects. PR creation is not a software release or a merge. */
 export function githubItems(
   value: unknown,
@@ -22,7 +26,7 @@ export function githubItems(
       !x ||
       typeof x.html_url !== "string" ||
       x.draft ||
-      (releases && x.prerelease && !source.include_prereleases)
+      (releases && isPrerelease(x) && !source.include_prereleases)
     )
       return [];
     let url: string;
@@ -73,7 +77,7 @@ export function githubItems(
           origin: source.id ? "source_watch" : "github",
           source_id: source.id,
           repository: endpoint.pathname.split("/").slice(2, 4).join("/"),
-          ...(releases ? { alert_kind: source.id ? "release" : undefined, tag: String(x.tag_name || "").slice(0,120), prerelease: !!x.prerelease } : {}),
+          ...(releases ? { alert_kind: source.id ? "release" : undefined, tag: String(x.tag_name || "").slice(0,120), prerelease: isPrerelease(x) } : {}),
         },
       },
     ];

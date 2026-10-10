@@ -13,8 +13,24 @@ test("PostgreSQL access, isolation, invitation and concurrency invariants", asyn
     const migrations = new URL("../supabase/migrations/", import.meta.url);
     for (const name of (await readdir(migrations))
       .filter((n) => n.endsWith(".sql"))
-      .sort())
+      .sort()) {
+      let legacySource, legacyArticle;
+      if (name.endsWith("_source_watch_compatibility.sql")) {
+        legacySource = (await db.query("insert into ss_sources(name,url,type,topic) values('Legacy NCCL','https://api.github.com/repos/NVIDIA/nccl/releases?per_page=10','github','Networking') returning id")).rows[0];
+        legacyArticle = (await db.query("insert into ss_articles(url,title,kind,published_at,score) values('https://github.com/nvidia/NCCL/releases/tag/v2.0.0rc1','NCCL candidate','Release',now(),40) returning id,published_at")).rows[0];
+      }
       await db.exec(await readFile(new URL(name, migrations), "utf8"));
+      if (legacyArticle) {
+        const repaired = (await db.query("select * from ss_articles where id=$1", [legacyArticle.id])).rows[0];
+        assert.equal(repaired.reference_meta.prerelease, true);
+        assert.equal(repaired.reference_meta.source_id, legacySource.id);
+        assert.equal(repaired.reference_meta.alert_kind, "release");
+        assert.equal(repaired.published_at.getTime(), legacyArticle.published_at.getTime());
+        assert.equal(repaired.score, 80);
+        await db.query("delete from ss_articles where id=$1", [legacyArticle.id]);
+        await db.query("delete from ss_sources where id=$1", [legacySource.id]);
+      }
+    }
     const bootstrapProfile = (await db.query("select value from ss_settings where key='profile'")).rows[0].value;
     assert.equal(bootstrapProfile.gemini_daily_limit, 0);
     assert.equal(bootstrapProfile.search_monthly_limit, 0);
@@ -298,6 +314,10 @@ test("PostgreSQL access, isolation, invitation and concurrency invariants", asyn
     let watchRow = (await action("sources")).find(x=>x.id===watch);
     assert.equal(watchRow.url,"https://api.github.com/repos/NVIDIA/nccl/releases");
     assert.equal(watchRow.include_prereleases,false);
+    await db.exec("reset role");
+    await db.query("update ss_sources set url=url||'?per_page=10' where id=$1", [watch]);
+    await as(owner);
+    await fails(() => action("source_save",{...watchPayload,url:"https://github.com/nvidia/NCCL"}),"already followed");
     await fails(() => action("source_toggle",{id:watch,active:false}),"Confirmation");
     await action("source_toggle",{id:watch,active:false,confirmed:true});
     await action("source_save",{...watchPayload,id:watch,include_prereleases:true,priority:"core"});
@@ -321,6 +341,18 @@ test("PostgreSQL access, isolation, invitation and concurrency invariants", asyn
     await as(owner);
     assert.equal((await action("feed",{mode:"releases"})).total,1);
     assert.equal((await action("stats")).release_unread,1);
+    await db.exec("reset role");
+    await db.query("update ss_articles set reference_meta=reference_meta||'{\"prerelease\":true}'::jsonb where id=$1",[article]);
+    await as(owner);
+    assert.equal((await action("feed",{mode:"releases"})).total,1,"opt-in includes prereleases");
+    await action("source_save",{...watchPayload,id:watch,include_prereleases:false});
+    assert.equal((await action("feed",{mode:"releases"})).total,0);
+    assert.equal((await action("feed",{mode:"week"})).total,0);
+    assert.equal((await action("stats")).release_unread,0);
+    assert.equal((await action("feed",{mode:"archive"})).total,1,"channel settings keep archived content");
+    await db.exec("reset role");
+    await db.query("update ss_articles set reference_meta=reference_meta||'{\"prerelease\":false}'::jsonb where id=$1",[article]);
+    await as(owner);
     await action("read",{article_id:article});
     assert.equal((await action("stats")).release_unread,0);
     await action("source_delete",{id:watch,confirmed:true});

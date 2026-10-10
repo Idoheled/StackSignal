@@ -40,3 +40,8 @@ export function repositorySearchURL(query: string, now = Date.now()) {
   u.searchParams.set("per_page", "6");
   return u.toString();
 }
+
+export function sameGitHubWatch(left: string, right: string) {
+  try { return githubWatchURL(left).toLowerCase() === githubWatchURL(right).toLowerCase(); }
+  catch { return false; }
+}

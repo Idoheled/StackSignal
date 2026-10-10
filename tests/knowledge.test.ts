@@ -205,3 +205,18 @@ test("relevance explains operational signals and preserves terse followed releas
   const b = relevance("KServe vLLM throughput benchmark", "KV cache", {...TEAM_PROFILE,_tagWeights:{kserve:100,vllm:100}});
   assert(b.score<=98);
 });
+
+test("legacy watch pagination and repository casing do not create another follow", async () => {
+  const { sameGitHubWatch } = await import("../lib/source-config.ts");
+  assert(sameGitHubWatch("https://api.github.com/repos/NVIDIA/nccl/releases?per_page=10", "https://github.com/nvidia/NCCL"));
+  assert(!sameGitHubWatch("https://api.github.com/repos/NVIDIA/nccl/releases?per_page=10", "https://github.com/nvidia/other"));
+});
+
+test("release candidates are labeled even when the publisher omits the prerelease flag", async () => {
+  const { isPrerelease } = await import("../supabase/functions/_shared/github.ts");
+  assert(isPrerelease({tag_name:"0.5.6rc4-cu129",prerelease:false}));
+  assert(isPrerelease({tag_name:"v1.0.0-beta.1"}));
+  assert(isPrerelease({tag_name:"nightly"}));
+  assert(!isPrerelease({tag_name:"v1.2.3-cu129"}));
+  assert(!isPrerelease({tag_name:"v2026.10.1"}));
+});

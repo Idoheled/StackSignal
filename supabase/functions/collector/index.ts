@@ -10,7 +10,7 @@ import {
   meaningfulChange,
 } from "../_shared/content.ts";
 import { canonicalLink } from "../../../lib/links.ts";
-import { githubItems, githubAPIForLink } from "../_shared/github.ts";
+import { githubItems, githubAPIForLink, isPrerelease } from "../_shared/github.ts";
 import { TOPIC_TERMS } from "../../../lib/domain.ts";
 import { repositorySearchURL, DEFAULT_REPO_QUERIES } from "../../../lib/source-config.ts";
 import { relevance } from "../_shared/relevance.ts";
@@ -255,9 +255,14 @@ async function ingest(item: any, profile: any) {
     return;
   }
   const u = new URL(url);
+  if (item.kind === "Release" && u.hostname === "github.com") {
+    const tag = item.reference_meta?.tag || u.pathname.split("/releases/tag/")[1];
+    item.reference_meta = { ...item.reference_meta, prerelease: isPrerelease({ prerelease: item.reference_meta?.prerelease, tag_name: tag }) };
+  }
   if (item.reference_meta?.source_id) {
-    const watched = await db("ss_sources?id=eq." + encodeURIComponent(item.reference_meta.source_id) + "&select=active,revision");
+    const watched = await db("ss_sources?id=eq." + encodeURIComponent(item.reference_meta.source_id) + "&select=active,revision,include_prereleases");
     if (!watched[0]?.active || watched[0].revision !== item.reference_meta.source_revision) return;
+    if (item.reference_meta.prerelease && !watched[0].include_prereleases) return;
   }
   const old = await db(
     "ss_articles?url=eq." +
@@ -305,8 +310,9 @@ async function sourceJob(job: any, profile: any) {
   const source = rows[0];
   if (!source?.active) return;
   try {
-    const requestURL = source.type === "github" && source.url.endsWith("/releases") ? source.url + "?per_page=100" : source.url;
-    const res = await fetchPublic(requestURL, source.etag);
+    const requestURL = new URL(source.url);
+    if (source.type === "github" && requestURL.pathname.endsWith("/releases")) requestURL.searchParams.set("per_page", "100");
+    const res = await fetchPublic(requestURL.toString(), source.etag);
     const meta = { origin: "source_watch", source_id: source.id, source_revision: source.revision };
     if (!res.unchanged) {
       if (source.type === "github") {
