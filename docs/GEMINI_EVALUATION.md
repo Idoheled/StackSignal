@@ -18,6 +18,10 @@ Every suggested-feed mode, including releases and All reviewed, admits only comp
 
 This week retains the publisher's seven-day date window. New to radar uses the assessment date, so a backlogged or undated reference can surface when its review completes without inventing a publication date. All reviewed has no age cutoff. Followed-release alerts and unread counts require review too, and respect prerelease settings.
 
+Every discovery mode shows at most one latest approved, channel-eligible release per project. The database selects it before search, personal read/dismiss state, score sorting or pagination; weekly and unread-release counts use the same selection. Older maintenance-branch patches cannot displace a newer comparable version just because their score or publication date is higher. Nonversion tag schemes use publisher time. GitHub repository casing and legacy source labels do not split canonical project identity; official OpenShift streams share one project and honor preview opt-in, including in All reviewed. Documentation and PRs remain independent items.
+
+An older release saved by any member remains in the shared library with its review and read state. Saving does not put superseded releases back in discovery. Existing review history and collection rows are retained, and pending/rejected new versions cannot replace the latest approved release. See [discovery selection rules](DISCOVERY.md#5-what-each-person-sees).
+
 Apply mode uses the existing 70% AI / 30% rules blend for high-confidence Gemini assessments; medium-confidence assessments preserve stored rules scores. Admission uses the assessment decision and score independently, so useful unfamiliar tools can enter despite weak keyword overlap. Assistant reviews display and rank by their explicit assessment score. Cards identify the assistant or Gemini as reviewer; details retain the review date and flag subsequent content changes. Evaluate without changing ranking still gates suggestions; Off pauses new evaluations but retains completed reviews.
 
 ## Request and coverage budgets

@@ -10,7 +10,17 @@
 - Existing owner `administrator` is active, has changed the temporary password, and completed a fresh TOTP enrollment at 10:44–10:45 UTC on October 10. The obsolete temporary administrator credential file was removed. Do not bootstrap/reset this account.
 - The original import contains 136 links, 136 bookmarks, 29 folders and 57 watches. It is immutable and already applied. Collection has since expanded the article count. Do not re-run the import with a changed batch payload.
 
-## Current review handoff — October 11, 18:06 UTC
+## Latest release display — October 11, 21:06 UTC
+
+The `latest_project_releases` migration is applied. Discovery and hidden views now select one latest approved, channel-eligible release per project before search, personal read/dismiss state, sorting or pagination. Weekly and unread-release counts share the selection. Numeric version components and preview sequence numbers take priority for comparable tags; other schemes use publisher dates. Canonical GitHub release URLs avoid legacy source-label/casing splits, and official OpenShift streams share one project with preview opt-in respected in every discovery mode. Saved versions remain in the shared library; historical rows and immutable assessments are retained.
+
+The production check selected **26 current release projects from 126 approved historical releases**, suppressing 100 older release cards. KAI Scheduler resolves to `v0.18.5`, published at `2026-10-11T14:55:01Z`; its scheduled collection had already filled the missing date before this migration verification, so no duplicate manual repair was applied. All **717 assistant reviews**, their checksum, **166 bookmarks, 29 folders and 14 feedback rows** were unchanged. Coverage still counts approved historical assessments; discovery totals exclude superseded releases and can be lower. Existing new-link Gemini selection and quota ledgers were not changed.
+
+All **40 automated tests passed locally**, including three new database regression groups for global selection, saved history, member isolation, preview channels and deterministic date ties. Security advisors reported the same existing findings as before the change; private helper execution remains denied to client roles. The matching main workflow must confirm hosted browser/build/deployment checks after publication. Do not reapply this migration or repeat the 717-link review during continuation.
+
+The earlier durable-review feature and documentation were pushed through `c0a45894ea1344348e2ad33b91cc8f3beeb002a1`. [Run 38164530598](https://github.com/Idoheled/StackSignal/actions/runs/38164530598) passed 37 tests, both type checks, all 24 Chromium/Firefox/WebKit checks and production security smoke. Worker version `bb3e989f-80c2-44a8-8f23-09daa2d0a32a` was deployed at 18:39 UTC, and post-deployment checks preserved the review checksum. This supersedes the earlier preparation-only frontend status below.
+
+## Review handoff — October 11, 18:06 UTC
 
 Collector **version 18 is ACTIVE**. The `durable_review_handoff`, `assistant_review_display_score` and `review_import_validation` migrations are applied. The frozen collection includes 717 existing URLs, including 28 URLs already queued when the review began. All 717 assistant decisions are stored: **336 approved, 272 not selected, 109 insufficient evidence, zero awaiting assistant review**. No old collection job, website redeployment or metadata refresh may reset these decisions. Reviewer, review date, evidence and reviewed-content snapshots are durable in PostgreSQL; immutable private history and 90-day retention exclusions back them. Do not rerun historical imports or the bulk review. Use the service-only coverage RPC for current counts.
 

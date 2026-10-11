@@ -7,7 +7,7 @@ StackSignal has two connected jobs: discover useful public engineering material 
 ## A daily reading routine
 
 1. **Start with This week.** Filter by topic, content type or unread status. Switch between relevance and recency depending on whether you want the strongest matches or the latest publications.
-2. **Review Releases.** Open the original release notes for projects you follow. Check versions, breaking changes and prerequisites before applying anything to production.
+2. **Review Releases.** Discovery shows one latest approved release per project. Open the original release notes for projects you follow. Check versions, breaking changes and prerequisites before applying anything to production. Older versions saved by a member remain in the shared library.
 3. **Explore New to radar.** This is where older but newly encountered tools and projects can enter your view.
 4. **Check Updated docs.** Read changes to watched documentation; a detected change is not a publisher's new release announcement.
 5. **Capture the useful part.** Administrators/maintainers can save links, leave notes and give helpful/not-relevant feedback. Readers can consume the shared result.
@@ -20,7 +20,7 @@ StackSignal has two connected jobs: discover useful public engineering material 
 | **Releases** | Followed release items published in the last seven days, subject to stable/prerelease settings | Upgrade awareness and unread release alerts |
 | **New to radar** | Non-release items first discovered in the last seven days through source watches/public discovery, subject to relevance filtering | Projects or material you had not encountered, even if published earlier |
 | **Updated docs** | Items with a recorded update/detected-change time in the last seven days, subject to relevance filtering | Changes to existing material; inspect the item type and date basis |
-| **All reviewed** | Stored discovery history without the weekly time window/minimum-score gate; other filters and personal hidden state still apply | Older references and broader review |
+| **All reviewed** | Approved discovery without the weekly time window; review, score, maintenance and channel gates still apply, with one current release per project | Reviewed references beyond this week |
 
 Unread state and hidden/not-relevant state are personal. Saved links and folder structure are shared. An alert means there are unread followed releases in the weekly window; it is an in-app entry into the Releases view.
 

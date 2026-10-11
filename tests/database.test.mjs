@@ -4,7 +4,7 @@ import { readFile, readdir } from "node:fs/promises";
 import { teamImportPayload } from "../scripts/import-team-library.mjs";
 import { PGlite } from "@electric-sql/pglite";
 import { pgcrypto } from "@electric-sql/pglite/contrib/pgcrypto";
-test("PostgreSQL access, isolation, invitation and concurrency invariants", async () => {
+test("PostgreSQL access, isolation, invitation and concurrency invariants", async (t) => {
   const db = new PGlite({ extensions: { pgcrypto } });
   try {
     await db.exec(
@@ -420,7 +420,7 @@ test("PostgreSQL access, isolation, invitation and concurrency invariants", asyn
     assert.equal((await action("feed",{mode:"releases"})).total,0);
     assert.equal((await action("feed",{mode:"week"})).total,0);
     assert.equal((await action("stats")).release_unread,0);
-    assert.equal((await action("feed",{mode:"archive"})).total,1,"channel settings keep archived content");
+    assert.equal((await action("feed",{mode:"archive"})).total,0,"all discovery modes respect the current release channel; saved history remains in the library");
     await db.exec("reset role");
     await db.query("update ss_articles set reference_meta=reference_meta||'{\"prerelease\":false}'::jsonb where id=$1",[article]);
     await as(owner);
@@ -477,6 +477,86 @@ test("PostgreSQL access, isolation, invitation and concurrency invariants", asyn
     await db.exec("reset role");await db.query("update ss_articles set discovered_at=now()-interval '100 days' where id=$1",[frozen]);await db.query("select ss_maintenance()");
     assert.equal((await db.query("select count(*)::int n from ss_articles where id=$1",[frozen])).rows[0].n,1,"maintenance retains reviewed links beyond 90 days");
     await as(reader);await fails(()=>db.query("select * from ss_private.article_reviews"),"permission denied");
+
+    async function releaseFixture(url,title,hours,meta={},kind="Release") {
+      await db.exec("reset role");
+      return (await db.query("insert into ss_articles(url,title,kind,published_at,updated_at,score,reference_meta) values($1,$2,$3,$4,$4,90,$5) returning id",[
+        url,title,kind,new Date(Date.now()-hours*3600000).toISOString(),JSON.stringify({repo_health:repoHealth,evaluation:review,...meta})
+      ])).rows[0].id;
+    }
+    await t.test("one current release is selected globally before filters, ranking and pagination; saved history survives",async()=>{
+      await as(owner);const before=await action("stats");
+      const old=await releaseFixture("https://github.com/ReleaseTest/Runtime/releases/tag/v0.9.9","Release regression v0.9.9",1,{alert_kind:"release",evaluation:{...review,score:99}});
+      const backport=await releaseFixture("https://github.com/releasetest/runtime/releases/tag/v0.12.26","Release regression v0.12.26",0.1,{alert_kind:"release",evaluation:{...review,score:99}});
+      const latest=await releaseFixture("https://github.com/releasetest/runtime/releases/tag/v0.18.5","Release regression v0.18.5",2,{alert_kind:"release",evaluation:{...review,score:70},repository:"old-owner/old-name"});
+      await releaseFixture("https://github.com/RELEASETEST/Runtime/releases/tag/v0.18.4","Release regression v0.18.4",0.2,{alert_kind:"release"});
+      await releaseFixture("https://github.com/releasetest/runtime/releases/tag/v0.19.0","Release regression pending",0.01,{evaluation:null});
+      await releaseFixture("https://github.com/releasetest/runtime/releases/tag/v0.20.0","Release regression rejected",0.01,{evaluation:{...review,decision:"tangential"}});
+      await releaseFixture("https://github.com/releasetest/runtime/releases/tag/v0.21.0","Release regression future",-24);
+      const doc=await releaseFixture("https://github.com/releasetest/runtime/blob/main/guide.md","Release regression guide",1,{repository:"releasetest/runtime"},"Article");
+      const pr=await releaseFixture("https://github.com/releasetest/runtime/pull/42","Release regression change",1,{repository:"releasetest/runtime"},"Pull request");
+      await as(owner);
+      for(const mode of ["week","archive","updates","releases"]) for(const sort of ["newest","best"]) {
+        const result=await action("feed",{mode,sort,q:"Release regression",kind:"Release",limit:1});
+        assert.equal(result.total,1,`current release in ${mode}/${sort}`);assert.equal(result.items[0].id,latest,"latest version beats older backports, score and legacy repository metadata");
+        assert.equal((await action("feed",{mode,sort,q:"Release regression",kind:"Release",limit:1,offset:1})).items.length,0);
+      }
+      assert.equal((await action("feed",{mode:"archive",q:"v0.12.26"})).total,0,"search never resurrects a superseded release");
+      assert.equal((await action("feed",{mode:"radar",q:"Release regression",kind:"Release"})).total,0,"radar retains its nonrelease scope");
+      const mixed=await action("feed",{mode:"archive",q:"Release regression"});
+      assert.deepEqual(new Set(mixed.items.map(x=>x.id)),new Set([latest,doc,pr]),"docs and PRs from the same project are independent signals");
+      assert.equal((await action("stats")).release_unread,before.release_unread+1);
+      assert.equal((await action("stats")).week,before.week+3);
+      await action("read",{article_id:latest});
+      assert.equal((await action("feed",{mode:"releases",q:"Release regression",unread:true})).total,0,"reading the current release cannot reveal an older unread release");
+      assert.equal((await action("stats")).release_unread,before.release_unread);
+      await action("save",{article_id:old});
+      await action("read",{article_id:old});
+      await action("feedback",{article_id:latest,hidden:true,confirmed:true});
+      await action("feedback",{article_id:backport,hidden:true,confirmed:true});
+      assert.equal((await action("feed",{mode:"archive",q:"Release regression",kind:"Release"})).total,0,"personal dismissal cannot promote an old version");
+      assert.equal((await action("hidden",{q:"Release regression",kind:"Release"})).total,1,"hidden view also suppresses superseded releases");
+      assert.equal((await action("library",{q:"v0.9.9"})).items[0].id,old);
+      await as(reader);
+      assert.equal((await action("feed",{mode:"archive",q:"Release regression",kind:"Release"})).items[0].id,latest,"one member's dismissal does not affect another member");
+      assert.equal((await action("library",{q:"v0.9.9"})).items[0].id,old,"a release saved by a member stays in the shared library");
+      await fails(()=>db.query("select ss_private.current_release_ids('{}')"),"permission denied");
+      await db.exec("reset role");
+      await db.query("update ss_articles set reference_meta=reference_meta||'{\"evaluation\":null}'::jsonb where id=$1",[old]);
+      assert.deepEqual((await db.query("select reference_meta->'evaluation' x from ss_articles where id=$1",[old])).rows[0].x,{...review,score:99},"suppression and refresh preserve completed assessments");
+    });
+    await t.test("OpenShift streams share one project and numeric preview order obeys channel opt-in",async()=>{
+      await as(owner);
+      const source={name:"Regression OpenShift previews",url:"https://amd64.ocp.releases.ci.openshift.org/api/v1/releasestream/5-dev-preview/tags",type:"openshift",topic:"Platforms",interval_minutes:240,include_prereleases:true};
+      const watch=(await action("source_save",source)).id;
+      const stable=await releaseFixture("https://amd64.ocp.releases.ci.openshift.org/releasestream/4-stable/release/4.22.1","OpenShift regression stable",0.1);
+      await releaseFixture("https://amd64.ocp.releases.ci.openshift.org/releasestream/5-dev-preview/release/5.0.0-rc.2","OpenShift regression rc2",0.2);
+      const rc10=await releaseFixture("https://amd64.ocp.releases.ci.openshift.org/releasestream/5-dev-preview/release/5.0.0-rc.10","OpenShift regression rc10",1);
+      await as(owner);
+      assert.equal((await action("feed",{mode:"archive",q:"OpenShift regression"})).items[0].id,rc10,"legacy URLs without provenance still infer their channel and numeric preview sequence");
+      await action("source_save",{...source,id:watch,include_prereleases:false});
+      const visible=await action("feed",{mode:"archive",q:"OpenShift regression"});
+      assert.equal(visible.total,1);assert.equal(visible.items[0].id,stable);
+      await action("save",{article_id:rc10});
+      assert.equal((await action("library",{q:"OpenShift regression rc10"})).items[0].id,rc10,"saved preview remains accessible after opting out");
+    });
+    await t.test("nonversion release tags use publisher dates and ties do not split pagination",async()=>{
+      await releaseFixture("https://docs.example/runtime/releases/autumn","Dated regression autumn",3);
+      const newest=await releaseFixture("https://docs.example/runtime/releases/winter","Dated regression winter",1);
+      await as(owner);
+      const feed=await action("feed",{mode:"archive",q:"Dated regression"});assert.equal(feed.total,1);assert.equal(feed.items[0].id,newest);
+      await db.exec("reset role");
+      assert((await db.query("select ss_private.release_version('v1.0.0-rc10')>ss_private.release_version('v1.0.0-rc2') as valid")).rows[0].valid);
+      assert((await db.query("select ss_private.release_version('v1.0.0')>ss_private.release_version('v1.0.0-rc.10') as valid")).rows[0].valid);
+      assert((await db.query("select ss_private.release_version('v1.0.0-RC10')>ss_private.release_version('v1.0.0-RC2') as valid")).rows[0].valid);
+      assert((await db.query("select ss_private.release_version('v1.0.0+build.9')=ss_private.release_version('v1.0.0') as valid")).rows[0].valid,"build metadata has no version precedence");
+      const tied=await releaseFixture("https://docs.example/runtime/releases/spring","Dated regression spring",1);
+      await db.query("update ss_articles set published_at=(select published_at from ss_articles where id=$1),discovered_at=(select discovered_at from ss_articles where id=$1) where id=$2",[newest,tied]);
+      await as(owner);
+      const first=await action("feed",{mode:"archive",q:"Dated regression",limit:1});
+      assert.equal(first.total,1);assert.equal(first.items[0].id,[newest,tied].sort()[0],"publisher/discovery ties have a deterministic ID winner");
+      assert.equal((await action("feed",{mode:"archive",q:"Dated regression",limit:1,offset:1})).items.length,0);
+    });
 
     console.log(
       "Verified: RLS, MFA gate, read-only restrictions, private notes, recursive title search, cycle prevention, trash/restore, confirmation, single-use invites, immediate revocation, bounded quotas, job leases.",

@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-10-11 — One current release per project
+
+- Show only the latest approved, channel-eligible release of each project across discovery and hidden views; retain older saved releases in the shared library.
+- Select the current release before search, personal read/dismiss filters, score sorting and pagination; apply the same selection to weekly and unread-release counts.
+- Normalize GitHub project casing using canonical release URLs, group OpenShift streams as one project, compare numeric version components and preview sequences, and fall back to publisher dates for other tag schemes.
+- Preserve all historical articles, reviews, bookmarks and notes; no collection or Gemini quota changes.
+- Add database regressions for maintenance-branch patches, pagination/search, pending reviews, per-member state, saved history, OpenShift channel opt-in and deterministic date ties.
+
 ## 2026-10-11 — Maintained repositories and platform release probes
 
 - Enforce administrator-editable GitHub stars, actual watchers, recent releases, activity and declared-license gates before AI reservation and feed admission; preserve saved references.

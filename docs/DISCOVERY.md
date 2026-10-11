@@ -95,6 +95,12 @@ A score of 98 can mean that a title/excerpt contains many relevant terms. It doe
 
 ## 5. What each person sees
 
+Discovery shows one latest approved release per project across every feed mode and the hidden view. Selection happens before search, topic/type filters, personal read/dismiss state, sorting and pagination. A search for an old version or reading/dismissing the current version cannot bring a superseded release back. Weekly and unread-release counts use the same selection.
+
+Canonical GitHub release URLs identify projects regardless of repository casing or legacy source labels. Official OpenShift 4/5 streams share one project and respect configured preview opt-in. Comparable numeric tags use major/minor/patch order, stable-before-preview for the same version, and numeric preview sequences. Projects with unrecognized tag schemes use publisher dates, then discovery time and a deterministic ID tie-break. Undated releases keep their unknown publication date. Unknown project identities are kept separate rather than combining unrelated publisher articles.
+
+Older versions saved by any member stay in the shared library. Historical articles and completed assessments are retained, but saved status does not add an old release back to discovery. Pending or rejected releases cannot replace the current approved release. Documentation, papers, issues and PRs remain separate signals.
+
 The administrator's minimum score (45…85) applies to the **AI assessment** for suggested-feed admission. Every feed mode requires useful, medium/high-confidence, practical/advanced material with validated evidence; releases receive the same review gate. All reviewed removes the date cutoff but never bypasses AI admission. Saved library references remain accessible independently. New to radar uses review time, so a queued older reference can surface after successful review without changing its publication date.
 
 Reviewed cards display the **AI assessment score**; unreviewed saved references retain their local score. Stored ranking is separate. When sorting by relevance, the database adds a separate personal ordering adjustment: +2 per helpful item, otherwise −2 per hidden item, when that prior item shares a topic or tag; the total is capped at −12…+12. That adjustment changes order, not the number printed on the card. Recency sorting uses dates instead.

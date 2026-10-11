@@ -34,7 +34,7 @@ An AI infrastructure team works across hardware, lossless networking, Kubernetes
 >
 > Watch the known dependencies. Explore beyond them. Keep the original evidence close.
 
-Discovery combines explicit source watches with public feeds, repository searches, GitHub daily/weekly top-five probes, official OpenShift release streams and genuine Tavily web search. GitHub suggestions must pass maintenance checks and useful review. The existing collection has durable assistant decisions; Gemini evaluates newly discovered URLs. Review labels, dates and evidence survive redeployment and source refreshes. The shared library captures what people learn: a useful link becomes a saved reference, a discussion, or feedback that informs future ranking.
+Discovery combines explicit source watches with public feeds, repository searches, GitHub daily/weekly top-five probes, official OpenShift release streams and genuine Tavily web search. GitHub suggestions must pass maintenance checks and useful review. Discovery shows only the latest approved release per project; older saved versions remain in the shared library. The existing collection has durable assistant decisions; Gemini evaluates newly discovered URLs. Review labels, dates and evidence survive redeployment and source refreshes. The shared library captures what people learn: a useful link becomes a saved reference, a discussion, or feedback that informs future ranking.
 
 ## A daily workflow
 
