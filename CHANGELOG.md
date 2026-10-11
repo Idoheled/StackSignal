@@ -2,7 +2,9 @@
 
 ## 2026-10-11
 
-- Conservative Flash-Lite semantic evaluation: administrator Compare / Apply / Off controls, public-context sampling, exact-evidence validation and cached comparisons.
+- Switched semantic evaluation to the owner-requested `gemini-flash-latest` alias, low thinking and recorded resolved model versions; retained all usage, evidence and privacy controls.
+
+- Conservative Flash Latest semantic evaluation: administrator Compare / Apply / Off controls, public-context sampling, exact-evidence validation and cached comparisons.
 - Service-only atomic evaluation reservations enforce four attempts in rolling 24 hours, 100 monthly and one-hour spacing, including failures; provider errors pause for 24 hours.
 
 - Activated genuine Tavily searches using server-side function secrets; verified the first full 20-query sweep and persisted results.

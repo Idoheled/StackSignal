@@ -398,7 +398,7 @@ export default function AdminPanel({
               </select>
             </label>
             <label>Monthly Gemini attempt ceiling<input type="number" name="gemini_monthly_limit" min={0} max={100} defaultValue={data.profile.gemini_monthly_limit ?? 100} /></label>
-            <p className="subtle">Flash-Lite samples strong, borderline and exploratory discoveries. Hard limits: 4 attempts in 24 hours, 100 per UTC calendar month and 1 per hour; failures count. Compare mode preserves your feed. Only public excerpts and recognized public stack terms reach Google. A separate free-tier API key is required.</p>
+            <p className="subtle">Keep the Google API project on the Free tier. Flash Latest samples strong, borderline and exploratory discoveries. Hard limits: 4 attempts in 24 hours, 100 per UTC calendar month and 1 per hour; failures count. Compare mode preserves your feed. Only public excerpts and recognized public stack terms reach Google. A separate free-tier API key is required.</p>
             <div className="form-grid">
               <label>
                 Gemini attempts per 24 hours
@@ -524,8 +524,9 @@ export default function AdminPanel({
             <p className="subtle">Coverage comes from your watchlist, publication feeds and daily public project search. Optional web search and AI need separately configured API keys; a subscription does not activate them here.</p>
             <h3>Web discovery</h3>
             <h3>Gemini evaluation</h3>
-            <p className="subtle">{(data.evaluation_health?.state || "not configured").replaceAll("_", " ")} · {data.profile.gemini_mode || "off"} · Gemini 3.5 Flash-Lite</p>
+            <p className="subtle">{(data.evaluation_health?.state || "not configured").replaceAll("_", " ")} · {data.profile.gemini_mode || "off"} · {data.evaluation_health?.model || "gemini-flash-latest"}</p>
             <p className="subtle">Attempts: {data.evaluation_health?.usage?.used_24h || 0} / {data.profile.gemini_daily_limit || 0} in 24 hours · {data.evaluation_health?.usage?.used_month || 0} / {data.profile.gemini_monthly_limit ?? 100} this month. Last success: {dateLabel(data.evaluation_health?.last_success)}</p>
+            {data.evaluation_health?.resolved_model && <p className="subtle">Last successful model: {data.evaluation_health.resolved_model}</p>}
             {data.evaluation_health?.last_error && <p className="source-error">{data.evaluation_health.last_error}</p>}
             {(data.evaluation_health?.comparisons || []).map((c:any) => <div className="evaluation-comparison" key={c.article_id + c.evaluated_at}>
               <div><strong>{c.title}</strong><p className="subtle">Rules {c.rules_score} · AI {c.ai_score} · Applied {c.applied_score} · {c.confidence} confidence · {c.depth} · {c.scope.replaceAll("_", " ")}</p>

@@ -12,7 +12,7 @@ test("evaluation discloses public allowlisted context and bounded excerpts witho
   const request=evaluationRequest(bounded,team), serialized=JSON.stringify(request);
   assert(!serialized.includes("secret.internal"));assert(!serialized.includes("private project"));assert(!serialized.includes("private query"));
   assert.deepEqual(team.interests,["vLLM","H200"]);assert.equal(team.priorities.Inference,20);
-  assert.equal(request.generationConfig.maxOutputTokens,650);assert.equal(request.generationConfig.thinkingConfig.thinkingLevel,"MINIMAL");
+  assert.equal(request.generationConfig.maxOutputTokens,650);assert.equal(request.generationConfig.thinkingConfig.thinkingLevel,"LOW");
   assert.equal("tools" in request,false);assert.equal(request.store,false);
   assert.equal(publicInput({title:"short"},"tiny"),null);
 });

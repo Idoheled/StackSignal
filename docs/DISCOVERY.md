@@ -112,7 +112,7 @@ Saving or reading alone does not train the classifier. A submitted missed link c
 
 Tavily uses basic searches, at most eight results per response, a hard 24-request UTC-day cap and a configured monthly cap no greater than 800. The current workspace uses 800. Reservations include failed attempts; other consumers of the Tavily account are outside these app limits. See [WEB_DISCOVERY.md](WEB_DISCOVERY.md) for secret configuration and provider billing boundaries.
 
-The [conservative Gemini evaluator](GEMINI_EVALUATION.md) is a separate optional layer: Flash-Lite samples strong, borderline and unfamiliar discoveries with an atomic four-attempt rolling 24-hour cap, 100 monthly cap and one-hour spacing. Comparison mode preserves scores; Apply mode blends only confident, evidenced assessments. A free-tier API key is required. Enabling Tavily alone never enables Gemini.
+The [conservative Gemini evaluator](GEMINI_EVALUATION.md) is a separate optional layer: Flash Latest samples strong, borderline and unfamiliar discoveries with an atomic four-attempt rolling 24-hour cap, 100 monthly cap and one-hour spacing. Comparison mode preserves scores; Apply mode blends only confident, evidenced assessments. A free-tier API key is required. Enabling Tavily alone never enables Gemini.
 
 ## What “I don't know what I don't know” means here
 

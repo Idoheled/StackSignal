@@ -58,7 +58,7 @@ The central business endpoint is `POST /api/action`, using `{ action, payload }`
 | User token → database | Active member, bound/unrevoked session, role/MFA and note visibility | [migrations](../supabase/migrations/) |
 | Collector caller → Edge Function | Dedicated collector secret; no public collection trigger | [collector](../supabase/functions/collector/index.ts) |
 | Collector → publisher | Controlled host allowlist, public-address/redirect checks and bounded requests | [content.ts](../supabase/functions/_shared/content.ts), [collector](../supabase/functions/collector/index.ts) |
-| Public text → UI/optional AI | Text-only rendering; bounded structured output/evidence; no model tools/private context | [workspace](../components/workspace.tsx), [collector](../supabase/functions/collector/index.ts) |
+| Public text → UI/optional AI | Text-only rendering; bounded structured output/evidence, recorded Flash Latest resolved version; no model tools/private context | [workspace](../components/workspace.tsx), [collector](../supabase/functions/collector/index.ts) |
 
 Provider service credentials remain server-side. The user-facing business RPC uses the authenticated user's token so database permission checks retain user identity. Collector/service tasks use separate privileged credentials; they do not share a browser session.
 

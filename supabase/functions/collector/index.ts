@@ -14,7 +14,7 @@ import { githubItems, githubAPIForLink, isPrerelease } from "../_shared/github.t
 import { repositorySearchURL, DEFAULT_REPO_QUERIES } from "../../../lib/source-config.ts";
 import { relevance } from "../_shared/relevance.ts";
 import { webCandidate, webSearchRequest, lowValueDiscovery } from "../_shared/web-discovery.ts";
-import { EVALUATOR_VERSION, LITE_MODEL, publicInput, publicTeam, evaluationRequest, parseEvaluation, effectiveScore, evaluationCandidates, candidateLane } from "../_shared/evaluation.ts";
+import { EVALUATOR_VERSION, EVALUATION_MODEL, publicInput, publicTeam, evaluationRequest, parseEvaluation, effectiveScore, evaluationCandidates, candidateLane } from "../_shared/evaluation.ts";
 class Deferred extends Error { retryAt: number; constructor(message: string, retryAt = Date.now() + 3600000) { super(message); this.retryAt = retryAt; } }
 class SourceTooLarge extends Error { constructor() { super("Source exceeds size limit"); } }
 const env = (k: string) => Deno.env.get(k) || "";
@@ -164,7 +164,7 @@ async function evaluateSweep(profile: any) {
   const health = old[0]?.value || {};
   if (!configured || mode === "off" || !limit || !monthly) {
     await evaluationHealth({ configured, state: configured ? "paused" : "missing_key", mode,
-      model: LITE_MODEL, daily_ceiling:limit, monthly_ceiling:monthly });
+      model: EVALUATION_MODEL, daily_ceiling:limit, monthly_ceiling:monthly });
     return;
   }
   if (Date.parse(health.cooldown_until || "") > Date.now()) {
@@ -173,7 +173,7 @@ async function evaluateSweep(profile: any) {
   }
   const usage = await rpc("ss_evaluation_usage");
   if (usage.used_24h >= limit || usage.used_month >= monthly || Date.parse(usage.last_attempt || "") > Date.now()-3600000) {
-    await evaluationHealth({configured:true,mode,model:LITE_MODEL,state:"budget_wait",daily_ceiling:limit,monthly_ceiling:monthly,usage});
+    await evaluationHealth({configured:true,mode,model:EVALUATION_MODEL,state:"budget_wait",daily_ceiling:limit,monthly_ceiling:monthly,usage});
     return;
   }
   const rows = await db("ss_articles?deleted_at=is.null&discovered_at=gte." + new Date(Date.now()-7*86400000).toISOString() +
@@ -181,27 +181,27 @@ async function evaluateSweep(profile: any) {
   const team = publicTeam(profile);
   for (const row of evaluationCandidates(rows, new Date().getUTCHours())) {
     const input = row.reference_meta.public_evaluation_input;
-    const cacheKey = await digest(JSON.stringify({ version:EVALUATOR_VERSION, model:LITE_MODEL, input, team }));
+    const cacheKey = await digest(JSON.stringify({ version:EVALUATOR_VERSION, model:EVALUATION_MODEL, input, team }));
     if (row.reference_meta.evaluation?.cache_key === cacheKey) continue;
     // Reservation is serialized in Postgres: rolling 24h + calendar month + one hour + persistent input claim.
     if (!(await rpc("ss_reserve_evaluation", { article:row.id, cache_key:cacheKey, daily_max:limit, monthly_max:monthly }))) continue;
     let result: any;
     try {
-      const response = await fetch("https://generativelanguage.googleapis.com/v1beta/models/"+LITE_MODEL+":generateContent", {
+      const response = await fetch("https://generativelanguage.googleapis.com/v1beta/models/"+EVALUATION_MODEL+":generateContent", {
         method:"POST", redirect:"error", signal:AbortSignal.timeout(15000),
         headers:{"Content-Type":"application/json","x-goog-api-key":env("GEMINI_API_KEY")}, body:JSON.stringify(evaluationRequest(input,team)),
       });
       if (!response.ok) {
         await response.body?.cancel();
-        await evaluationHealth({configured:true,mode,model:LITE_MODEL,state:"cooldown",last_error:"Gemini HTTP "+response.status+"; rules retained",
+        await evaluationHealth({configured:true,mode,model:EVALUATION_MODEL,state:"cooldown",last_error:"Gemini HTTP "+response.status+"; rules retained",
           daily_ceiling:limit,monthly_ceiling:monthly,usage:await rpc("ss_evaluation_usage"),cooldown_until:new Date(Date.now()+86400000).toISOString()});
         return;
       }
       const out = JSON.parse(await bodyText(response));
-      result = { ...parseEvaluation(out,input), usage: { input_tokens:Number(out.usageMetadata?.promptTokenCount)||0,
+      result = { ...parseEvaluation(out,input), resolved_model: typeof out.modelVersion === "string" ? out.modelVersion.slice(0,120) : null, usage: { input_tokens:Number(out.usageMetadata?.promptTokenCount)||0,
         output_tokens:Number(out.usageMetadata?.candidatesTokenCount)||0, thinking_tokens:Number(out.usageMetadata?.thoughtsTokenCount)||0 } };
     } catch {
-      await evaluationHealth({configured:true,mode,model:LITE_MODEL,state:"cooldown",last_error:"Evaluation timed out or failed validation; rules retained",
+      await evaluationHealth({configured:true,mode,model:EVALUATION_MODEL,state:"cooldown",last_error:"Evaluation timed out or failed validation; rules retained",
         daily_ceiling:limit,monthly_ceiling:monthly,usage:await rpc("ss_evaluation_usage"),cooldown_until:new Date(Date.now()+86400000).toISOString()});
       return;
     }
@@ -211,22 +211,22 @@ async function evaluateSweep(profile: any) {
         JSON.stringify(current[0].reference_meta?.public_evaluation_input)!==JSON.stringify(input)) return;
     const rules = current[0].reference_meta?.evaluation?.rules_score ?? current[0].score;
     const score = effectiveScore(rules,result,mode,!!current[0].reference_meta.alert_kind);
-    const evaluation = { ...result, rules_score:rules, applied_score:score, mode, model:LITE_MODEL,
+    const evaluation = { ...result, rules_score:rules, applied_score:score, mode, model:EVALUATION_MODEL,
       scope:input.scope, version:EVALUATOR_VERSION, cache_key:cacheKey, evaluated_at:new Date().toISOString() };
     const patch: any = {reference_meta:{...current[0].reference_meta,evaluation}};
     if (mode === "rerank" && result.confidence === "high" && result.decision !== "insufficient_evidence")
       Object.assign(patch,{score,analysis_status:"ai",summary:result.summary,reason:result.reason,evidence:result.evidence});
     await db("ss_articles?id=eq."+row.id+"&content_hash=eq."+encodeURIComponent(row.content_hash)+"&deleted_at=is.null","PATCH",patch);
     const previous = await db("ss_settings?key=eq.evaluation_health&select=value");
-    const comparison = {article_id:row.id,title:input.title,rules_score:rules,ai_score:result.score,applied_score:score,
+    const comparison = {article_id:row.id,title:input.title,model:EVALUATION_MODEL,resolved_model:result.resolved_model,rules_score:rules,ai_score:result.score,applied_score:score,
       lane:candidateLane(row),scope:input.scope,decision:result.decision,confidence:result.confidence,depth:result.depth,
       reason:result.reason,summary:result.summary,action:result.action,evidence:result.evidence,evaluated_at:evaluation.evaluated_at};
-    await evaluationHealth({configured:true,mode,model:LITE_MODEL,state:"active",last_success:evaluation.evaluated_at,last_error:null,cooldown_until:null,
+    await evaluationHealth({configured:true,mode,model:EVALUATION_MODEL,resolved_model:result.resolved_model,state:"active",last_success:evaluation.evaluated_at,last_error:null,cooldown_until:null,
       daily_ceiling:limit,monthly_ceiling:monthly,usage:await rpc("ss_evaluation_usage"),
       comparisons:[comparison,...(previous[0]?.value?.comparisons||[])].slice(0,12)});
     return; // Exactly one request per tick, with an additional global one-hour gate.
   }
-  await evaluationHealth({configured:true,mode,model:LITE_MODEL,state:"ready",daily_ceiling:limit,monthly_ceiling:monthly,usage:await rpc("ss_evaluation_usage")});
+  await evaluationHealth({configured:true,mode,model:EVALUATION_MODEL,state:"ready",daily_ceiling:limit,monthly_ceiling:monthly,usage:await rpc("ss_evaluation_usage")});
 }
 async function ingest(item: any, profile: any) {
   let url: string;

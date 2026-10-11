@@ -168,12 +168,12 @@ test("semantic sweep is cached, comparison-only, private-context safe and pauses
     const url=new URL(String(input)), body=init?.body?JSON.parse(String(init.body)):undefined;
     if(url.hostname==="generativelanguage.googleapis.com") {
       calls++;
-      assert.equal(url.pathname,"/v1beta/models/gemini-3.5-flash-lite:generateContent");
+      assert.equal(url.pathname,"/v1beta/models/gemini-flash-latest:generateContent");
       assert.equal(new Headers(init?.headers).get("x-goog-api-key"),"test-only-gemini-key");
-      assert.equal(init?.redirect,"error");assert.equal(body.generationConfig.maxOutputTokens,650);
+      assert.equal(init?.redirect,"error");assert.equal(body.generationConfig.maxOutputTokens,650);assert.equal(body.generationConfig.thinkingConfig.thinkingLevel,"LOW");
       assert(!JSON.stringify(body).includes("private.internal"));assert.equal("tools" in body,false);
       if(provider!==200) return new Response("provider details should not be exposed",{status:provider});
-      return Response.json({candidates:[{finishReason:"STOP",content:{parts:[{text:JSON.stringify({topic:"Inference",score:90,confidence:"high",depth:"advanced",decision:"useful",summary:"Cache comparison.",reason:"Applicable engineering.",action:"Review controlled latency measurements.",evidence:"configures KV cache offloading"})}]}}],usageMetadata:{promptTokenCount:500,candidatesTokenCount:100}});
+      return Response.json({modelVersion:"gemini-3.8-flash",candidates:[{finishReason:"STOP",content:{parts:[{text:JSON.stringify({topic:"Inference",score:90,confidence:"high",depth:"advanced",decision:"useful",summary:"Cache comparison.",reason:"Applicable engineering.",action:"Review controlled latency measurements.",evidence:"configures KV cache offloading"})}]}}],usageMetadata:{promptTokenCount:500,candidatesTokenCount:100}});
     }
     assert.equal(url.hostname,"database.example");
     if(url.pathname.endsWith("ss_take_budget")) return Response.json(false);
@@ -198,6 +198,8 @@ test("semantic sweep is cached, comparison-only, private-context safe and pauses
   try {
     await run();assert.equal(calls,1);assert.equal(writes[0].score,undefined);assert.equal(row.score,70);
     assert.equal(row.reference_meta.evaluation.ai_score,undefined);assert.equal(row.reference_meta.evaluation.score,90);
+    assert.equal(row.reference_meta.evaluation.model,"gemini-flash-latest");assert.equal(row.reference_meta.evaluation.resolved_model,"gemini-3.8-flash");
+    assert.equal(health.resolved_model,"gemini-3.8-flash");assert.equal(health.comparisons[0].resolved_model,"gemini-3.8-flash");
     assert.equal(health.comparisons[0].rules_score,70);assert.equal(health.comparisons[0].applied_score,70);
     await run();assert.equal(calls,1,"matching input is cached without another reservation or call");
     row.reference_meta.evaluation=undefined;mode="rerank";await run();assert.equal(row.score,84);assert.equal(row.analysis_status,"ai");

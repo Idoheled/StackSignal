@@ -2,7 +2,9 @@
 
 Gemini evaluates a small sample of public discoveries against the team's engineering mission. Tavily still finds links; Gemini does not search, browse, execute tools or validate performance claims. Normal collection continues when evaluation is paused or unavailable.
 
-The implementation pins **`gemini-3.5-flash-lite`**, a stable model with a documented free tier as checked on October 11, 2026. Actual availability and quota depend on the API project. There is no automatic fallback to a larger model and no assumption that a consumer subscription includes unlimited API calls.
+The evaluator uses **`gemini-flash-latest`**, as requested by the owner. Google moves this alias to newer Flash releases automatically, including potentially preview or experimental releases. This follows future releases without editing the model ID. Google documents free input/output for the current Gemini 3.8 Flash model as checked on October 11, 2026; the actual resolved version is recorded from each successful response and shown in Administration → Health.
+
+**Keep the Google API project on the Free tier for zero spend.** The application cannot infer billing status or pricing from an API key. A future alias change is not a promise of permanent free availability: unavailable models, exhausted quota or incompatible responses pause evaluation for 24 hours and leave discovery running. There is no paid or alternate-model fallback. Enabling paid billing on that project would remove this zero-spend protection, even with these small request caps. A consumer subscription does not establish API entitlement.
 
 ## Operating modes
 
@@ -23,7 +25,7 @@ Begin with comparison mode. Review the reasons, supporting excerpts and disagree
 | Spacing | At least one hour between attempts across all collector runs |
 | Per collector tick | At most one generation request |
 | Public source excerpt | 6,000 UTF-8 bytes, plus a title of at most 500 bytes |
-| Output | At most 650 model output tokens, minimal thinking |
+| Output | At most 650 generation tokens, low thinking |
 | Provider/validation failure | Keep rules; pause for 24 hours; no immediate retry |
 | Input reuse | Cache by public input, public team context, evaluator version and model |
 
@@ -37,6 +39,8 @@ The sweep considers up to 200 newest non-deleted discoveries from the last seven
 
 Exploration search results with a substantive excerpt (at least 120 characters) may be retained even with weak keyword overlap, after URL and noise checks. They remain below the feed threshold unless a confident semantic evaluation promotes them in Apply mode. This gives unfamiliar approaches a route into consideration without widening automatic destination-fetch permissions.
 
+The request uses `LOW` thinking: the current Flash model rejects the Lite model's `MINIMAL` setting. The 650-token generation cap includes any thinking budget consumed by the provider; incomplete output is rejected instead of retried. Alias changes can affect response compatibility or quality. Cached assessments remain historical: model upgrades do not re-evaluate the entire library.
+
 The response separates semantic relevance, engineering depth, confidence and insufficient evidence. It includes a grounded summary, why it matters, a possible next action and an exact quote from the supplied excerpt. The quote is checked locally, along with strict field types, ranges, lengths and a completed response. Structured output is not proof that the model's judgment is correct.
 
 ## Privacy and trust boundaries
@@ -49,8 +53,8 @@ The response separates semantic relevance, engineering depth, confidence and ins
 
 ## Activation
 
-1. Open [Google AI Studio API keys](https://aistudio.google.com/api-keys). Use a project marked **Free** and verify the available quota for `gemini-3.5-flash-lite` in its rate-limit view. Do not enable paid billing for zero spend.
-2. Set `GEMINI_API_KEY` in the Supabase project's **Edge Functions → Secrets**. Do not put it in a URL or frontend configuration. Existing `GEMINI_MODEL` secrets are ignored; the model is pinned in code.
+1. Open [Google AI Studio API keys](https://aistudio.google.com/api-keys). Use a project marked **Free** and verify the available quota for `gemini-flash-latest` in its rate-limit view. Do not enable paid billing for zero spend.
+2. Set `GEMINI_API_KEY` in the Supabase project's **Edge Functions → Secrets**. Do not put it in a URL or frontend configuration. Existing `GEMINI_MODEL` secrets are ignored; the Flash Latest alias is fixed in code.
 3. In Administration → Coverage choose **Compare only**, daily ceiling **4** (or lower) and monthly ceiling **100** (or lower). Either ceiling zero disables requests.
 4. Verify Health and the first real comparison. An API key cannot establish billing status by itself; confirm the project tier before activation.
 5. Assess a sample over several days before opting into Apply mode. Narrow free-tier quotas, 429 responses, invalid keys and unavailable models pause evaluation and preserve collection.
@@ -64,7 +68,7 @@ flowchart TD
   Profile["Approved public team context"] --> Sample
   Sample --> Cache["Input and version cache"]
   Cache --> Reserve["Atomic rolling, month and hour limits"]
-  Reserve --> Gemini["Flash-Lite: no tools"]
+  Reserve --> Gemini["Flash Latest: no tools"]
   Gemini --> Validate["Strict JSON and exact evidence"]
   Validate --> Compare["Admin comparisons"]
   Validate --> Mode{"Apply mode and confident?"}
@@ -75,4 +79,4 @@ flowchart TD
 
 Implementation: [evaluation helpers](../supabase/functions/_shared/evaluation.ts), [collector](../supabase/functions/collector/index.ts), [private reservations and permissions](../supabase/migrations/20261011104500_conservative_evaluation.sql). See [discovery rules](DISCOVERY.md), [architecture](ARCHITECTURE.md) and [security](SECURITY.md).
 
-Provider references: [models](https://ai.google.dev/gemini-api/docs/models/gemini-3.5-flash-lite), [pricing](https://ai.google.dev/gemini-api/docs/pricing), [rate limits](https://ai.google.dev/gemini-api/docs/rate-limits), [generation API](https://ai.google.dev/api/generate-content), [terms](https://ai.google.dev/gemini-api/terms).
+Provider references: [models](https://ai.google.dev/gemini-api/docs/models), [pricing](https://ai.google.dev/gemini-api/docs/pricing), [rate limits](https://ai.google.dev/gemini-api/docs/rate-limits), [generation API](https://ai.google.dev/api/generate-content), [terms](https://ai.google.dev/gemini-api/terms).
