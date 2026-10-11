@@ -22,7 +22,7 @@ Use shrinkable grid tracks and `min-width: 0` for flex children. Names, URLs, ta
 
 Details fill the viewport below 768 CSS pixels and use a maximum 580-pixel drawer on larger screens. The header/close control stays outside the scrolling body. Dynamic viewport height and safe-area padding account for browser chrome/cutouts. Phone inputs retain 16-pixel text to avoid iOS focus zoom. Preserve Radix focus restoration and Escape dismissal.
 
-Browser regressions cover widths 320, 360, 390, 430, 667, 768 and 1366 in Chromium, Firefox and WebKit, including landscape. Assertions cover document/card/pane containment, scrolling to final note controls, a reachable 44-pixel close target and keyboard behavior.
+Browser regressions cover widths 320, 360, 390, 430, 667, 768, 1024 and 1366 in Chromium, Firefox and WebKit, including landscape. Assertions cover document/card/pane containment, scrolling to final note controls, a reachable 44-pixel close target and keyboard behavior.
 
 Also check real iPhone/Safari and Android/Chrome: rotate with details open, focus notes with the keyboard visible, scroll to the end, enlarge browser text, close/reopen and switch themes. Check Safari/macOS and Chrome/Edge/Windows on laptops. Engine tests do not certify every physical device.
 

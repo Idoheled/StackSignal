@@ -84,4 +84,13 @@ The owner supplied scoped GitHub setup access. All 13 existing commits and 169 t
 
 The first hosted Quality run passed both type checks, all 22 existing tests, build and asset checks. Actual Chromium/Firefox/WebKit regressions passed 18 scenarios and found feed overflow at 768 px with the expanded sidebar. The follow-up gives the main flex child and tab root a shrinkable width, wraps filters/toolbars and hides the redundant privacy pill on compact tablets. A 1024 px viewport is also added, making 24 browser scenarios. Do not describe this follow-up as passing until the hosted runner confirms it.
 
-Cloudflare token-policy inspection returned 403. Its permanent CI scope cannot be verified by this temporary setup token. The owner must narrow it to Editor on the existing Worker or supply a new Worker-scoped token before permanent CI credentials are configured. The production environment has no Cloudflare deployment secret yet; automatic deployment is not fully activated.
+Cloudflare token-policy inspection returned 403. Its permanent CI scope cannot be verified by this temporary setup token. At that checkpoint the production environment had no Cloudflare deployment secret; activation awaited the owner’s credential policy decision.
+
+
+## CI credential activation — October 11
+
+The follow-up main commit `ec1135a761b9360a59feb035d1a1b6c78b347eb9` passed hosted Quality: both type checks, all 22 existing policy/collector tests, production build, public-asset inspection and all 24 responsive browser scenarios across Chromium, Firefox and WebKit. Its tablet fix was also manually published to Worker version `2539c76c-70de-4b6d-b41a-6a4eeb6aec67`; live security smoke checks and an exact live-CSS/build match passed.
+
+The owner explicitly retained Worker Admin, removed Turnstile management permissions and removed the token expiry. This overrides the earlier recommendation to narrow it to Worker Editor. Token-policy inspection is still denied; role/expiry details are owner-confirmed. The existing token was verified active and encrypted locally using GitHub's production-environment public key and libsodium sealed-box encryption. Only the ciphertext was sent to GitHub. `CLOUDFLARE_API_TOKEN` was created in the main-only production environment at 05:49:14 UTC. No credential was written to source, command arguments or logs.
+
+The failed Production job in run `38115539303` was restarted using the already-verified artifact. Attempt 2 completed successfully: Quality and Production are green, Wrangler deployed the existing Worker and the live security smoke checks passed. Production job `114401003896` provides the deployment evidence. The final documentation push will independently verify the main-push trigger. This release does not mutate Supabase accounts/data, source watches, runtime keys or the collector schedule.

@@ -10,7 +10,7 @@ This document does not imply that private reporting is enabled in repository set
 
 ## Credentials and review
 
-Keep passwords, TOTP/recovery material, API tokens, database keys, session keys and collector secrets out of source/logs. Runtime keys belong in provider secret managers. CI gets only a scoped deployment token in its production step; PR checks do not receive it.
+Keep passwords, TOTP/recovery material, API tokens, database keys, session keys and collector secrets out of source/logs. Runtime keys belong in provider secret managers. CI receives the owner-approved Cloudflare deployment token only in its production step; PR checks do not receive it.
 
 For exposure, revoke/rotate the affected credential, update its binding and inspect audit history. Removing it from the latest commit does not remove its history. Coordinate session-key/factor changes without adding an authentication backdoor.
 

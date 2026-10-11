@@ -39,7 +39,7 @@ Tests use synthetic browser API responses and PGlite for database policies. They
 
 ## Delivery
 
-Pull requests run quality checks without deployment credentials. Successful pushes to `main` deploy the verified standalone artifact to the existing Cloudflare Worker, then check anonymous denial, configured authentication and security headers. Runtime secrets stay in Cloudflare. The initial pipeline requires a scoped `CLOUDFLARE_API_TOKEN` in Actions secrets; see [deployment setup](docs/DEPLOYMENT.md).
+Pull requests run quality checks without deployment credentials. Successful pushes to `main` deploy the verified standalone artifact to the existing Cloudflare Worker, then check anonymous denial, configured authentication and security headers. Runtime secrets stay in Cloudflare. The production environment holds the encrypted `CLOUDFLARE_API_TOKEN`; see [deployment setup and the owner-approved credential policy](docs/DEPLOYMENT.md).
 
 The existing Supabase project, administrator, import and five-minute collector schedule are configured. **Do not bootstrap the administrator, reset the database or repeat the original import.** Frontend deployment does not automatically apply migrations or deploy collector changes.
 

@@ -5,7 +5,7 @@
 - Wrap long titles, tags and metadata inside cards/details.
 - Full-width phone details with dynamic viewport height, safe-area spacing, independent scrolling and a persistent 44-pixel close control.
 - Readable phone inputs, wrapping actions and keyboard focus/dismissal.
-- Three-engine responsive regressions at seven phone/tablet/laptop sizes.
+- Three-engine responsive regressions at eight phone/tablet/laptop sizes.
 - Guarded Actions deployment with pinned actions, verified artifacts and production smoke checks.
 - Architecture, development, deployment/rollback, contribution and security documentation.
 

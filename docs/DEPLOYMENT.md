@@ -11,7 +11,13 @@
 
 Never create replacement resources, bootstrap the administrator or repeat the original import. The owner-only Sites fallback retains its audience and separate runtime configuration.
 
-## One-time Actions setup
+## Current production setup
+
+GitHub Actions is enabled and `production` permits only `main`. Its encrypted `CLOUDFLARE_API_TOKEN` environment secret was configured on October 11, 2026. The owner explicitly chose Worker Admin with no expiry and confirmed that Turnstile permissions were removed. Preserve this choice; credential changes are a separate coordinated operation. Provider token-policy reads are denied, so these role/expiry details are owner-confirmed rather than independently enumerated through the API.
+
+Main requires the Quality check and reviewed PRs for ordinary contributors. Owner administrator bypass remains available for direct maintenance pushes; force pushes and branch deletion are blocked. Every eligible main push still passes the workflow's quality gate before deployment.
+
+## Setup reference
 
 1. Create a Cloudflare deployment token with **Editor scoped to the existing `stacksignal` Worker**, following the current [Workers role model](https://developers.cloudflare.com/workers/authorization/workers/). Routine updates need no account-wide Workers Admin, Turnstile, zone, database or bucket access. Older accounts may expose legacy Workers Scripts Edit; verify the supported scope before selecting it.
 2. Add `CLOUDFLARE_API_TOKEN` in [GitHub Actions secrets](https://github.com/Idoheled/StackSignal/settings/secrets/actions). A `production` environment secret with the same name can be used instead. Never put the token in a variable, issue, file or commit. Account ID/origin are fixed, non-secret targets in the workflow.
@@ -32,7 +38,7 @@ flowchart TD
   Checks --> Build["Standalone build and asset checks"]
   Build --> Browsers["Three-engine responsive regressions"]
   Browsers --> Artifact["Verified artifact with short retention"]
-  Artifact --> Deploy["Scoped production deployment"]
+  Artifact --> Deploy["Existing Worker deployment"]
   Deploy --> Smoke["Live security smoke checks"]
 ```
 
