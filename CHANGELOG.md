@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Branded repository landing page, role-based onboarding, product guide, documentation hub and design decision records; expanded architecture and trust-boundary diagrams.
 - Wrap long titles, tags and metadata inside cards/details.
 - Full-width phone details with dynamic viewport height, safe-area spacing, independent scrolling and a persistent 44-pixel close control.
 - Readable phone inputs, wrapping actions and keyboard focus/dismissal.
