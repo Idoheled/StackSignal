@@ -22,6 +22,8 @@ All 166 bookmarks, 29 folders and 14 feedback rows remain. Existing rejected ref
 
 Before frontend publication, both TypeScript checks, all 37 updated automated tests, standalone build and client-boundary inspection passed. Hosted browser/deployment checks must be verified for the final commit. Do not claim hosted publication from this preparation checkpoint alone.
 
+The owner-private Sites fallback was published at 18:21 UTC from feature commit `b41c070b92c60530b7eed15c0abf414e1d57388c` (deployment `appgdep_6acbd393c9a881919942f0d53a3aeb6a`). Post-deployment checks confirmed all 717 assistant decisions and their checksum were unchanged, alongside the 166 bookmarks, 29 folders and 14 feedback rows. Live team-site security checks also passed. GitHub's integration still rejected source writes at this checkpoint; the owner subsequently supplied repository access and authorized committing/pushing these changes. Publish with a normal fast-forward push, then confirm the matching main workflow's Quality and Production jobs before recording the team frontend as deployed. Do not repeat the migrations, collector deployment, imports or bulk evaluation during this publication step.
+
 ## Historical discovery checkpoint — October 11, 16:08 UTC
 
 Collector **version 17 is ACTIVE**. The `repository_health_release_probes` and `discovery_probe_identity` migrations are applied. GitHub suggested links now require fresh repository health as well as useful AI review. Defaults: 100 stars, five actual watchers, two published releases in the past year, a push within 90 days and a release within 180 days. Public/non-fork/active/licensed checks are mandatory. Administrators can edit thresholds and pause Trending in Coverage; existing saved references remain accessible.
