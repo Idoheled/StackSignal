@@ -1,7 +1,9 @@
 # Changelog
 
-## Unreleased
+## 2026-10-11
 
+- Activated genuine Tavily searches using server-side function secrets; verified the first full 20-query sweep and persisted results.
+- Documented discovery engines, saved-query selection, exact scoring arithmetic, personal/team feedback and known quality limits; updated Mermaid architecture and production checkpoints.
 - Focused Tavily web discovery with rotating recent/exploration queries, bounded basic-search usage, canonical deduplication, noise filtering, truthful snippet/date provenance and administrator health status.
 - Branded repository landing page, role-based onboarding, product guide, documentation hub and design decision records; expanded architecture and trust-boundary diagrams.
 - Wrap long titles, tags and metadata inside cards/details.
@@ -10,8 +12,6 @@
 - Three-engine responsive regressions at eight phone/tablet/laptop sizes.
 - Guarded Actions deployment with pinned actions, verified artifacts and production smoke checks.
 - Architecture, development, deployment/rollback, contribution and security documentation.
-
-## 2026-10-11
 
 - Team website deployed on the existing Cloudflare account, preserving username/password/MFA, library and five-minute collection.
 - Bounded GitHub pagination and oversized-response recovery.

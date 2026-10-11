@@ -66,7 +66,7 @@ The administrator is the protected owner. Invitations create maintainers or read
 5. Inspect results and health after the queue runs. A manual scan makes work due; it does not bypass quotas or fetch synchronously.
 6. Pause or remove stale watches with confirmation. Removing a watch preserves existing articles, saved links and notes.
 
-Gemini analysis remains disabled. [Web discovery](WEB_DISCOVERY.md) requires the collector's Tavily key and an explicit monthly ceiling; Health reports whether the key is configured and real searches are succeeding. A new independent installation defaults provider budgets to zero. See [coverage](COVERAGE.md) and [design decisions](DESIGN.md).
+Tavily web search is active in the existing deployment; Gemini analysis remains disabled. Review the 20 web queries, interests, topic priorities and minimum score in Coverage; inspect real search success/error in Health. [Discovery and scoring](DISCOVERY.md) explains how these settings affect results. A new independent installation defaults provider budgets to zero and requires the [web-search activation procedure](WEB_DISCOVERY.md). See [coverage](COVERAGE.md) and [design decisions](DESIGN.md).
 
 ## Developers
 

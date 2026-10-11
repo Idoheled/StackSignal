@@ -34,7 +34,7 @@ An AI infrastructure team works across hardware, lossless networking, Kubernetes
 >
 > Watch the known dependencies. Explore beyond them. Keep the original evidence close.
 
-Discovery combines explicit source watches with public feeds and repository searches. The shared library captures what people learn. Human judgment connects the two: a useful link becomes a saved reference, a discussion, or feedback that informs future ranking.
+Discovery combines explicit source watches with public feeds, repository searches and genuine Tavily web search. The shared library captures what people learn. Human judgment connects the two: a useful link becomes a saved reference, a discussion, or feedback that informs future ranking.
 
 ## A daily workflow
 
@@ -71,6 +71,7 @@ flowchart TD
   Web --> Data["PostgreSQL · knowledge and permissions"]
   Schedule["Supabase Cron · five-minute tick"] --> Collector["Edge Function · bounded collection"]
   Public["Public feeds, documentation and GitHub"] --> Collector
+  Collector --> Search["Tavily Search API · public technical queries"]
   Collector --> Data
   Admin["Administrator · watches and profile"] --> Web
 ```
@@ -84,6 +85,7 @@ The website and collector run independently. Collection continues while the team
 | **Supabase Auth** | Password verification and TOTP factors; the product login uses usernames |
 | **Supabase PostgreSQL** | Data, database authorization, audited mutations, queue leases and usage counters |
 | **Supabase Edge Function + Cron** | Scheduled fetching, extraction, normalization, relevance and retry/deferral |
+| **Tavily Search API** | Public internet discovery from saved technical queries; excerpts retain search provenance |
 | **GitHub Actions** | Types, policy tests, browser checks, verified build deployment and live smoke checks |
 
 Read the [architecture](docs/ARCHITECTURE.md) for request paths, data relationships and trust boundaries, and the [design decisions](docs/DESIGN.md) for the reasoning behind them.
@@ -96,9 +98,9 @@ StackSignal has several complementary discovery lanes:
 - **Publications:** consume feeds and approved documentation pages; preserve publisher metadata and detect meaningful page changes.
 - **New projects:** run administrator-editable public repository queries, alternating popularity and recency to widen the radar.
 - **Team submissions:** preserve a missed link, queue supported metadata extraction, save it and optionally record helpful feedback.
-- **Web search:** Tavily runs focused internet queries when its collector key and budget are configured, mixing recent-week coverage with broader exploration. See [activation and limits](docs/WEB_DISCOVERY.md). Gemini analysis remains a separate optional integration.
+- **Web search:** Tavily is active in the deployed workspace with 20 editable queries: 15 recent-week searches and five rotating exploration searches per daily sweep. It uses basic searches, capped at 24 requests daily and 800 monthly. Separate installations start disabled. See [activation and limits](docs/WEB_DISCOVERY.md). Gemini analysis remains disabled.
 
-Ranking uses concrete technical terms, topic priorities, administrator interests, release signals and bounded feedback. Cards explain the match; scores express **relevance**, not truth or production readiness. There is no mandatory LLM in the default collection path.
+Ranking uses concrete technical terms, topic priorities, administrator interests, release signals and bounded feedback. Cards explain the match; scores express **relevance**, not truth or production readiness. There is no mandatory LLM in the default collection path. Read [how discovery and scoring work](docs/DISCOVERY.md) for the exact rules, a worked example, personalization and known limits.
 
 The five-minute collector tick handles due queued work. Individual watches have their own intervals, and source outages or provider quotas can delay results. Alerts appear **inside StackSignal**; they are polling-based, not email/push notifications. See [how the feed works](docs/PRODUCT.md#the-five-feed-views).
 

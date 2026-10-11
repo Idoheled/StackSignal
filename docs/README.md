@@ -25,6 +25,7 @@ Start with the purpose and your role, then follow the system into the source. Th
 | [Design](DESIGN.md) | Why these boundaries? What constraints should future changes preserve? |
 | [Development](DEVELOPMENT.md) | Which commands, component conventions and responsive checks should I use? |
 | [Coverage](COVERAGE.md) | Which technical areas seed the system, how is relevance computed, and what metadata is unresolved? |
+| [Discovery and scoring](DISCOVERY.md) | Which engines find material? What chooses queries? How is the exact score calculated and personalized? |
 | [Web discovery](WEB_DISCOVERY.md) | How do genuine internet searches, activation, query rotation, noise filtering, provenance and free usage limits work? |
 | [Deployment](DEPLOYMENT.md) | What does CI deploy, what remains separate, and how do I roll back? |
 | [Operations](OPERATIONS.md) | What was configured and verified at each historical checkpoint? |

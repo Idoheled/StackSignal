@@ -23,9 +23,11 @@ Core serving releases are scheduled every 2 hours; most operators every 4 hours;
 2. The administrator’s technical interests add local boosts; these private interest strings are not sent to an LLM.
 3. Helpful/not-relevant feedback adjusts personal topic ranking within a bounded range. This does not train an external model or allow a submitted page to change system instructions.
 4. Optional Gemini analysis uses only public text, a fixed taxonomy and validated structured output. It must include supporting source text. Source material is treated as untrusted data.
-5. AI and broad web-search calls both start at **zero**. Feeds, GitHub and documentation monitoring work without them. Explicit quotas and provider configuration are required to enable either.
+5. A separate installation starts AI and web-search budgets at **zero**. The existing deployment now has active Tavily search with 20 queries and an 800-request monthly ceiling; Gemini remains disabled. Feeds, GitHub and documentation monitoring work independently.
 
 A relevance score expresses fit, not correctness, compatibility or benchmark quality. Read the original conditions and version constraints before applying a recommendation.
+
+See [Discovery and scoring](DISCOVERY.md) for engines, query selection, exact score arithmetic, the distinction between card score and personal ordering, feedback behavior and known gaps. The initial 57-watch import is historical; the current verified registry has 61 active watches after adding publication feeds.
 
 ## Link review
 
@@ -40,4 +42,4 @@ No raw chats, personal remarks, colleague names or internal deployment details a
 
 ## Repeatable import
 
-After applying both database migrations and creating the administrator, `node scripts/import-team-library.mjs` imports the batch in one transaction. An identical retry returns the recorded result and preserves renamed/moved folders and later curation. The importer reuses URLs, records folder identities, and refuses a changed payload under an already-used batch key. Regenerate the reviewed SQL with `node scripts/import-team-library.mjs --sql` if preparing a new batch.
+For a separate installation, after applying the required database migrations and creating the administrator, `node scripts/import-team-library.mjs` imports the batch in one transaction. An identical retry returns the recorded result and preserves renamed/moved folders and later curation. The importer reuses URLs, records folder identities, and refuses a changed payload under an already-used batch key. Regenerate the reviewed SQL with `node scripts/import-team-library.mjs --sql` if preparing a new batch. The existing deployment has already imported this batch; discovery changes belong in the live administrator profile.

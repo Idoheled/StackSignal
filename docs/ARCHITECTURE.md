@@ -12,6 +12,7 @@ flowchart TD
   Edge --> DB["PostgreSQL: permissions and library"]
   Cron["Five-minute Supabase Cron"] --> Collector["Bounded collector"]
   Collector --> Publishers["Approved public publishers"]
+  Collector --> Tavily["Tavily Search API: public queries"]
   Collector --> DB
 ```
 
@@ -74,7 +75,7 @@ flowchart TD
   Deferred --> Queue
 ```
 
-Sources include release APIs, feeds, approved documentation and daily public repository queries. Fair leases prevent duplicate claims. Quota deferral does not consume a failure attempt. GitHub pagination is bounded; oversized pages use smaller batches. An ETag is committed only after required pages succeed.
+Sources include release APIs, feeds, approved documentation, daily public repository queries and Tavily web search. Fair leases prevent duplicate claims. Quota deferral does not consume a failure attempt. GitHub pagination is bounded; oversized pages use smaller batches. An ETag is committed only after required pages succeed.
 
 Publication, discovery and detected-change times have distinct meanings. Weekly views do not invent publisher dates. Stable releases are the default; each watch can include prereleases. Personal ranking and bounded aggregate technical-tag feedback improve relevance without uploading raw chats or private notes.
 
@@ -93,12 +94,42 @@ Each authorized tick enqueues due watches, performs bounded daily maintenance/di
 
 Public repository discovery runs bounded queries over recently active, non-archived/non-fork public projects. Alternating popularity/recency broadens results, but does not guarantee repository quality or exhaustive coverage. Tavily web discovery uses bounded focused searches, rotating recent/exploration windows, canonical deduplication and source/snippet provenance. Provider calls require credentials and explicit budgets. Gemini analysis is separate and remains disabled. See [web discovery](WEB_DISCOVERY.md).
 
+### Active web-search architecture
+
+Tavily search is active in the deployed workspace. The API key exists only in Supabase function secrets. The website never calls Tavily directly and visitor activity does not consume search credits. The database profile holds 20 public technical queries; a daily scheduling gate creates recent/exploration jobs, while five-minute ticks process the durable queue.
+
+```mermaid
+flowchart TD
+  Admin["Admin edits Coverage"] --> Profile["Database: queries and budgets"]
+  Cron["Five-minute Cron tick"] --> Collector["Collector and daily scheduling"]
+  Profile --> Collector
+  Collector --> Quota["Atomic day and month reservations"]
+  Quota --> Tavily["Tavily basic search"]
+  Tavily --> Filter["Validate, filter and deduplicate"]
+  Filter --> Rank["Technical rules and feedback"]
+  Rank --> Records["References and search provenance"]
+  Filter --> Health["Success, filtering or error status"]
+  Health --> Access["Authorized administrator health view"]
+```
+
+| Boundary or decision | Current behavior |
+| --- | --- |
+| Provider request | Saved public query, fixed basic-search options, at most eight results; no private notes/chats or model-generated answer |
+| Freshness versus exploration | With 20 queries, 15 target the recent week and five have no date window; each query rotates into exploration once per four UTC days |
+| Cost | Hard cap of 24 requests per UTC day and the administrator's ceiling of at most 800 per UTC month; failed attempts retain reservations |
+| Search-only reference | Validate public URL/text and local fit; preserve provider/query/window/date provenance without claiming a page fetch |
+| Approved-host enrichment | Queue bounded direct metadata extraction; arbitrary discovered domains do not expand the fetch allowlist |
+| Pause/reconfigure | A zero monthly budget stops web calls; removed queries are skipped when existing jobs are processed |
+| Search health | Separate `web_discovery_health` setting; the Worker reads it with privileged access only after the database authorizes the administrator action |
+
+The frontend pipeline does not install collector secrets or deploy the function. Collector version 7 and the live profile were configured separately; no new schema migration was required. Original accounts, notes, bookmarks, watch definitions and scheduling were preserved. See [Discovery and scoring](DISCOVERY.md) for exact classification and personal ordering rules, and [OPERATIONS.md](OPERATIONS.md#tavily-web-search-activation--october-11) for the activation evidence.
+
 ### Relevance has two stages
 
 1. **At ingestion:** technical-term weights, administrator priorities/interests, release floors, content signals and bounded aggregate tag feedback produce the stored score/reason/evidence.
 2. **At retrieval:** personal helpful/hidden feedback contributes a bounded topic/tag adjustment to ordering. The weekly threshold is applied to the stored base score, not an unlimited personalized override.
 
-Reasons and excerpts explain fit. Original documents remain the authority for claims and conditions. Detailed baseline rules live in [domain.ts](../lib/domain.ts) and [relevance.ts](../supabase/functions/_shared/relevance.ts); personal retrieval rules live in the [database migrations](../supabase/migrations/).
+Reasons and excerpts explain fit. Original documents remain the authority for claims and conditions. The card's stored score is distinct from the personalized sorting score; neither is a probability. Detailed baseline rules live in [domain.ts](../lib/domain.ts) and [relevance.ts](../supabase/functions/_shared/relevance.ts); personal retrieval rules live in the [database migrations](../supabase/migrations/). [Discovery and scoring](DISCOVERY.md#4-exact-stored-score-rules) traces the arithmetic and a worked example.
 
 ## Domain and ownership
 

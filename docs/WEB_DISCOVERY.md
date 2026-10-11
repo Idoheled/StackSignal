@@ -1,10 +1,14 @@
 # Web discovery
 
-[Documentation hub](README.md) · [Product guide](PRODUCT.md) · [Coverage](COVERAGE.md)
+[Documentation hub](README.md) · [Discovery and scoring](DISCOVERY.md) · [Architecture](ARCHITECTURE.md) · [Coverage](COVERAGE.md)
 
 Tavily adds genuine internet search alongside the existing feeds, documentation watches and GitHub release/project APIs. Search uses only administrator-authored public technical queries. Private notes, chats, usernames and internal deployment identifiers are not used to generate provider requests.
 
-## Activation
+## Deployed status
+
+Tavily was activated on October 11, 2026. The key is installed in Supabase production function secrets; it is not committed or sent to the browser. Collector version 7 completed all 20 queries in its first daily sweep and stored 86 references. Health reported active with no search error at the verification checkpoint. The monthly ceiling is 800 and the hard daily ceiling is 24. Gemini remains disabled. See [operations history](OPERATIONS.md#tavily-web-search-activation--october-11) for the dated evidence; Health is the live status source.
+
+## Activation for a separate installation
 
 1. Create a Tavily free account at https://app.tavily.com and a dedicated API key. Keep paid plans/pay-as-you-go disabled. Never commit or paste the key into issues.
 2. Install `TAVILY_API_KEY` in the existing Supabase collector's function secrets. This is a collector secret; it does not belong in the browser, Cloudflare website or GitHub deployment workflow.
