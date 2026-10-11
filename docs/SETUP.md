@@ -4,7 +4,9 @@ The existing private website, Supabase Free project (`plbjscbpvfozqvexmqhk`, Fra
 
 The assistant can apply the prepared migrations, deploy the collector and inspect the database through that connection. Provider sign-in, terms acceptance and account ownership steps must be completed in the provider’s secure interface. No password or API key needs to be pasted into chat.
 
-The steps below are for a new independent deployment. They are not outstanding setup tasks for the existing site.
+The team website is now https://stacksignal.stacksignal-idoheled.workers.dev on the owner's existing Cloudflare account. It uses the same Supabase accounts, library, username/password login and MFA. The original Sites website remains owner-only. The owner should confirm login on the team URL before creating team invitations there.
+
+The steps below are for a new independent deployment. They are not outstanding setup tasks for either existing site.
 
 ## 1. Get the source and tools
 
