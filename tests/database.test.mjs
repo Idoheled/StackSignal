@@ -161,7 +161,7 @@ test("PostgreSQL access, isolation, invitation and concurrency invariants", asyn
       )
     ).rows[0].id;
     const review={topic:"Platforms",score:90,confidence:"high",depth:"advanced",decision:"useful",evidence:"Reviewed public engineering excerpt",evaluated_at:new Date().toISOString()};
-    await db.query("update ss_articles set reference_meta=$2::jsonb where id=$1",[article,JSON.stringify({evaluation:review})]);
+    await db.query("update ss_articles set reference_meta=$2::jsonb where id=$1",[article,JSON.stringify({review_commit:crypto.randomUUID(),evaluation:review})]);
     await as(writer);
     await action("save", { article_id: article, folder_id: child });
     const lib = await action("library", { folder: parent, q: "GPU" });
@@ -343,7 +343,7 @@ test("PostgreSQL access, isolation, invitation and concurrency invariants", asyn
     await action("profile_save",{repo_min_stars:500});assert.equal((await action("feed",{mode:"archive",q:"GitHub candidate"})).total,0,"new admin thresholds apply immediately without another model call");
     await action("profile_save",{repo_min_stars:100});
     await db.exec("reset role");
-    await db.query("update ss_articles set reference_meta=reference_meta||$2::jsonb where id=$1",[gh,JSON.stringify({evaluation:null,repo_health:{...repoHealth,watchers:1}})]);
+    await db.query("update ss_articles set reference_meta=reference_meta||$2::jsonb where id=$1",[gh,JSON.stringify({review_commit:crypto.randomUUID(),evaluation:null,repo_health:{...repoHealth,watchers:1}})]);
     assert(!(await db.query("select ss_evaluation_candidates() x")).rows[0].x.some(r=>r.id===gh));
     assert.equal((await db.query("select ss_reserve_evaluation_batch($1,16,496) x",[JSON.stringify([{id:gh,content_hash:"e".repeat(64),cache_key:"d".repeat(64)}])])).rows[0].x.request_id,undefined,"weak repositories cannot spend AI quota through a forged reservation");
     await db.query("delete from ss_articles where id=$1",[gh]);
@@ -367,7 +367,7 @@ test("PostgreSQL access, isolation, invitation and concurrency invariants", asyn
     await fails(() => db.query("select * from ss_private.evaluation_attempts"),"permission denied");
     await db.exec("reset role");
     await db.query("update ss_articles set reference_meta=reference_meta||$2::jsonb where id=$1",[article,JSON.stringify({public_evaluation_input:{text:"Public excerpt"}})]);
-    await db.query("update ss_articles set content_hash=$2,reference_meta=reference_meta||'{\"evaluation\":null}'::jsonb where id=$1",[article,"a".repeat(64)]);
+    await db.query("update ss_articles set content_hash=$2,reference_meta=reference_meta||'{\"evaluation\":null,\"review_commit\":\"explicit-test-reset\"}'::jsonb where id=$1",[article,"a".repeat(64)]);
     const batchIds=[article];
     for(let i=1;i<5;i++) batchIds.push((await db.query("insert into ss_articles(url,title,content_hash,reference_meta) values($1,'Pending public link',$2,$3::jsonb) returning id",["https://kubernetes.io/test-batch-"+i,"a".repeat(64),JSON.stringify({public_evaluation_input:{text:"Public engineering excerpt"}})])).rows[0].id);
     const items=k=>batchIds.map(id=>({id,cache_key:k.repeat(64),content_hash:"a".repeat(64)}));
@@ -400,14 +400,14 @@ test("PostgreSQL access, isolation, invitation and concurrency invariants", asyn
     await fails(()=>db.query("select ss_reserve_evaluation_batch('[]',16,496)"),"permission denied");
     await fails(()=>db.query("select * from ss_private.evaluation_requests"),"permission denied");
     await db.exec("reset role");
-    await db.query("update ss_articles set reference_meta=reference_meta||$2::jsonb where id=$1",[article,JSON.stringify({evaluation:{...review,decision:"insufficient_evidence",confidence:"low",depth:"unknown",evidence:""}})]);
+    await db.query("update ss_articles set reference_meta=reference_meta||$2::jsonb where id=$1",[article,JSON.stringify({review_commit:"explicit-uncertainty-review",evaluation:{...review,decision:"insufficient_evidence",confidence:"low",depth:"unknown",evidence:""}})]);
     await as(owner);assert.equal((await action("feed",{mode:"archive"})).total,0,"uncertain assessments stay withheld");
     await db.exec("reset role");
-    await db.query("update ss_articles set reference_meta=reference_meta||$2::jsonb where id=$1",[article,JSON.stringify({evaluation:review})]);
+    await db.query("update ss_articles set reference_meta=reference_meta||$2::jsonb where id=$1",[article,JSON.stringify({review_commit:crypto.randomUUID(),evaluation:review})]);
     await as(owner);
     await fails(() => action("source_delete",{id:watch}),"Confirmation");
     await db.exec("reset role");
-    await db.query("update ss_articles set reference_meta=$2::jsonb,published_at=now(),score=88 where id=$1", [article,JSON.stringify({alert_kind:"release",source_id:watch,origin:"source_watch",evaluation:review})]);
+    await db.query("update ss_articles set reference_meta=$2::jsonb,published_at=now(),score=88 where id=$1", [article,JSON.stringify({review_commit:crypto.randomUUID(),alert_kind:"release",source_id:watch,origin:"source_watch",evaluation:review})]);
     await db.query("delete from ss_feedback where article_id=$1",[article]);
     await as(owner);
     assert.equal((await action("feed",{mode:"releases"})).total,1);
@@ -429,7 +429,7 @@ test("PostgreSQL access, isolation, invitation and concurrency invariants", asyn
     await action("source_delete",{id:watch,confirmed:true});
     assert.equal((await action("feed",{mode:"releases"})).total,1,"removing a watch preserves its links");
     await db.exec("reset role");
-    await db.query("update ss_articles set reference_meta=$2::jsonb,published_at=null where id=$1",[article,JSON.stringify({origin:"discovery",evaluation:review})]);
+    await db.query("update ss_articles set reference_meta=$2::jsonb,published_at=null where id=$1",[article,JSON.stringify({review_commit:crypto.randomUUID(),origin:"discovery",evaluation:review})]);
     await as(owner);
     assert.equal((await action("feed",{mode:"radar"})).total,1);
     assert.equal((await action("feed",{mode:"week"})).total,0,"discovery never invents a publication date");
@@ -448,6 +448,35 @@ test("PostgreSQL access, isolation, invitation and concurrency invariants", asyn
     await as(reader);
     await fails(()=>db.query("select ss_feedback_weights()"));
     await fails(()=>db.query("select ss_queue_item('article','{}')"));
+
+    await db.exec("reset role");
+    const frozen = (await db.query("insert into ss_articles(url,title,summary,content_hash,reference_meta) values('https://kubernetes.io/frozen-review','Original title','Original summary',$1,$2) returning id",["9".repeat(64),JSON.stringify({public_evaluation_input:{title:"Original title",text:"Reviewed public engineering excerpt with actionable GPU topology placement.",scope:"publisher_excerpt"}})])).rows[0].id;
+    await db.query("insert into ss_private.review_cohort(url) values('https://kubernetes.io/frozen-review')");
+    await db.query("insert into ss_private.review_cohort(url) values('https://github.com/vLLM-project/vLLM/releases/tag/TagCase')");
+    assert.equal((await db.query("select ss_private.gemini_new_link('https://github.com/VLLM-project/VLLM/releases/tag/TagCase') x")).rows[0].x,false,"GitHub repository casing does not bypass the frozen cohort");
+    assert.equal((await db.query("select ss_private.gemini_new_link('https://github.com/vllm-project/vllm/releases/tag/tagcase') x")).rows[0].x,true,"distinct case-sensitive release tags remain new links");
+    assert(!(await db.query("select ss_evaluation_candidates() x")).rows[0].x.some(r=>r.id===frozen),"frozen cohort never enters Gemini candidates");
+    assert.equal((await db.query("select ss_reserve_evaluation_batch($1,16,496) x",[JSON.stringify([{id:frozen,content_hash:"9".repeat(64),cache_key:"9".repeat(64)}])])).rows[0].x.request_id,undefined,"forged reservation cannot evaluate an old link");
+    const assistantItem={id:frozen,input:{title:"Original title",text:"Reviewed public engineering excerpt with actionable GPU topology placement.",scope:"publisher_excerpt"},assessment:{topic:"Platforms",score:90,confidence:"high",depth:"advanced",decision:"useful",summary:"Actionable placement guidance.",reason:"Explains GPU topology placement.",action:"Compare topology constraints.",evidence:"actionable GPU topology placement"}};
+    await as(reader);await fails(()=>db.query("select ss_apply_assistant_reviews($1)",[JSON.stringify([assistantItem])]),"permission denied");
+    await db.exec("reset role");
+    await fails(()=>db.query("select ss_apply_assistant_reviews($1)",[JSON.stringify([{...assistantItem,assessment:{...assistantItem.assessment,evidence:"invented quote"}}])]),"Evidence");
+    await fails(()=>db.query("select ss_apply_assistant_reviews($1)",[JSON.stringify([{...assistantItem,input:{...assistantItem.input,scope:null}}])]),"Evidence");
+    await fails(()=>db.query("select ss_apply_assistant_reviews($1)",[JSON.stringify([{...assistantItem,assessment:{...assistantItem.assessment,score:90.5}}])]),"Invalid assessment");
+    await db.query("select ss_apply_assistant_reviews($1)",[JSON.stringify([assistantItem])]);
+    const originalReview=(await db.query("select reference_meta->'evaluation' x from ss_articles where id=$1",[frozen])).rows[0].x;
+    await db.query("insert into ss_feedback(user_id,article_id,read) values($1,$2,true)",[owner,frozen]);
+    await db.query("update ss_articles set title='Changed title',summary='Changed source',content_hash=$2,reference_meta=reference_meta||$3 where id=$1",[frozen,"8".repeat(64),JSON.stringify({evaluation:null,public_evaluation_input:{title:"Changed title",text:"New text"}})]);
+    const retained=(await db.query("select reference_meta from ss_articles where id=$1",[frozen])).rows[0].reference_meta;
+    assert.deepEqual(retained.evaluation,originalReview,"collection never clears an existing review");
+    assert(retained.review_content_changed_at);assert.equal(retained.review_snapshot.title,"Original title");
+    assert.equal((await db.query("select count(*)::int n from ss_private.article_reviews where article_id=$1",[frozen])).rows[0].n,1,"refresh does not duplicate review history");
+    await as(owner);const reviewedFeed=await action("feed",{mode:"archive"});const frozenCard=reviewedFeed.items.find(x=>x.id===frozen);
+    assert.equal(frozenCard.title,"Original title");assert.equal(frozenCard.read,true);assert.equal(frozenCard.reference_meta.evaluation.evaluator,"assistant");assert.equal(frozenCard.score,90);
+    const searched=await action("feed",{mode:"archive",q:"Original title"});assert(searched.items.some(a=>a.id===frozen),"search uses the retained reviewed title");
+    await db.exec("reset role");await db.query("update ss_articles set discovered_at=now()-interval '100 days' where id=$1",[frozen]);await db.query("select ss_maintenance()");
+    assert.equal((await db.query("select count(*)::int n from ss_articles where id=$1",[frozen])).rows[0].n,1,"maintenance retains reviewed links beyond 90 days");
+    await as(reader);await fails(()=>db.query("select * from ss_private.article_reviews"),"permission denied");
 
     console.log(
       "Verified: RLS, MFA gate, read-only restrictions, private notes, recursive title search, cycle prevention, trash/restore, confirmation, single-use invites, immediate revocation, bounded quotas, job leases.",

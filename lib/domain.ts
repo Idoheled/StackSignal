@@ -47,7 +47,9 @@ export type Article = {
     search_query?: string;
     search_window?: string;
     source_tier?: string;
-    evaluation?: { scope: string; confidence: string; depth: string; action?: string; score?: number; decision?: string; evaluated_at?: string };
+    review_content_changed_at?: string;
+    assistant_reviewed_at?: string;
+    evaluation?: { scope: string; confidence: string; depth: string; action?: string; score?: number; decision?: string; evaluated_at?: string; evaluator?: string; evidence?: string };
   };
   liked?: boolean;
   hidden?: boolean;
@@ -86,6 +88,8 @@ export type Source = {
   interval_minutes: number;
   last_success_at: string | null;
   last_error: string | null;
+  last_error_kind?: "deferred" | "error" | null;
+  retry_at?: string | null;
   next_check_at?: string;
   include_prereleases?: boolean;
   priority?: "core" | "normal" | "explore";

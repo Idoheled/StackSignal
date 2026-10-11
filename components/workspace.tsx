@@ -95,6 +95,7 @@ import {
   basicRelevance,
 } from "@/lib/domain";
 import { linkReviewLabel, canonicalLink } from "@/lib/links";
+import { sourceState, reviewLabel } from "@/lib/review-state";
 import { api, act, dateLabel } from "@/lib/client";
 import { Access, SecurityGate } from "./access";
 import AdminPanel from "./admin-panel";
@@ -1169,11 +1170,7 @@ function Hub({
                               onClick={(event) => openArticle(a, event.currentTarget)}
                             >
                               <Sparkles size={13} />
-                              {a.reference_meta?.evaluation ? "AI reviewed" : a.analysis_status === "reference"
-                                ? "Team reference"
-                                : a.analysis_status === "ai"
-                                  ? "AI assisted match"
-                                  : "Topic match"}
+                              {reviewLabel(a)}
                               <span>{a.reference_meta?.evaluation?.score ?? a.score}</span>
                             </button>
                             <div className="article-actions">
@@ -1343,13 +1340,13 @@ function Hub({
                 </div>
                 <div>
                   <strong>
-                    {sources.filter((s) => s.last_success_at).length}
+                    {sources.filter((s) => sourceState(s) === "Healthy").length}
                   </strong>
-                  <span>successfully checked</span>
+                  <span>healthy sources</span>
                 </div>
                 <div>
-                  <strong>{sources.filter((s) => s.last_error).length}</strong>
-                  <span>need attention</span>
+                  <strong>{sources.filter((s) => sourceState(s) === "Attention").length}</strong>
+                  <span>need attention · {sources.filter((s) => sourceState(s) === "Deferred").length} deferred · {sources.filter((s) => sourceState(s) === "Delayed").length} delayed</span>
                 </div>
                 <div>
                   <strong>{preview ? "—" : dateLabel(stats.last_scan)}</strong>
@@ -1378,13 +1375,7 @@ function Hub({
                       <span
                         className={"state-pill " + (s.last_error ? "warn" : "")}
                       >
-                        {!s.active
-                          ? "Paused"
-                          : s.last_error
-                            ? "Attention"
-                            : s.last_success_at
-                              ? Date.now()-Date.parse(s.last_success_at) > Math.max(3600000,s.interval_minutes*120000) ? "Delayed" : "Healthy"
-                              : "Awaiting scan"}
+                        {sourceState(s)}
                       </span>
                     </div>
                     <p>
@@ -1407,6 +1398,7 @@ function Hub({
                     {s.last_error && (
                       <p className="source-error">{s.last_error}</p>
                     )}
+                    {s.retry_at && <p className="subtle">Retry window: {new Date(s.retry_at).toLocaleString()}</p>}
                   </div>
                 ))}
               </div>
@@ -1570,9 +1562,11 @@ function Hub({
                 <p>{picked.reason}</p>
                 {picked.evidence && <blockquote>{picked.evidence}</blockquote>}
                 {picked.reference_meta?.evaluation && <p className="subtle">{picked.reference_meta.evaluation.scope.replaceAll("_", " ")} · {picked.reference_meta.evaluation.confidence} confidence · {picked.reference_meta.evaluation.depth}{picked.reference_meta.evaluation.action && <> · Consider: {picked.reference_meta.evaluation.action}</>}</p>}
+                {picked.reference_meta?.evaluation && <p className="subtle">{reviewLabel(picked)} · {dateLabel(picked.reference_meta.evaluation.evaluated_at || null)}</p>}
+                {picked.reference_meta?.review_content_changed_at && <p className="subtle">The source changed after evaluation. This card shows the retained reviewed snapshot. Open the original to inspect the current version.</p>}
                 <small>
-                  {picked.analysis_status === "ai"
-                    ? "AI assisted assessment of a public excerpt · verify against the original"
+                  {picked.reference_meta?.evaluation
+                    ? "Assessment of public evidence · verify implementation details against the original"
                     : "Transparent topic matching · not a quality guarantee"}
                 </small>
               </div>

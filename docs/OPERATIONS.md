@@ -10,7 +10,19 @@
 - Existing owner `administrator` is active, has changed the temporary password, and completed a fresh TOTP enrollment at 10:44–10:45 UTC on October 10. The obsolete temporary administrator credential file was removed. Do not bootstrap/reset this account.
 - The original import contains 136 links, 136 bookmarks, 29 folders and 57 watches. It is immutable and already applied. Collection has since expanded the article count. Do not re-run the import with a changed batch payload.
 
-## Current discovery checkpoint — October 11, 16:08 UTC
+## Current review handoff — October 11, 18:06 UTC
+
+Collector **version 18 is ACTIVE**. The `durable_review_handoff`, `assistant_review_display_score` and `review_import_validation` migrations are applied. The frozen collection includes 717 existing URLs, including 28 URLs already queued when the review began. All 717 assistant decisions are stored: **336 approved, 272 not selected, 109 insufficient evidence, zero awaiting assistant review**. No old collection job, website redeployment or metadata refresh may reset these decisions. Reviewer, review date, evidence and reviewed-content snapshots are durable in PostgreSQL; immutable private history and 90-day retention exclusions back them. Do not rerun historical imports or the bulk review. Use the service-only coverage RPC for current counts.
+
+Apply (`rerank`) is restored for **new URLs only**. Both candidate selection and atomic reservation exclude the frozen cohort. Provider limits remain 16 requests per rolling 24 hours/Pacific day and 496 per UTC month, with five-minute spacing and five links per request. The existing 16 requests were preserved; the earliest next opportunity at this checkpoint is October 12, 10:48:30 UTC / 13:48 Israel time. The upper bound is 80 assessments per day, with actual throughput dependent on available inputs and successful batches.
+
+The broken llm-d Agentgateway documentation watch now uses `/docs/dev/infrastructure/gateway/agentgateway`, preserving its watch ID. Seven remaining source flags at this checkpoint are GitHub quota deferrals, with zero active source-error flags. The UI separates current healthy scans, quota deferrals, genuine errors and delayed scans. GitHub enrichment is capped separately at 15/hour without a token under the unchanged 45/hour global ceiling, reserving capacity for source watches. Only two repository-health probes are queued per tick; missing-title Markdown extraction is handled safely. The five-minute Cron remains active.
+
+All 166 bookmarks, 29 folders and 14 feedback rows remain. Existing rejected references remain accessible through their saved library entries. Use Discover → All reviewed or New to radar to consume newly approved historical material; publisher-date and prerelease filters can narrow other views. Relevance review does not certify third-party code or reproduce GPU benchmarks.
+
+Before frontend publication, both TypeScript checks, all 37 updated automated tests, standalone build and client-boundary inspection passed. Hosted browser/deployment checks must be verified for the final commit. Do not claim hosted publication from this preparation checkpoint alone.
+
+## Historical discovery checkpoint — October 11, 16:08 UTC
 
 Collector **version 17 is ACTIVE**. The `repository_health_release_probes` and `discovery_probe_identity` migrations are applied. GitHub suggested links now require fresh repository health as well as useful AI review. Defaults: 100 stars, five actual watchers, two published releases in the past year, a push within 90 days and a release within 180 days. Public/non-fork/active/licensed checks are mandatory. Administrators can edit thresholds and pause Trending in Coverage; existing saved references remain accessible.
 

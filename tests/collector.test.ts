@@ -13,7 +13,7 @@ await import("../supabase/functions/collector/index.ts");
 
 test("collector authenticates, deduplicates releases, defers publisher limits, and keeps real discovery dates", async () => {
   const originalFetch = globalThis.fetch;
-  let job: any, article: any, upstream = 200, active = true, oversized = false, oversizedAtPage = 1;
+  let job: any, article: any, upstream = 200, active = true, oversized = false, oversizedAtPage = 1, allowEnrichment = true;
   const releaseRequests: string[] = [];
   const writes: {path:string;body:any}[] = [];
   globalThis.fetch = async (input, init) => {
@@ -40,7 +40,7 @@ test("collector authenticates, deduplicates releases, defers publisher limits, a
     }
     assert.equal(u.hostname,"database.example");
     if (init?.method === "POST" || init?.method === "PATCH") writes.push({path:u.pathname,body});
-    if (u.pathname.endsWith("ss_take_budget")) return Response.json(!body.budget_key.startsWith("maintenance:") && !body.budget_key.startsWith("repository-discovery:") && !body.budget_key.startsWith("trending-discovery:") && !body.budget_key.startsWith("repo-health-queue:"));
+    if (u.pathname.endsWith("ss_take_budget")) return Response.json((allowEnrichment || !body.budget_key.startsWith("github-enrichment:")) && !body.budget_key.startsWith("maintenance:") && !body.budget_key.startsWith("repository-discovery:") && !body.budget_key.startsWith("trending-discovery:") && !body.budget_key.startsWith("repo-health-queue:"));
     if (u.pathname.endsWith("ss_claim_jobs")) return Response.json([job]);
     if (u.pathname.endsWith("ss_feedback_weights")) return Response.json({});
     if (u.pathname.endsWith("ss_enqueue_sources")) return Response.json(null);
@@ -82,10 +82,18 @@ test("collector authenticates, deduplicates releases, defers publisher limits, a
     assert.deepEqual(releaseRequests,["?per_page=20&page=1","?per_page=20&page=2","?per_page=10&page=1","?per_page=10&page=2"]);
     assert.equal(writes.filter(x=>x.path.endsWith("ss_queue_items")).at(-1)!.body.items.length,1,"oversized later pages restart safely at the smaller size");
     oversized=false;
+    allowEnrichment=false;releaseRequests.length=0;await run();
+    assert(releaseRequests.length>0,"source watches retain GitHub capacity when enrichment is exhausted");
+    job={id:"metadata-limit",kind:"article",attempts:1,payload:{url:"https://github.com/a/b/releases/tag/v2"}};
+    releaseRequests.length=0;await run();
+    assert.equal(releaseRequests.length,0,"enrichment stops before consuming the capacity reserved for watches");
+    assert.equal(writes.filter(x=>x.path.endsWith("ss_jobs")).at(-1)!.body.attempts,0);
+    allowEnrichment=true;
     upstream=429;job={id:"rate-limit",kind:"source",attempts:1,payload:{source_id:"source"}};
     await run();
     const last=writes.filter(x=>x.path.endsWith("ss_jobs")).at(-1)!.body;
     assert.equal(last.status,"pending");assert.equal(last.attempts,0);assert(Date.parse(last.available_at)>Date.now()+60000);
+    assert.equal(writes.filter(x=>x.path.endsWith("ss_sources") && x.body.last_error).at(-1)!.body.last_error_kind,"deferred");
     upstream=200;article=null;job={id:"discovery",kind:"discovery",attempts:1,payload:{lane:"repository",query:"gpu inference"}};
     await run();
     assert.equal(article.kind,"Repository");assert.equal(article.published_at,"2020-01-01T00:00:00.000Z");assert.equal(article.reference_meta.origin,"discovery");

@@ -34,7 +34,7 @@ An AI infrastructure team works across hardware, lossless networking, Kubernetes
 >
 > Watch the known dependencies. Explore beyond them. Keep the original evidence close.
 
-Discovery combines explicit source watches with public feeds, repository searches, GitHub daily/weekly top-five probes, official OpenShift release streams and genuine Tavily web search. GitHub suggestions must pass maintenance checks and useful AI review. The shared library captures what people learn. Human judgment connects the two: a useful link becomes a saved reference, a discussion, or feedback that informs future ranking.
+Discovery combines explicit source watches with public feeds, repository searches, GitHub daily/weekly top-five probes, official OpenShift release streams and genuine Tavily web search. GitHub suggestions must pass maintenance checks and useful review. The existing collection has durable assistant decisions; Gemini evaluates newly discovered URLs. Review labels, dates and evidence survive redeployment and source refreshes. The shared library captures what people learn: a useful link becomes a saved reference, a discussion, or feedback that informs future ranking.
 
 ## A daily workflow
 
@@ -72,7 +72,7 @@ flowchart TD
   Schedule["Supabase Cron · five-minute tick"] --> Collector["Edge Function · bounded collection"]
   Public["Public feeds, documentation and GitHub"] --> Collector
   Collector --> Search["Tavily Search API · public technical queries"]
-  Collector --> Review["Gemini Flash Latest · up to five public links"]
+  Collector --> Review["Durable reviews · Gemini for new links"]
   Review --> Data
   Collector --> Data
   Admin["Administrator · watches and profile"] --> Web
@@ -88,7 +88,7 @@ The website and collector run independently. Collection continues while the team
 | **Supabase PostgreSQL** | Data, database authorization, audited mutations, queue leases and usage counters |
 | **Supabase Edge Function + Cron** | Scheduled fetching, extraction, normalization, relevance and retry/deferral |
 | **Tavily Search API** | Public internet discovery from saved technical queries; excerpts retain search provenance |
-| **Gemini Flash Latest** | Independent public-excerpt judgments, exact evidence validation and reviewed-only suggestion admission |
+| **Gemini Flash Latest** | New-link public-excerpt judgments, exact evidence validation and reviewed-only suggestion admission |
 | **GitHub Actions** | Types, policy tests, browser checks, verified build deployment and live smoke checks |
 
 Read the [architecture](docs/ARCHITECTURE.md) for request paths, data relationships and trust boundaries, and the [design decisions](docs/DESIGN.md) for the reasoning behind them.

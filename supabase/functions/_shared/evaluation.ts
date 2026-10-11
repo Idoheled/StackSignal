@@ -71,15 +71,15 @@ export function parseBatchEvaluation(out:any, inputs:BatchInput[]) {
   if(out.candidates?.[0]?.finishReason!=="STOP") throw new Error("Incomplete batch");
   const obj=JSON.parse(out.candidates[0].content?.parts?.filter((p:any)=>!p.thought).map((p:any)=>p.text||"").join("")||"{}");
   if(!obj || Object.keys(obj).join()!=="results" || !Array.isArray(obj.results) || obj.results.length>inputs.length) throw new Error("Invalid batch output");
-  const expected=new Map(inputs.map(i=>[i.id,i.input])),seen=new Set<string>(),valid=new Map<string,any>(),invalid:string[]=[];
+  const expected=new Map(inputs.map(i=>[i.id,i.input])),seen=new Set<string>(),valid=new Map<string,any>(),invalid:string[]=[], errors:Record<string,string>={};
   for(const entry of obj.results) {
     if(!entry || Object.keys(entry).sort().join()!=="assessment,id" || !expected.has(entry.id) || seen.has(entry.id)) throw new Error("Unknown or duplicate batch identity");
     seen.add(entry.id);
     try { valid.set(entry.id,parseEvaluation({candidates:[{finishReason:"STOP",content:{parts:[{text:JSON.stringify(entry.assessment)}]}}]},expected.get(entry.id)!)); }
-    catch { invalid.push(entry.id); }
+    catch (error) { invalid.push(entry.id); errors[entry.id]=(error as Error).message; }
   }
-  for(const id of expected.keys()) if(!seen.has(id)) invalid.push(id);
-  return {valid,invalid};
+  for(const id of expected.keys()) if(!seen.has(id)) { invalid.push(id); errors[id]="Missing assessment for source"; }
+  return {valid,invalid,errors};
 }
 export function effectiveScore(rules: number, result: any, mode: string, release: boolean) {
   if (mode!=="rerank" || release || result.decision==="insufficient_evidence" || result.confidence!=="high") return rules;
@@ -98,6 +98,7 @@ export function evaluationCandidates(rows: any[], attempt: number) {
 
 /** On-demand queue; atomic database ceilings enforce the day/month budget. No automatic reset on deployment. */
 export function nextEvaluationAt(usage: any, daily: number, monthly: number, now = Date.now()) {
+  if (usage.next_available_at && Number.isFinite(Date.parse(usage.next_available_at))) return Date.parse(usage.next_available_at);
   const current = new Date(now);
   const end = Date.UTC(current.getUTCFullYear(), current.getUTCMonth()+1, 1);
   if (daily <= 0 || Number(usage.used_month || 0) >= monthly) return end;

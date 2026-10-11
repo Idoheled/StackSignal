@@ -1,6 +1,8 @@
 import { basicRelevance } from "../../../lib/domain.ts";
 
 export function relevance(title: string, text: string, profile: any = {}, item: any = {}) {
+  title = String(title || item.title || item.url || "Untitled public source");
+  text = String(text || "");
   const local = basicRelevance(title + " " + text, profile.priorities || {});
   const headline = basicRelevance(title, profile.priorities || {});
   const all = (title + " " + text).toLowerCase();

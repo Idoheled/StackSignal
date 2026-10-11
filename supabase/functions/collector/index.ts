@@ -90,7 +90,7 @@ async function bodyText(res: Response, maxBytes=2_000_000) {
   }
   return new TextDecoder().decode(bytes);
 }
-async function fetchPublic(input: string, etag?: string, maxBytes=2_000_000) {
+async function fetchPublic(input: string, etag?: string, maxBytes=2_000_000, lane: "source" | "enrichment" = "enrichment") {
   let url = safeURL(input, hosts);
   for (let hop = 0; hop < 4; hop++) {
     // Exact operator-controlled host allowlist is the trust boundary; arbitrary submitted domains are never fetched.
@@ -111,6 +111,11 @@ async function fetchPublic(input: string, etag?: string, maxBytes=2_000_000) {
     if (etag) headers["If-None-Match"] = etag;
     if (host === "api.github.com" && env("GITHUB_READ_TOKEN"))
       headers.Authorization = "Bearer " + env("GITHUB_READ_TOKEN");
+    // Reserve most unauthenticated requests for existing watches. Bulk extraction and
+    // health probes share the smaller lane, then still consume the global ceiling.
+    if (host === "api.github.com" && lane === "enrichment" &&
+      !(await budget("github-enrichment:" + new Date().toISOString().slice(0,13), env("GITHUB_READ_TOKEN") ? 1000 : 15, 3600)))
+      throw new Deferred("GitHub enrichment budget reached; deferred until the next hour", (Math.floor(Date.now()/3600000)+1)*3600000+1000);
     if (
       host === "api.github.com" &&
       !(await budget(
@@ -152,28 +157,28 @@ async function fetchPublic(input: string, etag?: string, maxBytes=2_000_000) {
   }
   throw new Error("Too many source redirects");
 }
-async function repoHealth(name:string, suppliedReleases?:any[]) {
+async function repoHealth(name:string, suppliedReleases?:any[], lane: "source" | "enrichment" = "enrichment") {
   const key="repo_health:"+name.toLowerCase();
   const cached=(await db("ss_settings?key=eq."+encodeURIComponent(key)+"&select=value"))[0]?.value;
   if(cached?.checked_at && Date.parse(cached.checked_at)>Date.now()-86400000) return cached;
   const metadataKey="repo_metadata:"+name.toLowerCase();
   let metadata=(await db("ss_settings?key=eq."+encodeURIComponent(metadataKey)+"&select=value"))[0]?.value;
   if(!metadata?.captured_at || Date.parse(metadata.captured_at)<Date.now()-86400000) {
-    const value=JSON.parse((await fetchPublic("https://api.github.com/repos/"+name)).text);
+    const value=JSON.parse((await fetchPublic("https://api.github.com/repos/"+name,undefined,2_000_000,lane)).text);
     if(value.private!==false) throw new Error("Only public repository metadata can be collected");
     metadata={captured_at:new Date().toISOString(),value};
     await db("ss_settings?on_conflict=key","POST",{key:metadataKey,value:metadata},"resolution=merge-duplicates,return=representation");
   }
-  const releases=suppliedReleases || JSON.parse((await fetchPublic("https://api.github.com/repos/"+name+"/releases?per_page=20")).text);
+  const releases=suppliedReleases || JSON.parse((await fetchPublic("https://api.github.com/repos/"+name+"/releases?per_page=20",undefined,2_000_000,lane)).text);
   if(!Array.isArray(releases)) throw new Error("Invalid repository release history");
   const health=repositoryHealth(metadata.value,releases);
   await db("ss_settings?on_conflict=key","POST",{key,value:health},"resolution=merge-duplicates,return=representation");
   return health;
 }
 async function queueRepoHealthChecks() {
-  const filter="deleted_at=is.null&url=like.https://github.com/*&or=(reference_meta->repo_health->>checked_at.is.null,reference_meta->repo_health->>checked_at.lt."+new Date(Date.now()-86400000).toISOString()+")&select=url&order=discovered_at.asc&limit=100";
+  const filter="deleted_at=is.null&url=like.https://github.com/*&or=(reference_meta->repo_health->>checked_at.is.null,reference_meta->repo_health->>checked_at.lt."+new Date(Date.now()-86400000).toISOString()+")&select=url&order=discovered_at.asc&limit=1000";
   const reviewed=await db("ss_articles?"+filter+"&reference_meta->evaluation->>decision=eq.useful");
-  const rows=[...reviewed,...await db("ss_articles?"+filter)];
+  const rows=[...reviewed,...await db("ss_articles?"+filter+"&reference_meta->>assistant_reviewed_at=is.null")];
   let queued=0;
   for(const name of new Set(rows.map((r:any)=>repositoryName(r.url)).filter(Boolean))) {
     if(queued>=2) break;
@@ -199,21 +204,16 @@ async function articleCount(filter: string) {
   return count;
 }
 async function evaluationCoverage() {
-  const [eligible,pending,failed,missing] = await Promise.all([
-    articleCount(eligibleEvaluation),articleCount(pendingEvaluation),
-    articleCount(eligibleEvaluation+"&reference_meta->>evaluation_failed_at=not.is.null"),
-    articleCount("deleted_at=is.null&reference_meta->>public_evaluation_input=is.null"),
-  ]);
-  return {eligible,pending,failed,missing_public_input:missing,evaluated:Math.max(0,eligible-pending-failed),checked_at:new Date().toISOString()};
+  return await rpc("ss_review_coverage");
 }
-async function failedEvaluation(row: any, delay=86400000) {
+async function failedEvaluation(row: any, delay=86400000, reason="Evaluation validation failed") {
   const failures=Number(row.reference_meta?.evaluation_failures||0)+1;
   await db("ss_articles?id=eq."+row.id+"&content_hash=eq."+encodeURIComponent(row.content_hash)+"&deleted_at=is.null", "PATCH",
     {reference_meta:{...row.reference_meta,evaluation_failed_at:new Date().toISOString(),evaluation_failures:failures,
-      evaluation_retry_at:failures<3 ? new Date(Date.now()+delay).toISOString() : null}});
+      evaluation_error:reason.slice(0,200),evaluation_retry_at:failures<3 ? new Date(Date.now()+delay).toISOString() : null}});
 }
 async function queueMissingPublicInputs() {
-  const rows=await db("ss_articles?deleted_at=is.null&reference_meta->>public_evaluation_input=is.null&reference_meta->>public_extraction_requested=is.null&select=id,url,kind,topic,content_hash,reference_meta&order=discovered_at.asc,id.asc&limit=8");
+  const rows=await db("ss_articles?deleted_at=is.null&reference_meta->>public_evaluation_input=is.null&reference_meta->>public_extraction_requested=is.null&reference_meta->>assistant_reviewed_at=is.null&select=id,url,kind,topic,content_hash,reference_meta&order=discovered_at.asc,id.asc&limit=8");
   for(const row of rows) {
     let approved=false; try { approved=!!safeURL(row.url,hosts) && !new URL(row.url).pathname.toLowerCase().endsWith(".pdf"); } catch { /* Unapproved references stay private and unfetched. */ }
     if(approved) await rpc("ss_queue_item",{job_kind:"article",item:{url:row.url,kind:row.kind,topic:row.topic}});
@@ -240,7 +240,7 @@ async function evaluateSweep(profile: any) {
   const usage=await rpc("ss_evaluation_usage");
   if (Date.parse(health.cooldown_until || "") > Date.now()) { await evaluationHealth({mode,usage}); return; }
   if (usage.used_24h >= limit || usage.used_provider_day >= limit || usage.used_month >= monthly) {
-    await evaluationHealth({configured:true,mode,model:EVALUATION_MODEL,state:"budget_wait",next_attempt_at:null,daily_ceiling:limit,monthly_ceiling:monthly,usage}); return;
+    await evaluationHealth({configured:true,mode,model:EVALUATION_MODEL,state:"budget_wait",next_attempt_at:usage.next_available_at || null,daily_ceiling:limit,monthly_ceiling:monthly,usage}); return;
   }
   const next=nextEvaluationAt(usage,limit,monthly);
   if(next>Date.now()) {
@@ -269,12 +269,12 @@ async function evaluateSweep(profile: any) {
       await response.body?.cancel();
       const temporary=response.status>=500;
       const cooldown=temporary ? 900000 : 86400000;
-      for(const row of batch) await failedEvaluation(row,temporary ? 21600000 : 86400000);
+      for(const row of batch) await failedEvaluation(row,temporary ? 21600000 : 86400000,"Gemini HTTP "+response.status);
       await evaluationHealth({state:"cooldown",next_attempt_at:null,last_error:"Gemini HTTP "+response.status+"; pending links withheld",usage:await rpc("ss_evaluation_usage"),cooldown_until:new Date(Date.now()+cooldown).toISOString()}); return;
     }
     out=JSON.parse(await bodyText(response));parsed=parseBatchEvaluation(out,inputs);
-  } catch {
-    for(const row of batch) await failedEvaluation(row,21600000);
+  } catch (error) {
+    for(const row of batch) await failedEvaluation(row,21600000,(error as Error).message);
     await evaluationHealth({state:"cooldown",next_attempt_at:null,last_error:"Incomplete or invalid batch; pending links withheld",usage:await rpc("ss_evaluation_usage"),cooldown_until:new Date(Date.now()+3600000).toISOString()}); return;
   }
   const resolved_model=typeof out.modelVersion==="string" ? out.modelVersion.slice(0,120) : null;
@@ -282,15 +282,15 @@ async function evaluateSweep(profile: any) {
   const comparisons=[];
   for(const row of batch) {
     const result=parsed.valid.get(row.id);
-    if(!result) { await failedEvaluation(row,21600000); continue; }
+    if(!result) { await failedEvaluation(row,21600000,parsed.errors[row.id]); continue; }
     const current=(await db("ss_articles?id=eq."+row.id+"&select=score,reference_meta,content_hash,deleted_at"))[0];
     const input=row.reference_meta.public_evaluation_input;
     if(!current || current.deleted_at || current.content_hash!==row.content_hash || !samePublicInput(current.reference_meta?.public_evaluation_input,input)) continue;
     const rules=current.reference_meta?.evaluation?.rules_score ?? current.score;
     const score=effectiveScore(rules,result,mode,!!current.reference_meta.alert_kind);
     const evaluated_at=new Date().toISOString();
-    const evaluation={...result,rules_score:rules,applied_score:score,mode,model:EVALUATION_MODEL,resolved_model,scope:input.scope,version:EVALUATOR_VERSION,cache_key:row.cache_key,evaluated_at,request_id:reservation.request_id};
-    const patch:any={reference_meta:{...current.reference_meta,evaluation,evaluation_failed_at:null,evaluation_retry_at:null,evaluation_failures:0}};
+    const evaluation={...result,rules_score:rules,applied_score:score,mode,model:EVALUATION_MODEL,resolved_model,scope:input.scope,evaluator:"gemini",version:EVALUATOR_VERSION,cache_key:row.cache_key,evaluated_at,request_id:reservation.request_id};
+    const patch:any={reference_meta:{...current.reference_meta,evaluation,evaluation_failed_at:null,evaluation_retry_at:null,evaluation_failures:0,evaluation_error:null,review_commit:row.cache_key}};
     if(mode==="rerank" && result.confidence==="high" && result.decision!=="insufficient_evidence") Object.assign(patch,{score,analysis_status:"ai",summary:result.summary,reason:result.reason,evidence:result.evidence});
     await db("ss_articles?id=eq."+row.id+"&content_hash=eq."+encodeURIComponent(row.content_hash)+"&deleted_at=is.null","PATCH",patch);
     comparisons.push({article_id:row.id,title:input.title,lane:candidateLane(row),rules_score:rules,ai_score:result.score,applied_score:score,...result,model:EVALUATION_MODEL,resolved_model,scope:input.scope,evaluated_at});
@@ -386,7 +386,7 @@ async function sourceJob(job: any, profile: any) {
     const fetchReleases = async (size: number) => {
       requestURL.searchParams.set("per_page", String(size));
       requestURL.searchParams.set("page", "1");
-      const first = await fetchPublic(requestURL.toString(), source.etag);
+      const first = await fetchPublic(requestURL.toString(), source.etag,2_000_000,"source");
       if (first.unchanged) return first;
       let values = JSON.parse(first.text);
       if (!Array.isArray(values)) throw new Error("Invalid GitHub release list");
@@ -396,7 +396,7 @@ async function sourceJob(job: any, profile: any) {
       // Changed sources inspect a seven-day overlap; first scans cover up to 90 days.
       for (let page = 2; page <= 5 && pageValues.length === size && pageValues.some((x: any) => Date.parse(x.published_at || "") >= since); page++) {
         requestURL.searchParams.set("page", String(page));
-        const next = await fetchPublic(requestURL.toString());
+        const next = await fetchPublic(requestURL.toString(),undefined,2_000_000,"source");
         pageValues = JSON.parse(next.text);
         if (!Array.isArray(pageValues)) throw new Error("Invalid GitHub release list");
         values = values.concat(pageValues);
@@ -410,7 +410,7 @@ async function sourceJob(job: any, profile: any) {
         if (!(e instanceof SourceTooLarge)) throw e;
         res = await fetchReleases(10);
       }
-    } else res = await fetchPublic(requestURL.toString(), source.etag);
+    } else res = await fetchPublic(requestURL.toString(), source.etag,2_000_000,"source");
     const meta = { origin: "source_watch", source_id: source.id, source_revision: source.revision };
     if (!res.unchanged) {
       if (source.type === "openshift") {
@@ -425,7 +425,7 @@ async function sourceJob(job: any, profile: any) {
         await rpc("ss_queue_items",{job_kind:"analyze",items:entries});
         await db("ss_sources?id=eq."+source.id+"&revision=eq."+source.revision,"PATCH",{last_item_count:entries.length});
       } else if (source.type === "github") {
-        const health=await repoHealth(requestURL.pathname.split("/").slice(2,4).join("/"),releaseList ? JSON.parse(res.text) : undefined);
+        const health=await repoHealth(requestURL.pathname.split("/").slice(2,4).join("/"),releaseList ? JSON.parse(res.text) : undefined,"source");
         const entries = githubItems(JSON.parse(res.text), source);
         await rpc("ss_queue_items", { job_kind: "analyze", items: entries.map(payload => ({ ...payload, reference_meta: { ...payload.reference_meta, ...meta, repo_health:health } })) });
         await db("ss_sources?id=eq." + source.id + "&revision=eq." + source.revision, "PATCH", { last_item_count: entries.length });
@@ -470,11 +470,11 @@ async function sourceJob(job: any, profile: any) {
     }
     await db("ss_sources?id=eq." + source.id + "&revision=eq." + source.revision, "PATCH", {
       last_success_at: new Date().toISOString(),
-      last_error: null,
+      last_error: null,last_error_kind:null,retry_at:null,
     });
   } catch (e) {
     await db("ss_sources?id=eq." + source.id + "&revision=eq." + source.revision, "PATCH", {
-      last_error: (e as Error).message.slice(0, 200),
+      last_error: (e as Error).message.slice(0, 200),last_error_kind:e instanceof Deferred ? "deferred" : "error",retry_at:e instanceof Deferred ? new Date(e.retryAt).toISOString() : null,
     });
     throw e;
   }
@@ -486,7 +486,7 @@ async function articleJob(job: any, profile: any) {
     const endpoint="https://api.github.com/repos/"+repo[1]+"/"+repo[2];
     const health=await repoHealth(repo[1]+"/"+repo[2]);
     if(job.payload.health_only) {
-      const rows=await db("ss_articles?deleted_at=is.null&url=ilike."+encodeURIComponent("https://github.com/"+repo[1]+"/"+repo[2]+"*")+"&select=id,url,content_hash,reference_meta&limit=100");
+      const rows=await db("ss_articles?deleted_at=is.null&url=ilike."+encodeURIComponent("https://github.com/"+repo[1]+"/"+repo[2]+"*")+"&select=id,url,content_hash,reference_meta&limit=1000");
       for(const row of rows) if(repositoryName(row.url)?.toLowerCase()===(repo[1]+"/"+repo[2]).toLowerCase())
         await db("ss_articles?id=eq."+row.id+(row.content_hash ? "&content_hash=eq."+encodeURIComponent(row.content_hash) : "&content_hash=is.null"),"PATCH",{reference_meta:{...row.reference_meta,repo_health:health,repository:repo[1]+"/"+repo[2]}});
       return;
@@ -531,7 +531,7 @@ async function articleJob(job: any, profile: any) {
       "PDF saved as a reference; automatic PDF extraction is not enabled",
     );
   const res = await fetchPublic(job.payload.url);
-  const m = htmlMeta(res.text);
+  const m = /\.md(?:$|\?)/i.test(res.url) ? {title:res.text.match(/^#\s+(.+)$/m)?.[1] || job.payload.title || new URL(res.url).pathname.split("/").at(-1),text:res.text,summary:res.text.slice(0,600),author:null,published_at:null,updated_at:null} : htmlMeta(res.text);
   await ingest(
     {
       ...m,
@@ -724,7 +724,7 @@ Deno.serve(async (request) => {
       }
     }
     // AI failures cannot fail collection or trigger queue retries.
-    try { await evaluateSweep(profile); } catch { /* Collection remains available. */ }
+    try { await evaluateSweep(profile); } catch (error) { await evaluationHealth({state:"error",last_error:"Evaluation sweep: "+(error as Error).message.slice(0,160)}).catch(()=>{}); }
     return new Response(JSON.stringify({ ok: true, processed: count }), {
       headers,
     });

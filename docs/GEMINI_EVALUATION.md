@@ -1,6 +1,14 @@
-# AI-reviewed discovery
+# Durable reviewed discovery
 
-StackSignal uses Tavily, public GitHub discovery and source watches to find links. Gemini **evaluates public material already captured by the collector**; it is not the search engine or an independent fact checker.
+StackSignal uses Tavily, public GitHub discovery and source watches to find links. The existing October 11 collection was reviewed by the assistant. Gemini **evaluates newly discovered URLs using public material captured by the collector**; it is not the search engine or an independent fact checker.
+
+## Existing collection and handoff
+
+The handoff froze 717 existing URLs, including URLs in pending collection jobs, at `2026-10-11T17:06:30.77093Z`. All 717 received assistant decisions: 336 useful, 272 not selected and 109 insufficient evidence. These are dated counts, not a promise that every reference is useful or accessible. Public excerpts, repository metadata/README text and release bodies supplied the evidence. GPU benchmarks and third-party code were not executed as part of the relevance review.
+
+The database excludes this cohort at both Gemini candidate selection and atomic reservation. GitHub owner/repository casing does not create a new identity; release-tag casing is preserved. Old queued jobs and redeployments cannot send these links back to Gemini. A genuinely new release URL is eligible. No historical import is reapplied, and no provider quota ledger is reset.
+
+Service-only `ss_apply_assistant_reviews` validates explicit decisions, exact source evidence and every acceptance gate before storing a reviewer/date and reviewed-content snapshot. An immutable private review-history table retains the decision. Collector refreshes preserve completed reviews; changed public text is flagged against the original snapshot. Reviewed or cohort articles are excluded from routine 90-day cleanup. Existing bookmarks, notes, feedback and read states remain attached to their original article IDs.
 
 ## What members see
 
@@ -10,7 +18,7 @@ Every suggested-feed mode, including releases and All reviewed, admits only comp
 
 This week retains the publisher's seven-day date window. New to radar uses the assessment date, so a backlogged or undated reference can surface when its review completes without inventing a publication date. All reviewed has no age cutoff. Followed-release alerts and unread counts require review too, and respect prerelease settings.
 
-Apply mode uses the existing 70% AI / 30% rules blend for high-confidence assessments; medium-confidence assessments preserve stored rules scores. Admission uses the AI decision and score independently, so useful unfamiliar tools can enter despite weak keyword overlap. Cards show the AI assessment score and label it AI reviewed. Evaluate without changing ranking still gates suggestions; Off pauses new evaluations but retains previously admitted links.
+Apply mode uses the existing 70% AI / 30% rules blend for high-confidence Gemini assessments; medium-confidence assessments preserve stored rules scores. Admission uses the assessment decision and score independently, so useful unfamiliar tools can enter despite weak keyword overlap. Assistant reviews display and rank by their explicit assessment score. Cards identify the assistant or Gemini as reviewer; details retain the review date and flag subsequent content changes. Evaluate without changing ranking still gates suggestions; Off pauses new evaluations but retains completed reviews.
 
 ## Request and coverage budgets
 
@@ -34,11 +42,11 @@ The owner's October 11, 2026 AI Studio screenshots show **5 RPM, 250,000 input T
 
 ## Durable queue and extraction
 
-The sweep loads the oldest 50 eligible pending public inputs **after filtering GitHub repository health**, rotates preference among strong/borderline/exploration lanes and submits up to five atomically reserved inputs. Already leased inputs are skipped within the window, so an interrupted request does not unnecessarily block all other work. There is no seven-day queue expiry.
+The sweep loads the oldest 50 eligible new-link public inputs **after excluding the frozen cohort and filtering GitHub repository health**, rotates preference among strong/borderline/exploration lanes and submits up to five atomically reserved inputs. Already leased inputs are skipped within the window, so an interrupted request does not unnecessarily block all other work. There is no seven-day queue expiry.
 
-Existing references without public text enter a separate bounded extraction queue: up to eight records per tick, once per record, only for existing approved public hosts. PDFs and unsupported hosts remain visible in administrator coverage as missing public input. Public GitHub repository extraction uses API metadata and a bounded public README when available. Imported chat text, private notes and arbitrary user titles are never evaluation inputs.
+New references without public text enter a separate bounded extraction queue: up to eight records per tick, once per record, only for approved public hosts. Completed assistant reviews skip this bootstrap extraction. PDFs and unsupported hosts remain visible in administrator new-link coverage as missing public input. Public GitHub repository extraction uses API metadata and a bounded public README when available. Imported chat text, private notes and arbitrary user titles are never evaluation inputs.
 
-A valid insufficient-evidence search snippet may request one richer approved-host fetch. Changed captured public text clears the old assessment and its error counters, returning the link to evaluation. Metadata-only changes preserve the assessment and reapply its ranking without another Gemini call. Failed unchanged inputs receive bounded delayed retries; after three reservations they remain withheld for inspection. No model-selected URL expands the fetch allowlist.
+A new-link insufficient-evidence search snippet may request one richer approved-host fetch. Completed decisions are retained when captured public text changes, with a content-change marker and the original reviewed snapshot. Metadata-only changes also preserve the assessment without another Gemini call. Failed unchanged inputs receive bounded delayed retries; after three reservations they remain withheld for inspection. No model-selected URL expands the fetch allowlist.
 
 ## Validation and concurrency
 
@@ -58,17 +66,20 @@ The API key remains a Supabase Edge Function secret, absent from browser assets,
 
 The existing workspace uses Apply, 16 requests/day and 496/month. All settings persist in PostgreSQL across redeployments. Independent installations remain Off with zero daily budget until an administrator configures a verified Free-tier API project and `GEMINI_API_KEY` in function secrets.
 
-Health shows request usage, the current Pacific-day count, pending/reviewed/failed coverage, missing public extraction, last batch size, token usage, actual model version, error/cooldown and recent assessments. Counts are dated snapshots. A pause or quota limit can leave the feed temporarily empty; the UI explains pending review instead of claiming discovery is complete.
+Health shows request usage, the current Pacific-day count, exact approved/assessed/rejected/insufficient coverage, assistant handoff progress and a separate new-link queue. It also shows missing public extraction, last batch size, token usage, actual model version, error/cooldown and recent Gemini assessments. Counts are dated snapshots. The next opportunity uses the first released rolling request slot, provider day, month and spacing gates. At handoff completion the next available slot was October 12 at 10:48:30 UTC (13:48 Israel time); later activity can change it.
 
 ```mermaid
 flowchart TD
   Sources["Search and watched sources"] --> Capture["Public extraction and rules"]
-  Capture --> Queue["Durable review queue"]
+  Capture --> Existing{"Existing handoff URL?"}
+  Existing -->|Yes| Retain["Retain assistant decision"]
+  Existing -->|No| Queue["New-link review queue"]
   Queue --> Reserve["Atomic request budget and claims"]
   Reserve --> Batch["Flash Latest: up to five links"]
   Batch --> Validate["Per-link identity and evidence"]
   Validate --> Admission{"Useful and supported?"}
   Admission -->|Yes| Feed["Reviewed suggestions"]
+  Retain --> Admission
   Admission -->|No| Hold["Withheld or bounded enrichment"]
   Hold --> Queue
   Capture --> Library["Existing saved library"]

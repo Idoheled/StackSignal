@@ -4,11 +4,27 @@ import { canonicalLink } from "../lib/links.ts";
 import { TEAM_ARTICLES, IMPORT_STATS } from "../lib/team-library.ts";
 import { TEAM_SOURCES, TEAM_PROFILE } from "../lib/coverage.ts";
 import { basicRelevance } from "../lib/domain.ts";
+import { sourceState, reviewLabel } from "../lib/review-state.ts";
 import {
   githubItems,
   githubAPIForLink,
 } from "../supabase/functions/_shared/github.ts";
 import { createService } from "../lib/server/service.ts";
+
+test("source delays and completed reviews have distinct visible states", () => {
+  const source:any={active:true,last_success_at:new Date().toISOString(),interval_minutes:120,last_error:"GitHub hourly budget reached; deferred"};
+  assert.equal(sourceState(source),"Deferred");
+  assert.equal(sourceState({...source,last_error:"Source returned HTTP 404",last_error_kind:"error"}),"Attention");
+  assert.equal(sourceState({...source,last_error:null}),"Healthy");
+  assert.equal(sourceState({...source,last_error:null,last_success_at:null}),"Awaiting scan");
+  assert.equal(sourceState({...source,last_error:null,last_success_at:"2020-01-01T00:00:00Z"}),"Delayed");
+  const accepted={decision:"useful",evaluator:"assistant",confidence:"high",depth:"practical",score:80,evidence:"Documented GPU configuration"};
+  assert.equal(reviewLabel({reference_meta:{evaluation:accepted}} as any),"Passed · assistant reviewed");
+  assert.equal(reviewLabel({reference_meta:{evaluation:{...accepted,confidence:"low"}}} as any),"Evaluated · below filter");
+  assert.equal(reviewLabel({reference_meta:{evaluation:{...accepted,depth:"introductory"}}} as any),"Evaluated · below filter");
+  assert.equal(reviewLabel({reference_meta:{evaluation:{...accepted,score:40}}} as any),"Evaluated · below filter");
+  assert.equal(reviewLabel({reference_meta:{evaluation:{decision:"insufficient_evidence"}}} as any),"Withheld · insufficient evidence");
+});
 
 test("canonical identity removes tracking without destroying documentation or video identifiers", () => {
   assert.equal(
@@ -204,6 +220,7 @@ test("relevance explains operational signals and preserves terse followed releas
   assert(relevance("v1.0.1", "Fix crash", {}, {reference_meta:{alert_kind:"release"}}).score >= 80);
   const b = relevance("KServe vLLM throughput benchmark", "KV cache", {...TEAM_PROFILE,_tagWeights:{kserve:100,vllm:100}});
   assert(b.score<=98);
+  assert.doesNotThrow(() => relevance(undefined as any, undefined as any, TEAM_PROFILE));
 });
 
 test("legacy watch pagination and repository casing do not create another follow", async () => {

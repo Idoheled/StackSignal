@@ -62,4 +62,6 @@ test("on-demand pacing reserves five-minute spacing and stops at configured budg
   assert.equal(nextEvaluationAt({used_month:496,last_attempt:last},16,496,now),Date.parse("2026-11-01T00:00:00Z"));
   assert.equal(nextEvaluationAt({used_month:0},16,496,now),0);
   assert(nextEvaluationAt({used_month:16,used_24h:16,last_attempt:last},16,496,now)>now);
+  const firstSlot="2026-10-12T10:48:30Z";
+  assert.equal(nextEvaluationAt({used_month:16,used_24h:16,last_attempt:last,next_available_at:firstSlot},16,496,now),Date.parse(firstSlot),"Use the oldest released rolling slot, not the last request plus 24 hours");
 });
