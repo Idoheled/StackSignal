@@ -76,3 +76,12 @@ The owner connected GitHub and authorized publication to https://github.com/Idoh
 
 
 The responsive release was published from commit `6cdac9fa52f952e5d96f10cd592ca807fd20515f` to both hosting targets. The team Worker version is `cd246057-e102-4c64-8c04-8c9a6ab34496`; its clean standalone bundle is 292 KiB gzipped with 25 client assets and a measured 12 ms startup. Production smoke checks passed after deployment. GitHub publication and automatic deployment remain blocked by repository integration permissions, as described above. These deployment IDs are historical checkpoints; reconcile the provider before making a future change.
+
+
+## GitHub activation and browser validation
+
+The owner supplied scoped GitHub setup access. All 13 existing commits and 169 tracked files were pushed to `Idoheled/StackSignal` main at `f672e2a9b365815baa6b66929b6d1111c8e4600a`. Actions is enabled with read-only default workflow permissions, approved GitHub-owned actions and the pinned pnpm setup action. The production environment permits main only. Main protection requires Quality and reviewed PRs for ordinary contributors; owner admin bypass remains available as requested for direct maintenance pushes. Force pushes and branch deletion are blocked. Private vulnerability reporting, dependency alerts and automatic security update PRs are enabled; secret scanning/push protection were confirmed enabled. Runtime and setup secrets were not committed.
+
+The first hosted Quality run passed both type checks, all 22 existing tests, build and asset checks. Actual Chromium/Firefox/WebKit regressions passed 18 scenarios and found feed overflow at 768 px with the expanded sidebar. The follow-up gives the main flex child and tab root a shrinkable width, wraps filters/toolbars and hides the redundant privacy pill on compact tablets. A 1024 px viewport is also added, making 24 browser scenarios. Do not describe this follow-up as passing until the hosted runner confirms it.
+
+Cloudflare token-policy inspection returned 403. Its permanent CI scope cannot be verified by this temporary setup token. The owner must narrow it to Editor on the existing Worker or supply a new Worker-scoped token before permanent CI credentials are configured. The production environment has no Cloudflare deployment secret yet; automatic deployment is not fully activated.

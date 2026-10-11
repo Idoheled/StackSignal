@@ -18,7 +18,7 @@ const viewports = [
   { width: 320, height: 568 }, { width: 360, height: 740 },
   { width: 390, height: 844 }, { width: 430, height: 932 },
   { width: 667, height: 375 }, { width: 768, height: 1024 },
-  { width: 1366, height: 768 },
+  { width: 1024, height: 768 }, { width: 1366, height: 768 },
 ];
 
 for (const viewport of viewports) {

@@ -703,7 +703,11 @@ button svg {
   white-space: nowrap;
   color: #c0d5f1;
 }
+[data-slot="sidebar-inset"] {
+  min-width: 0;
+}
 .page-content {
+  min-width: 0;
   padding: 39px 38px 0;
   max-width: 1600px;
   width: 100%;
@@ -721,6 +725,9 @@ button svg {
   letter-spacing: 1.8px;
   color: var(--muted-foreground);
   margin-bottom: 9px;
+}
+.page-heading > div {
+  min-width: 0;
 }
 .page-heading h1 {
   font-size: 33px;
@@ -741,10 +748,15 @@ button svg {
 }
 .discovery-toolbar {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   gap: 12px;
   align-items: center;
   margin-bottom: 20px;
+}
+.discovery-toolbar > [data-slot="tabs"] {
+  min-width: 0;
+  max-width: 100%;
 }
 .feed-tabs {
   border: 1px solid var(--border);
@@ -828,6 +840,7 @@ button svg {
 }
 .results-row {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   align-items: center;
   gap: 10px;
@@ -843,6 +856,9 @@ button svg {
 }
 .results-row > div {
   display: flex;
+  flex-wrap: wrap;
+  min-width: 0;
+  max-width: 100%;
   gap: 10px;
   align-items: center;
 }
@@ -1859,6 +1875,11 @@ td .text-button {
   }
   .source-summary {
     grid-template-columns: repeat(2, 1fr);
+  }
+}
+@media (max-width: 1023px) {
+  .private-pill {
+    display: none;
   }
 }
 @media (max-width: 767px) {
