@@ -6,7 +6,7 @@ StackSignal separates **finding material**, **judging technical fit**, and **ord
 
 ## Current configuration
 
-As verified on October 11, 2026, the deployed workspace has active Tavily search, 20 web queries, eight GitHub project-discovery queries and 61 active source watches. The first web sweep completed all 20 queries and stored 86 new references. Gemini analysis remains disabled. These are dated observations, not counts that every installation should have; check Administration → Health for current state.
+As verified on October 11, 2026, the deployed workspace has active Tavily search, 20 web queries, eight GitHub project-discovery queries and 61 active source watches. The first web sweep completed all 20 queries and stored 86 new references. Gemini comparison is active using `gemini-flash-latest` on a confirmed Free-tier API project; the first assessment resolved to `gemini-3.8-flash` and preserved the feed score. These are dated observations, not counts that every installation should have; check Administration → Health for current state.
 
 A separate installation starts with provider budgets at zero. The original seed import and its eight historical web queries do not overwrite the existing workspace's live profile; do not rerun the import to configure discovery. Prepared web queries are in [source-config.ts](../lib/source-config.ts); the deployed profile is held in PostgreSQL and edited through Administration → Coverage.
 
