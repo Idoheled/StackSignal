@@ -53,6 +53,11 @@ for (const viewport of viewports) {
     const panel = page.getByRole("dialog", { name: "Signal details" });
     await expect(panel).toBeVisible();
     await expect(panel.getByRole("heading", { name: title, exact: true })).toBeVisible();
+    // Visibility begins before the slide animation has settled.
+    await expect.poll(async () => {
+      const b = await panel.boundingBox();
+      return !!b && b.x >= -1 && b.x + b.width <= viewport.width + 1;
+    }).toBe(true);
     const bounds = await panel.boundingBox();
     expect(bounds).not.toBeNull();
     expect(bounds!.x).toBeGreaterThanOrEqual(-1);
