@@ -22,8 +22,8 @@ Core serving releases are scheduled every 2 hours; most operators every 4 hours;
 1. Topic matching recognizes the stack’s projects and technical terms. Short acronyms use word boundaries. Generic vendor names receive lower weight than concrete technical matches.
 2. The administrator’s technical interests add local boosts; these private interest strings are not sent to an LLM.
 3. Helpful/not-relevant feedback adjusts personal topic ranking within a bounded range. This does not train an external model or allow a submitted page to change system instructions.
-4. Optional Gemini analysis uses only public text, a fixed taxonomy and validated structured output. It must include supporting source text. Source material is treated as untrusted data.
-5. A separate installation starts AI and web-search budgets at **zero**. The existing deployment now has active Tavily search with 20 queries and an 800-request monthly ceiling; Gemini remains disabled. Feeds, GitHub and documentation monitoring work independently.
+4. Optional [Gemini evaluation](GEMINI_EVALUATION.md) samples public excerpts against recognized public stack terms and the engineering mission, validates exact evidence, and starts in comparison mode. Source material is untrusted and private collaboration data is excluded.
+5. A separate installation starts AI and web-search budgets at **zero**. The existing deployment now has active Tavily search with 20 queries and an 800-request monthly ceiling; Gemini comparison is prepared with four attempts per rolling 24 hours and 100 monthly; generation awaits a free-tier API key. Feeds, GitHub and documentation monitoring work independently.
 
 A relevance score expresses fit, not correctness, compatibility or benchmark quality. Read the original conditions and version constraints before applying a recommendation.
 

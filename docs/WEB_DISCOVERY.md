@@ -43,6 +43,6 @@ Search-only results are labeled **Web search result**, with no invented availabi
 
 ## Quality limits
 
-The filters reduce obvious noise but remain heuristic. This change adds broad search coverage; it does not turn the relevance score into a probability or validate benchmarks. Gemini's existing structured analysis remains a separate, optional integration with its own key/model/budget and evidence checks. It is not silently enabled by web search.
+The filters reduce obvious noise but remain heuristic. This change adds broad search coverage; it does not turn the relevance score into a probability or validate benchmarks. The [conservative Gemini evaluator](GEMINI_EVALUATION.md) is a separate optional sweep with its own server key, pinned Flash-Lite model, atomic attempt limits, cache and evidence checks. It is not silently enabled by web search.
 
 No implementation can promise every useful item on the internet. Review original conditions, versions and results before adopting a recommendation. Use feedback and refined queries to improve coverage over time.
