@@ -6,7 +6,7 @@ Tavily adds genuine internet search alongside the existing feeds, documentation 
 
 ## Deployed status
 
-Tavily was activated on October 11, 2026. The key is installed in Supabase production function secrets; it is not committed or sent to the browser. Collector version 7 completed all 20 queries in its first daily sweep and stored 86 references. Health reported active with no search error at the verification checkpoint. The monthly ceiling is 800 and the hard daily ceiling is 24. Gemini comparison was activated later that day on a confirmed Free-tier API project; its first `gemini-flash-latest` assessment resolved to `gemini-3.8-flash` and was saved without changing the feed. See [operations history](OPERATIONS.md#tavily-web-search-activation--october-11) for the dated evidence; Health is the live status source.
+Tavily was activated on October 11, 2026. The key is installed in Supabase production function secrets; it is not committed or sent to the browser. Collector version 7 completed all 20 queries in its first daily sweep and stored 86 references. Health reported active with no search error at the verification checkpoint. The monthly ceiling is 800 and the hard daily ceiling is 24. Gemini evaluation was activated later that day on a confirmed Free-tier API project; its first `gemini-flash-latest` assessment resolved to `gemini-3.8-flash` and was saved without changing the feed. See [operations history](OPERATIONS.md#tavily-web-search-activation--october-11) for the dated evidence; Health is the live status source.
 
 ## Activation for a separate installation
 

@@ -23,7 +23,7 @@ Core serving releases are scheduled every 2 hours; most operators every 4 hours;
 2. The administrator’s technical interests add local boosts; these private interest strings are not sent to an LLM.
 3. Helpful/not-relevant feedback adjusts personal topic ranking within a bounded range. This does not train an external model or allow a submitted page to change system instructions.
 4. Optional [Gemini evaluation](GEMINI_EVALUATION.md) samples public excerpts against recognized public stack terms and the engineering mission, validates exact evidence, and starts in comparison mode. Source material is untrusted and private collaboration data is excluded.
-5. A separate installation starts AI and web-search budgets at **zero**. The existing deployment now has active Tavily search with 20 queries and an 800-request monthly ceiling; Gemini comparison is active on a confirmed Free-tier project using `gemini-flash-latest`, with four attempts per rolling 24 hours and 100 monthly. Feeds, GitHub and documentation monitoring work independently.
+5. A separate installation starts AI and web-search budgets at **zero**. The existing deployment now has active Tavily search with 20 queries and an 800-request monthly ceiling; Gemini evaluation is active in Apply mode on a confirmed Free-tier project using `gemini-flash-latest`, with four attempts per rolling 24 hours and 100 monthly. Feeds, GitHub and documentation monitoring work independently.
 
 A relevance score expresses fit, not correctness, compatibility or benchmark quality. Read the original conditions and version constraints before applying a recommendation.
 

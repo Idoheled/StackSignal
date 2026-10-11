@@ -6,6 +6,9 @@ export const EVALUATION_MODEL = "gemini-flash-latest";
 export const MAX_INPUT_BYTES = 6000;
 export const MAX_OUTPUT_TOKENS = 650;
 export type PublicInput = { title: string; text: string; scope: "search_snippet" | "publisher_excerpt" | "repository_metadata" };
+export function samePublicInput(a: PublicInput | null | undefined, b: PublicInput | null | undefined) {
+  return a?.title === b?.title && a?.text === b?.text && a?.scope === b?.scope;
+}
 export function boundedText(text: string, bytes: number) {
   let out = "", size = 0;
   for (const char of text) { const n = new TextEncoder().encode(char).length; if (size+n>bytes) break; out+=char; size+=n; }
@@ -58,9 +61,22 @@ export function candidateLane(row: any) {
   if (row.score < 55 || row.reference_meta?.search_window === "explore") return "explore";
   return row.score < 75 ? "borderline" : "strong";
 }
-export function evaluationCandidates(rows: any[], hour: number) {
-  const lane = ["strong","borderline","explore","strong"][hour%4];
+export function evaluationCandidates(rows: any[], attempt: number) {
+  const lane = ["strong","borderline","explore","strong"][attempt%4];
   return rows.filter(r=>r.reference_meta?.public_evaluation_input && !r.reference_meta?.alert_kind && r.kind!=="Release")
     .sort((a,b)=>Number(candidateLane(b)===lane)-Number(candidateLane(a)===lane) ||
       (lane==="strong" ? b.score-a.score : a.score-b.score) || String(b.discovered_at).localeCompare(String(a.discovered_at)));
+}
+
+/** Spread remaining attempts over the month; deployments and visitors do not reset usage. */
+export function nextEvaluationAt(usage: any, daily: number, monthly: number, now = Date.now()) {
+  const current = new Date(now);
+  const start = Date.UTC(current.getUTCFullYear(), current.getUTCMonth(), 1);
+  const end = Date.UTC(current.getUTCFullYear(), current.getUTCMonth()+1, 1);
+  const remaining = monthly - Number(usage.used_month || 0);
+  if (daily <= 0 || remaining <= 0) return end;
+  const last = Date.parse(usage.last_attempt || "");
+  if (!Number.isFinite(last)) return 0;
+  const monthSpacing = last >= start ? Math.ceil((end-last)/remaining) : 0;
+  return last + Math.max(3600000, Math.ceil(86400000/daily), monthSpacing);
 }

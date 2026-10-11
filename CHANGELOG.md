@@ -2,6 +2,8 @@
 
 ## 2026-10-11
 
+- Preserved the owner's saved Apply preference across deployments; added month-aware pacing, an oldest-pending public-input queue without seven-day expiry, and administrator coverage/failure counts. Hard 4/day and 100/month attempt caps remain enforced independently.
+
 - Switched semantic evaluation to the owner-requested `gemini-flash-latest` alias, low thinking and recorded resolved model versions; retained all usage, evidence and privacy controls.
 
 - Conservative Flash Latest semantic evaluation: administrator Compare / Apply / Off controls, public-context sampling, exact-evidence validation and cached comparisons.

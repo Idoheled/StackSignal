@@ -398,7 +398,7 @@ export default function AdminPanel({
               </select>
             </label>
             <label>Monthly Gemini attempt ceiling<input type="number" name="gemini_monthly_limit" min={0} max={100} defaultValue={data.profile.gemini_monthly_limit ?? 100} /></label>
-            <p className="subtle">Keep the Google API project on the Free tier. Flash Latest samples strong, borderline and exploratory discoveries. Hard limits: 4 attempts in 24 hours, 100 per UTC calendar month and 1 per hour; failures count. Compare mode preserves your feed. Only public excerpts and recognized public stack terms reach Google. A separate free-tier API key is required.</p>
+            <p className="subtle">Keep the Google API project on the Free tier. Flash Latest reviews a budgeted queue of public discoveries. It cannot guarantee AI review of every item within free quotas. Hard limits: 4 attempts in 24 hours and 100 per UTC calendar month; failures count. Calls are spaced across the remaining month. Saved mode and budgets survive redeployments. Compare mode preserves your feed. Only public excerpts and recognized public stack terms reach Google. A separate free-tier API key is required.</p>
             <div className="form-grid">
               <label>
                 Gemini attempts per 24 hours
@@ -526,6 +526,8 @@ export default function AdminPanel({
             <h3>Gemini evaluation</h3>
             <p className="subtle">{(data.evaluation_health?.state || "not configured").replaceAll("_", " ")} · {data.profile.gemini_mode || "off"} · {data.evaluation_health?.model || "gemini-flash-latest"}</p>
             <p className="subtle">Attempts: {data.evaluation_health?.usage?.used_24h || 0} / {data.profile.gemini_daily_limit || 0} in 24 hours · {data.evaluation_health?.usage?.used_month || 0} / {data.profile.gemini_monthly_limit ?? 100} this month. Last success: {dateLabel(data.evaluation_health?.last_success)}</p>
+            {data.evaluation_health?.next_attempt_at && <p className="subtle">Next paced opportunity: {new Date(data.evaluation_health.next_attempt_at).toLocaleString()}. Quotas, cooldowns and pending inputs can delay it.</p>}
+            {data.evaluation_health?.coverage && <p className="subtle">AI coverage: {data.evaluation_health.coverage.evaluated} reviewed · {data.evaluation_health.coverage.pending} awaiting review · {data.evaluation_health.coverage.failed} failed · {data.evaluation_health.coverage.eligible} eligible public inputs. Updated {dateLabel(data.evaluation_health.coverage.checked_at)}. Rules continue while AI is pending. Release alerts bypass this queue.</p>}
             {data.evaluation_health?.resolved_model && <p className="subtle">Last successful model: {data.evaluation_health.resolved_model}</p>}
             {data.evaluation_health?.last_error && <p className="source-error">{data.evaluation_health.last_error}</p>}
             {(data.evaluation_health?.comparisons || []).map((c:any) => <div className="evaluation-comparison" key={c.article_id + c.evaluated_at}>

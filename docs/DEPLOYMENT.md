@@ -74,3 +74,7 @@ pnpm smoke:production
 ```
 
 Browser checks should also pass on a supported runner. Keep secrets out of argv/logs; never deploy a normal Sites build to the standalone Worker.
+
+## Saved discovery preferences
+
+Administrator mode and limits are stored in Supabase `ss_settings`, not the frontend bundle. Worker/collector redeployment does not run seed imports, bootstrap accounts or migrations, and preserves the saved Apply/Compare/Off selection. GitHub deployment retains runtime secrets and does not reset the persistent attempt ledger. Fresh independent installations remain opt-in with provider budgets at zero. Never rerun the team seed import to change live discovery preferences.

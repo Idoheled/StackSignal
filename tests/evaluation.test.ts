@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { publicTeam, publicInput, evaluationRequest, parseEvaluation, effectiveScore, evaluationCandidates, MAX_INPUT_BYTES } from "../supabase/functions/_shared/evaluation.ts";
+import { publicTeam, publicInput, evaluationRequest, parseEvaluation, effectiveScore, evaluationCandidates, MAX_INPUT_BYTES, nextEvaluationAt, samePublicInput } from "../supabase/functions/_shared/evaluation.ts";
 const text = "This reproducible guide configures KV cache offloading and compares latency under controlled request concurrency. ";
 const input = publicInput({title:"Cache engineering",kind:"Discovery",reference_meta:{link_status:"search_result"}},text)!;
 const result = {topic:"Inference",score:90,confidence:"high",depth:"advanced",decision:"useful",summary:"Cache offloading guidance.",reason:"Relevant cache engineering.",action:"Review the concurrency comparison.",evidence:"configures KV cache offloading"};
@@ -15,6 +15,8 @@ test("evaluation discloses public allowlisted context and bounded excerpts witho
   assert.equal(request.generationConfig.maxOutputTokens,650);assert.equal(request.generationConfig.thinkingConfig.thinkingLevel,"LOW");
   assert.equal("tools" in request,false);assert.equal(request.store,false);
   assert.equal(publicInput({title:"short"},"tiny"),null);
+  assert(samePublicInput(input,{scope:input.scope,text:input.text,title:input.title}),"JSONB key order must not invalidate cached input");
+  assert(!samePublicInput(input,{...input,text:input.text+" changed"}));
 });
 test("evaluation rejects invented evidence, incomplete or malformed output; accepts explicit uncertainty",()=>{
   assert.deepEqual(parseEvaluation(output(result),input),result);
@@ -36,4 +38,17 @@ test("sampling reserves attention for low keyword exploration while avoiding gua
   assert.equal(evaluationCandidates(rows,1)[0].id,"borderline");
   assert.equal(evaluationCandidates(rows,2)[0].id,"unfamiliar");
   assert.equal(evaluationCandidates(rows,0).length,3);
+});
+
+test("pacing spreads remaining monthly attempts, respects daily spacing and rolls into a new month",()=>{
+  const now=Date.parse("2026-10-11T11:00:00Z"), last="2026-10-11T10:00:00Z";
+  const next=nextEvaluationAt({used_month:1,last_attempt:last},4,100,now);
+  assert(next>=Date.parse(last)+6*3600000);
+  assert.equal(nextEvaluationAt({used_month:100,last_attempt:last},4,100,now),Date.parse("2026-11-01T00:00:00Z"));
+  assert.equal(nextEvaluationAt({used_month:0},4,100,now),0);
+  assert.equal(nextEvaluationAt({used_month:1,last_attempt:last},1,100,now),Date.parse(last)+86400000);
+  const feb=Date.parse("2028-02-01T00:00:00Z");
+  assert.equal(nextEvaluationAt({used_month:99,last_attempt:"2028-02-01T00:00:00Z"},4,100,feb),Date.parse("2028-03-01T00:00:00Z"));
+  const rollover=nextEvaluationAt({used_month:0,last_attempt:"2026-10-31T23:00:00Z"},4,100,Date.parse("2026-11-01T01:00:00Z"));
+  assert.equal(rollover,Date.parse("2026-11-01T05:00:00Z"));
 });

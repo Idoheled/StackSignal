@@ -337,7 +337,9 @@ test("PostgreSQL access, isolation, invitation and concurrency invariants", asyn
     await fails(() => action("profile_save",{gemini_daily_limit:5}),"Invalid");
     await fails(() => action("profile_save",{gemini_monthly_limit:101}),"Invalid");
     await fails(() => action("profile_save",{gemini_mode:"automatic"}),"Invalid");
-    await action("profile_save",{gemini_mode:"shadow",gemini_daily_limit:4,gemini_monthly_limit:100});
+    await action("profile_save",{gemini_mode:"rerank",gemini_daily_limit:4,gemini_monthly_limit:100});
+    await action("profile_save",{min_score:60});
+    assert.equal((await action("admin")).profile.gemini_mode,"rerank","unrelated profile updates preserve the saved Apply setting");
     await fails(() => db.query("select ss_reserve_evaluation($1,$2,4,100)",[article,"a".repeat(64)]),"permission denied");
     await fails(() => db.query("select * from ss_private.evaluation_attempts"),"permission denied");
     await db.exec("reset role");

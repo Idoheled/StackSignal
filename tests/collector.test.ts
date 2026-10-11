@@ -162,7 +162,7 @@ test("semantic sweep is cached, comparison-only, private-context safe and pauses
   const excerpt="This reproducible guide configures KV cache offloading and compares latency under controlled request concurrency.";
   const source={title:"Cache engineering",text:excerpt,scope:"search_snippet"};
   let mode="shadow", daily=4, provider=200, calls=0, row:any={id:"public-article",score:70,kind:"Discovery",content_hash:"a".repeat(64),reference_meta:{public_evaluation_input:source}};
-  let health:any={}, used=0, race=false;
+  let health:any={}, used=0, race=false, lastAttempt:string|undefined;
   const writes:any[]=[];
   globalThis.fetch=async(input,init)=>{
     const url=new URL(String(input)), body=init?.body?JSON.parse(String(init.body)):undefined;
@@ -180,7 +180,7 @@ test("semantic sweep is cached, comparison-only, private-context safe and pauses
     if(url.pathname.endsWith("ss_feedback_weights")) return Response.json({});
     if(url.pathname.endsWith("ss_enqueue_sources")) return Response.json(null);
     if(url.pathname.endsWith("ss_claim_jobs")) return Response.json([]);
-    if(url.pathname.endsWith("ss_evaluation_usage")) return Response.json({used_24h:used,used_month:used});
+    if(url.pathname.endsWith("ss_evaluation_usage")) return Response.json({used_24h:used,used_month:used,last_attempt:lastAttempt});
     if(url.pathname.endsWith("ss_reserve_evaluation")) {assert(body.daily_max<=4);assert(body.monthly_max<=100);used++;return Response.json(true);}
     if(url.pathname.endsWith("ss_settings")) {
       if(body) {if(body.key==="evaluation_health") health=body.value;return Response.json([body]);}
@@ -189,6 +189,11 @@ test("semantic sweep is cached, comparison-only, private-context safe and pauses
       return Response.json([]);
     }
     if(url.pathname.endsWith("ss_articles")) {
+      if(init?.method==="HEAD") return new Response(null,{headers:{"content-range":"0-0/1"}});
+      if(!url.searchParams.has("id")) {
+        assert.equal(url.searchParams.has("discovered_at"),false,"older public discoveries remain eligible");
+        assert.equal(url.searchParams.get("order"),"discovered_at.asc,id.asc");
+      }
       if(body) {writes.push(body);row={...row,...body};return Response.json([row]);}
       return Response.json([{...row,...(race && url.searchParams.has("id")?{content_hash:"changed"}:{})}]);
     }
@@ -202,9 +207,10 @@ test("semantic sweep is cached, comparison-only, private-context safe and pauses
     assert.equal(health.resolved_model,"gemini-3.8-flash");assert.equal(health.comparisons[0].resolved_model,"gemini-3.8-flash");
     assert.equal(health.comparisons[0].rules_score,70);assert.equal(health.comparisons[0].applied_score,70);
     await run();assert.equal(calls,1,"matching input is cached without another reservation or call");
-    row.reference_meta.evaluation=undefined;mode="rerank";await run();assert.equal(row.score,84);assert.equal(row.analysis_status,"ai");
+    lastAttempt=new Date().toISOString();await run();assert.equal(calls,1,"monthly pacing survives subsequent ticks");assert.equal(health.state,"pacing_wait");
+    lastAttempt=undefined;row.reference_meta.evaluation=undefined;mode="rerank";await run();assert.equal(row.score,84);assert.equal(row.analysis_status,"ai");
     row.reference_meta.evaluation=undefined;race=true;const before=writes.length;await run();assert.equal(writes.length,before,"changed content is not overwritten");
-    race=false;used=0;provider=429;await run();assert.equal(health.state,"cooldown");assert(!JSON.stringify(health).includes("provider details"));
+    race=false;used=0;provider=429;await run();assert.equal(health.state,"cooldown");assert(row.reference_meta.evaluation_failed_at,"failed inputs remain visible for inspection without retrying");assert(!JSON.stringify(health).includes("provider details"));
     const after=calls;await run();assert.equal(calls,after,"provider errors are not automatically retried");
     daily=0;health={};await run();assert.equal(calls,after,"paused integration makes no provider calls");
   } finally {globalThis.fetch=originalFetch;delete environment.GEMINI_API_KEY;}

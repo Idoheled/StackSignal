@@ -14,7 +14,7 @@ The evaluator uses **`gemini-flash-latest`**, as requested by the owner. Google 
 | Compare only (`shadow`) | Store the AI assessment and show recent comparisons in Administration → Health; feed scores stay unchanged |
 | Apply (`rerank`) | For future successful, high-confidence evaluations with sufficient evidence, blend 70% semantic score and 30% rules score; retain rules for uncertain results |
 
-Begin with comparison mode. Review the reasons, supporting excerpts and disagreements before enabling ranking changes in Administration → Coverage. Changing mode does not bulk rerank existing cached results or trigger a paid re-evaluation of the library. Release alerts are excluded from sampling and keep their existing guarantees. No evaluation deletes or hides a record.
+Separate installations should begin with comparison mode. The owner has enabled Apply in the existing workspace. The saved mode and ceilings live in PostgreSQL and survive frontend and collector redeployments; deployment does not reseed or overwrite them. Future administrator changes to Off or Compare are also preserved. Changing mode does not bulk rerank existing cached results or trigger a paid re-evaluation of the library. Release alerts are excluded from sampling and keep their existing guarantees. No evaluation deletes or hides a record.
 
 ## Hard usage controls
 
@@ -22,7 +22,7 @@ Begin with comparison mode. Review the reasons, supporting excerpts and disagree
 | --- | --- |
 | Generation attempts | At most 4 in a **rolling 24-hour window** |
 | Monthly attempts | At most 100 per UTC calendar month |
-| Spacing | At least one hour between attempts across all collector runs |
+| Spacing | At least 24 hours divided by the configured daily ceiling, and longer when needed to spread remaining monthly attempts |
 | Per collector tick | At most one generation request |
 | Public source excerpt | 6,000 UTF-8 bytes, plus a title of at most 500 bytes |
 | Output | At most 650 generation tokens, low thinking |
@@ -31,11 +31,15 @@ Begin with comparison mode. Review the reasons, supporting excerpts and disagree
 
 Administrators can lower the daily/monthly ceilings or pause evaluation at any time. The private attempt ledger reserves calls atomically under a Postgres transaction lock, so concurrent ticks cannot bypass limits. Failures and interrupted runs still consume reservations. Identical article/input claims remain in the ledger for up to 90 days; valid cached results avoid repeat calls even beyond that period. Removing an article does not erase its usage reservation. Generation caps cover this application, not other clients sharing your Google project. Health reports attempts, latest provider state and the latest successful comparisons; token usage is recorded with each successful evaluation.
 
-A 100-attempt monthly ceiling may pause evaluation before the end of a month if the full four attempts are used daily. There is no catch-up burst. Visitor count, library browsing and refreshing the website do not cause Gemini requests.
+The collector paces remaining attempts across the rest of the UTC month. Its next opportunity is the previous attempt plus the larger of: one hour, 24 hours divided by the daily ceiling, or the time from that attempt to month-end divided by remaining monthly attempts. A previous-month attempt contributes only the daily spacing. This avoids routinely consuming the entire monthly allowance early, without a catch-up burst. The independent atomic ledger still enforces all hard caps and includes failures. Visitor count, browsing, deployments and refreshing the website do not reset budgets or cause Gemini requests.
+
+These limits are **StackSignal limits**, not a measurement of Google's quota. Google enforces project/model-specific RPM, TPM and RPD, with RPD resetting at midnight Pacific time; actual capacity can change. Check AI Studio's active quota view and share the values to assess headroom. There is no guarantee of unlimited capacity or zero 429 responses from a changing alias. Keep the API project Free: unavailable capacity does not justify enabling billing.
 
 ## Sampling and evaluation
 
-The sweep considers up to 200 newest non-deleted discoveries from the last seven days that have collector-captured public input. UTC hours rotate preference between strong rules matches, borderline matches, exploration and strong matches. A preferred lane falls back to available eligible candidates. Existing cached/claimed inputs are skipped. This is conservative sampling, not evaluation of every result or exhaustive research.
+The sweep takes the oldest 50 pending, non-deleted records with collector-captured public input. There is no seven-day expiry for this queue. Attempt counts rotate preference between strong rules matches, borderline matches, exploration and strong matches, so lane rotation does not depend on the scheduled hour. A preferred lane falls back to available candidates. Reviewed inputs are retained as cached assessments; changed public source input clears the old assessment and returns to eligibility. Failed inputs are flagged for inspection and excluded from automatic retries until their public input changes or an operator resolves them. Releases and records without public input are excluded.
+
+Administration → Health shows eligible, reviewed, pending and failed counts, refreshed by the collector. Counts are dated snapshots, not guaranteed simultaneous totals. All discoveries continue through normal rules-based ranking and release monitoring while AI waits. A growing arrival rate can exceed the small AI budget: durable queuing prevents age-based loss, but cannot guarantee timely AI review of every link or complete internet coverage. With 82 eligible records and one reviewed at activation, the backlog alone would require at least 21 daily-cap days, even with no further arrivals or failures; monthly pacing may take longer.
 
 Exploration search results with a substantive excerpt (at least 120 characters) may be retained even with weak keyword overlap, after URL and noise checks. They remain below the feed threshold unless a confident semantic evaluation promotes them in Apply mode. This gives unfamiliar approaches a route into consideration without widening automatic destination-fetch permissions.
 
