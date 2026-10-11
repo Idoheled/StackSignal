@@ -1,8 +1,11 @@
 import { TEAM_PROFILE, TEAM_STACK } from "../../../lib/coverage.ts";
 import { TOPIC_TERMS } from "../../../lib/domain.ts";
 
-export const EVALUATOR_VERSION = "semantic-v2";
+export const EVALUATOR_VERSION = "semantic-batch-v3";
 export const EVALUATION_MODEL = "gemini-flash-latest";
+export const MAX_BATCH_SIZE = 5;
+export const DAILY_REQUEST_CAP = 16;
+export const MONTHLY_REQUEST_CAP = 496;
 export const MAX_INPUT_BYTES = 6000;
 export const MAX_OUTPUT_TOKENS = 650;
 export type PublicInput = { title: string; text: string; scope: "search_snippet" | "publisher_excerpt" | "repository_metadata" };
@@ -16,7 +19,7 @@ export function boundedText(text: string, bytes: number) {
 }
 /** Only collector-fetched public text. Never fall back to user-written titles, notes or submissions. */
 export function publicInput(item: any, text: string): PublicInput | null {
-  if (text.length < 80) return null;
+  if (text.length < 40) return null;
   return { title: boundedText(String(item.public_title || item.title || ""), 500), text: boundedText(text, MAX_INPUT_BYTES),
     scope: item.reference_meta?.link_status === "search_result" ? "search_snippet" :
       item.kind === "Repository" ? "repository_metadata" : "publisher_excerpt" };
@@ -53,6 +56,31 @@ export function parseEvaluation(out: any, input: PublicInput) {
   } else if (obj.evidence.length<10 || !input.text.includes(obj.evidence)) throw new Error("Unsupported evidence");
   return obj;
 }
+export type BatchInput = { id: string; input: PublicInput };
+/** A normal synchronous generation containing independent assessments, not Google's paid Batch API. */
+export function batchEvaluationRequest(inputs: BatchInput[], team: ReturnType<typeof publicTeam>) {
+  if (!inputs.length || inputs.length > MAX_BATCH_SIZE || new Set(inputs.map(i=>i.id)).size !== inputs.length) throw new Error("Invalid batch");
+  const request = evaluationRequest(inputs[0].input,team);
+  request.systemInstruction.parts[0].text += " Evaluate EACH public source independently, including followed releases. Return one result per supplied id. Never transfer evidence or conclusions between sources. A release is useful only when its actual changes apply to the team; a version number alone is insufficient evidence.";
+  request.contents[0].parts[0].text = JSON.stringify({public_team:team,public_sources:inputs.map(i=>({id:i.id,public_source:i.input}))});
+  return {...request,generationConfig:{...request.generationConfig,maxOutputTokens:Math.min(4500,900*inputs.length),
+    responseFormat:{text:{mimeType:"APPLICATION_JSON",schema:{type:"object",additionalProperties:false,required:["results"],properties:{results:{type:"array",minItems:inputs.length,maxItems:inputs.length,
+      items:{type:"object",additionalProperties:false,required:["id","assessment"],properties:{id:{type:"string",enum:inputs.map(i=>i.id)},assessment:schema}}}}}}}}};
+}
+export function parseBatchEvaluation(out:any, inputs:BatchInput[]) {
+  if(out.candidates?.[0]?.finishReason!=="STOP") throw new Error("Incomplete batch");
+  const obj=JSON.parse(out.candidates[0].content?.parts?.filter((p:any)=>!p.thought).map((p:any)=>p.text||"").join("")||"{}");
+  if(!obj || Object.keys(obj).join()!=="results" || !Array.isArray(obj.results) || obj.results.length>inputs.length) throw new Error("Invalid batch output");
+  const expected=new Map(inputs.map(i=>[i.id,i.input])),seen=new Set<string>(),valid=new Map<string,any>(),invalid:string[]=[];
+  for(const entry of obj.results) {
+    if(!entry || Object.keys(entry).sort().join()!=="assessment,id" || !expected.has(entry.id) || seen.has(entry.id)) throw new Error("Unknown or duplicate batch identity");
+    seen.add(entry.id);
+    try { valid.set(entry.id,parseEvaluation({candidates:[{finishReason:"STOP",content:{parts:[{text:JSON.stringify(entry.assessment)}]}}]},expected.get(entry.id)!)); }
+    catch { invalid.push(entry.id); }
+  }
+  for(const id of expected.keys()) if(!seen.has(id)) invalid.push(id);
+  return {valid,invalid};
+}
 export function effectiveScore(rules: number, result: any, mode: string, release: boolean) {
   if (mode!=="rerank" || release || result.decision==="insufficient_evidence" || result.confidence!=="high") return rules;
   return Math.max(0,Math.min(98,Math.round(rules*0.3+result.score*0.7)));
@@ -63,20 +91,18 @@ export function candidateLane(row: any) {
 }
 export function evaluationCandidates(rows: any[], attempt: number) {
   const lane = ["strong","borderline","explore","strong"][attempt%4];
-  return rows.filter(r=>r.reference_meta?.public_evaluation_input && !r.reference_meta?.alert_kind && r.kind!=="Release")
+  return rows.filter(r=>r.reference_meta?.public_evaluation_input)
     .sort((a,b)=>Number(candidateLane(b)===lane)-Number(candidateLane(a)===lane) ||
       (lane==="strong" ? b.score-a.score : a.score-b.score) || String(b.discovered_at).localeCompare(String(a.discovered_at)));
 }
 
-/** Spread remaining attempts over the month; deployments and visitors do not reset usage. */
+/** On-demand queue; atomic database ceilings enforce the day/month budget. No automatic reset on deployment. */
 export function nextEvaluationAt(usage: any, daily: number, monthly: number, now = Date.now()) {
   const current = new Date(now);
-  const start = Date.UTC(current.getUTCFullYear(), current.getUTCMonth(), 1);
   const end = Date.UTC(current.getUTCFullYear(), current.getUTCMonth()+1, 1);
-  const remaining = monthly - Number(usage.used_month || 0);
-  if (daily <= 0 || remaining <= 0) return end;
+  if (daily <= 0 || Number(usage.used_month || 0) >= monthly) return end;
   const last = Date.parse(usage.last_attempt || "");
   if (!Number.isFinite(last)) return 0;
-  const monthSpacing = last >= start ? Math.ceil((end-last)/remaining) : 0;
-  return last + Math.max(3600000, Math.ceil(86400000/daily), monthSpacing);
+  if (Number(usage.used_24h||0)>=daily || Number(usage.used_provider_day||0)>=daily) return Math.max(now+300000,last+86400000);
+  return last + 300000;
 }

@@ -70,7 +70,11 @@ flowchart TD
   Queue --> Fetch["URL, time, size and quota bounds"]
   Fetch --> Normalize["Canonical URL, provenance and dates"]
   Normalize --> Rank["Terms, weights and bounded feedback"]
-  Rank --> Library["Articles and personal suggestions"]
+  Rank --> Library["Stored articles and library"]
+  Rank --> Review["Batched Gemini review"]
+  Review --> Admit{"Useful and supported?"}
+  Admit -->|Yes| Feed["Personal suggestions"]
+  Admit -->|No| Pending["Withheld or enriched"]
   Fetch --> Deferred["Retry or quota deferral"]
   Deferred --> Queue
 ```
@@ -92,7 +96,7 @@ Each authorized tick enqueues due watches, performs bounded daily maintenance/di
 | Fetch/parser failure | Record the error and retry within queue bounds |
 | Partial required pagination | Keep the previous ETag until the required pages succeed |
 
-Public repository discovery runs bounded queries over recently active, non-archived/non-fork public projects. Alternating popularity/recency broadens results, but does not guarantee repository quality or exhaustive coverage. Tavily web discovery uses bounded focused searches, rotating recent/exploration windows, canonical deduplication and source/snippet provenance. Provider calls require credentials and explicit budgets. Gemini evaluation is a separate, key-gated sampled sweep. Compare mode preserves ranking; explicit Apply mode uses only confident results. See [semantic evaluation](GEMINI_EVALUATION.md). See [web discovery](WEB_DISCOVERY.md).
+Public repository discovery runs bounded queries over recently active, non-archived/non-fork public projects. Alternating popularity/recency broadens results, but does not guarantee repository quality or exhaustive coverage. Tavily web discovery uses bounded focused searches, rotating recent/exploration windows, canonical deduplication and source/snippet provenance. Provider calls require credentials and explicit budgets. Gemini evaluation is a separate, key-gated batched review queue. Every suggestion requires useful, evidenced AI review; Compare preserves stored ranking and Apply blends confident results. See [semantic evaluation](GEMINI_EVALUATION.md). See [web discovery](WEB_DISCOVERY.md).
 
 ### Active web-search architecture
 
@@ -197,8 +201,8 @@ For precise controls and outstanding verification, use [SECURITY.md](SECURITY.md
 
 ### Conservative evaluation architecture
 
-The public excerpt is captured at ingestion. A separate sweep selects recent candidates across strong, borderline and exploration lanes, checks the versioned input cache and reserves a request through service-only Postgres RPCs. A private, RLS-enabled attempt ledger plus transaction lock enforces rolling 24-hour, calendar-month and one-hour limits across concurrent ticks. The provider receives only the public excerpt and allowlisted engineering context. Strict evidence/structure validation precedes a guarded article update. Source enrichment races cannot overwrite changed content. Administration receives health and recent comparisons only after its role/MFA gate. Failure cooldowns leave the normal collector running. [The complete flow and operating modes](GEMINI_EVALUATION.md) document sampling, caching and the privacy boundary.
+The public excerpt is captured at ingestion. A separate sweep loads the oldest pending window across strong, borderline and exploration lanes and atomically reserves up to five independent assessments in one request. Private RLS-enabled request/claim ledgers enforce rolling 24-hour, Pacific-day, UTC-month and five-minute limits across concurrent ticks. The database admits only useful, sufficiently supported reviews into every suggested-feed mode, including releases. The provider receives only the public excerpt and allowlisted engineering context. Strict evidence/structure validation precedes a guarded article update. Source enrichment races cannot overwrite changed content. Administration receives health and recent comparisons only after its role/MFA gate. Failure cooldowns leave the normal collector running. [The complete flow and operating modes](GEMINI_EVALUATION.md) document sampling, caching and the privacy boundary.
 
 ### Persistent evaluation queue and pacing
 
-Administrator Apply/Compare/Off settings live in `ss_settings` and are read by each collector invocation. Website deployment has no profile-seeding step. The collector reads the oldest bounded pending public-input window, rotates lanes by attempt count, and retains older candidates beyond the weekly feed window. Successful assessments are cached; changed source inputs become pending again. Failed inputs are tracked separately for inspection. A month-aware next-attempt time gates calls before the existing atomic reservation RPC; the database still enforces rolling/day, monthly, hourly and identical-input limits across concurrent invocations. Health exposes dated coverage counts and pacing state after administrator authorization.
+Administrator Apply/Compare/Off settings live in `ss_settings` and are read by each collector invocation. Website deployment has no profile-seeding step. The collector reads the oldest bounded pending public-input window, rotates lanes by attempt count, and retains older candidates beyond the weekly feed window. Successful assessments are cached; changed source inputs become pending again. Failed inputs are tracked separately for inspection. A five-minute gate supports on-demand evaluation; the database enforces rolling/Pacific-day, monthly and per-input retry limits across concurrent invocations. Separate bounded extraction jobs recover public text for older references. Source updates clear stale reviews; metadata-only updates preserve cached ranking. Health exposes dated coverage counts and pacing state after administrator authorization.

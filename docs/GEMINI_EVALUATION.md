@@ -1,86 +1,75 @@
-# Conservative semantic evaluation
+# AI-reviewed discovery
 
-Gemini evaluates a small sample of public discoveries against the team's engineering mission. Tavily still finds links; Gemini does not search, browse, execute tools or validate performance claims. Normal collection continues when evaluation is paused or unavailable.
+StackSignal uses Tavily, public GitHub discovery and source watches to find links. Gemini **evaluates public material already captured by the collector**; it is not the search engine or an independent fact checker.
 
-The evaluator uses **`gemini-flash-latest`**, as requested by the owner. Google moves this alias to newer Flash releases automatically, including potentially preview or experimental releases. This follows future releases without editing the model ID. Google documents free input/output for the current Gemini 3.8 Flash model as checked on October 11, 2026; the actual resolved version is recorded from each successful response and shown in Administration → Health.
+## What members see
 
-**Keep the Google API project on the Free tier for zero spend.** The application cannot infer billing status or pricing from an API key. A future alias change is not a promise of permanent free availability: unavailable models, exhausted quota or incompatible responses pause evaluation for 24 hours and leave discovery running. There is no paid or alternate-model fallback. Enabling paid billing on that project would remove this zero-spend protection, even with these small request caps. A consumer subscription does not establish API entitlement.
+Every suggested-feed mode, including releases and All reviewed, admits only completed, useful assessments with medium/high confidence, practical/advanced depth, an exact source quote and an AI score meeting the administrator's minimum score. Pending links, low-confidence judgments, introductory/tangential results, insufficient evidence and errors stay out of suggestions. Saved library links remain accessible, including references members saved before this policy. Library titles and notes are not submitted to Google.
 
-## Operating modes
+This week retains the publisher's seven-day date window. New to radar uses the assessment date, so a backlogged or undated reference can surface when its review completes without inventing a publication date. All reviewed has no age cutoff. Followed-release alerts and unread counts require review too, and respect prerelease settings.
 
-| Mode | Behavior |
+Apply mode uses the existing 70% AI / 30% rules blend for high-confidence assessments; medium-confidence assessments preserve stored rules scores. Admission uses the AI decision and score independently, so useful unfamiliar tools can enter despite weak keyword overlap. Cards show the AI assessment score and label it AI reviewed. Evaluate without changing ranking still gates suggestions; Off pauses new evaluations but retains previously admitted links.
+
+## Request and coverage budgets
+
+| Control | Enforcement |
 | --- | --- |
-| Off | No generation requests |
-| Compare only (`shadow`) | Store the AI assessment and show recent comparisons in Administration → Health; feed scores stay unchanged |
-| Apply (`rerank`) | For future successful, high-confidence evaluations with sufficient evidence, blend 70% semantic score and 30% rules score; retain rules for uncertain results |
+| Model | `gemini-flash-latest`; last resolved model recorded in Health |
+| Batch size | Up to five links in one synchronous `generateContent` request |
+| Daily requests | At most 16 in a rolling 24 hours **and** the Pacific calendar day |
+| Monthly requests | At most 496 per UTC calendar month; administrator may lower it |
+| Spacing | At least five minutes globally, one request per collector tick |
+| Public source input | At most 6,000 UTF-8 bytes of text and 500 bytes of title per link |
+| Output | 900 generation tokens per link, at most 4,500 per request; LOW thinking |
+| Timeout | 30 seconds; no immediate provider retries |
+| Input retries | At most three reservations for an unchanged article/context/input; six-hour lease |
+| Provider errors | HTTP 5xx: 15-minute global cooldown; quota/auth/other HTTP errors: 24 hours; failures consume slots |
+| Malformed batch | One-hour global cooldown; affected inputs wait at least six hours |
 
-Separate installations should begin with comparison mode. The owner has enabled Apply in the existing workspace. The saved mode and ceilings live in PostgreSQL and survive frontend and collector redeployments; deployment does not reseed or overwrite them. Future administrator changes to Off or Compare are also preserved. Changing mode does not bulk rerank existing cached results or trigger a paid re-evaluation of the library. Release alerts are excluded from sampling and keep their existing guarantees. No evaluation deletes or hides a record.
+The owner's October 11, 2026 AI Studio screenshots show **5 RPM, 250,000 input TPM and 20 RPD** for Gemini 3.8 Flash on a Free-tier project. Sixteen daily requests leave four requests of daily headroom. These quotas are shared by every client in the Google project and can change when the latest alias changes. Keep the project dedicated to StackSignal and on the Free tier. Application ceilings cannot prove or control the project's billing tier. There is no paid fallback or alternate-model retry.
 
-## Hard usage controls
+**Sixteen requests × five links gives an upper bound of 80 link assessments/day, not a throughput guarantee.** Small/failed batches, insufficient excerpts, unavailable sources and arrivals above capacity can cause delays. A monthly request ceiling is an application safeguard, not a Google monthly free allowance. Do not claim exhaustive discovery or instant review regardless of volume.
 
-| Control | Limit |
-| --- | --- |
-| Generation attempts | At most 4 in a **rolling 24-hour window** |
-| Monthly attempts | At most 100 per UTC calendar month |
-| Spacing | At least 24 hours divided by the configured daily ceiling, and longer when needed to spread remaining monthly attempts |
-| Per collector tick | At most one generation request |
-| Public source excerpt | 6,000 UTF-8 bytes, plus a title of at most 500 bytes |
-| Output | At most 650 generation tokens, low thinking |
-| Provider/validation failure | Keep rules; pause for 24 hours; no immediate retry |
-| Input reuse | Cache by public input, public team context, evaluator version and model |
+## Durable queue and extraction
 
-Administrators can lower the daily/monthly ceilings or pause evaluation at any time. The private attempt ledger reserves calls atomically under a Postgres transaction lock, so concurrent ticks cannot bypass limits. Failures and interrupted runs still consume reservations. Identical article/input claims remain in the ledger for up to 90 days; valid cached results avoid repeat calls even beyond that period. Removing an article does not erase its usage reservation. Generation caps cover this application, not other clients sharing your Google project. Health reports attempts, latest provider state and the latest successful comparisons; token usage is recorded with each successful evaluation.
+The sweep loads the oldest 50 eligible pending public inputs, rotates preference among strong/borderline/exploration lanes and submits up to five atomically reserved inputs. Already leased inputs are skipped within the window, so an interrupted request does not unnecessarily block all other work. There is no seven-day queue expiry.
 
-The collector paces remaining attempts across the rest of the UTC month. Its next opportunity is the previous attempt plus the larger of: one hour, 24 hours divided by the daily ceiling, or the time from that attempt to month-end divided by remaining monthly attempts. A previous-month attempt contributes only the daily spacing. This avoids routinely consuming the entire monthly allowance early, without a catch-up burst. The independent atomic ledger still enforces all hard caps and includes failures. Visitor count, browsing, deployments and refreshing the website do not reset budgets or cause Gemini requests.
+Existing references without public text enter a separate bounded extraction queue: up to eight records per tick, once per record, only for existing approved public hosts. PDFs and unsupported hosts remain visible in administrator coverage as missing public input. Public GitHub repository extraction uses API metadata and a bounded public README when available. Imported chat text, private notes and arbitrary user titles are never evaluation inputs.
 
-These limits are **StackSignal limits**, not a measurement of Google's quota. Google enforces project/model-specific RPM, TPM and RPD, with RPD resetting at midnight Pacific time; actual capacity can change. Check AI Studio's active quota view and share the values to assess headroom. There is no guarantee of unlimited capacity or zero 429 responses from a changing alias. Keep the API project Free: unavailable capacity does not justify enabling billing.
+A valid insufficient-evidence search snippet may request one richer approved-host fetch. Changed captured public text clears the old assessment and its error counters, returning the link to evaluation. Metadata-only changes preserve the assessment and reapply its ranking without another Gemini call. Failed unchanged inputs receive bounded delayed retries; after three reservations they remain withheld for inspection. No model-selected URL expands the fetch allowlist.
 
-## Sampling and evaluation
+## Validation and concurrency
 
-The sweep takes the oldest 50 pending, non-deleted records with collector-captured public input. There is no seven-day expiry for this queue. Attempt counts rotate preference between strong rules matches, borderline matches, exploration and strong matches, so lane rotation does not depend on the scheduled hour. A preferred lane falls back to available candidates. Reviewed inputs are retained as cached assessments; changed public source input clears the old assessment and returns to eligibility. Failed inputs are flagged for inspection and excluded from automatic retries until their public input changes or an operator resolves them. Releases and records without public input are excluded.
+Each batch response binds an assessment to a supplied article id. Unknown or duplicate ids reject the whole response. Missing results and per-item validation failures are withheld while independently valid items can be saved. Each evidence quote must occur in **that item's** excerpt, preventing evidence from another batch member from being accepted. A complete STOP response, exact field set, types, enum values, score bounds and length limits are required.
 
-Administration → Health shows eligible, reviewed, pending and failed counts, refreshed by the collector. Counts are dated snapshots, not guaranteed simultaneous totals. All discoveries continue through normal rules-based ranking and release monitoring while AI waits. A growing arrival rate can exceed the small AI budget: durable queuing prevents age-based loss, but cannot guarantee timely AI review of every link or complete internet coverage. With 82 eligible records and one reviewed at activation, the backlog alone would require at least 21 daily-cap days, even with no further arrivals or failures; monthly pacing may take longer.
+Service-only `ss_reserve_evaluation_batch` uses the same transaction advisory lock for global spacing, rolling/Pacific/month ceilings and input claims. The request ledger counts calls; the claim ledger counts individual input reservations. Both private tables have RLS enabled and no client grants or policies. Historical single-link reservations carry into request accounting; the retired single-link reservation RPC always refuses new calls.
 
-Exploration search results with a substantive excerpt (at least 120 characters) may be retained even with weak keyword overlap, after URL and noise checks. They remain below the feed threshold unless a confident semantic evaluation promotes them in Apply mode. This gives unfamiliar approaches a route into consideration without widening automatic destination-fetch permissions.
+Before saving, the collector rereads the article and checks deletion, content hash and captured source fields. The update is also conditioned on the hash. Another source update cannot receive an assessment of stale text. Deployments, visitors and refreshes neither reset the ledger nor generate evaluations.
 
-The request uses `LOW` thinking: the current Flash model rejects the Lite model's `MINIMAL` setting. The 650-token generation cap includes any thinking budget consumed by the provider; incomplete output is rejected instead of retried. Alias changes can affect response compatibility or quality. Cached assessments remain historical: model upgrades do not re-evaluate the entire library.
+## Privacy
 
-The response separates semantic relevance, engineering depth, confidence and insufficient evidence. It includes a grounded summary, why it matters, a possible next action and an exact quote from the supplied excerpt. The quote is checked locally, along with strict field types, ranges, lengths and a completed response. Structured output is not proof that the model's judgment is correct.
+Only a fixed engineering mission, recognized public stack/interest vocabulary, numeric topic priorities and collector-fetched public excerpts reach Google. Free-form interests, custom search queries, names, comments, chats and internal topology are excluded. Source instructions are untrusted data. Gemini receives no tools, browsing or workspace access. Free-tier provider data-use terms still apply to the public inputs.
 
-## Privacy and trust boundaries
+The API key remains a Supabase Edge Function secret, absent from browser assets, GitHub and logs. Structured output and a real quote substantiate relevance against an excerpt; they do not establish benchmark correctness or a complete-page review.
 
-- Inputs come from public search snippets, approved publisher excerpts and public repository metadata. Existing confirmed Tavily snippets can seed initial comparisons; imported chats and manual submissions without public extraction cannot.
-- Only the fixed engineering mission, stack, recognized public interest terms and numeric topic priorities are sent. Arbitrary free-form profile content, custom queries, usernames, notes, comments, raw chats and internal topology are excluded.
-- Source text is untrusted. No tools or model-selected network fetches are provided. A search snippet is labeled as a snippet, never a full-page review.
-- The Gemini key stays in Supabase function secrets. It is not a browser variable, Cloudflare frontend secret, repository file or GitHub Actions secret.
-- Google's free-tier terms may permit use of submitted data to improve products. A free API project is required for strict zero spend; linking paid billing is outside this setup.
+## Administration and activation
 
-## Activation
+The existing workspace uses Apply, 16 requests/day and 496/month. All settings persist in PostgreSQL across redeployments. Independent installations remain Off with zero daily budget until an administrator configures a verified Free-tier API project and `GEMINI_API_KEY` in function secrets.
 
-1. Open [Google AI Studio API keys](https://aistudio.google.com/api-keys). Use a project marked **Free** and verify the available quota for `gemini-flash-latest` in its rate-limit view. Do not enable paid billing for zero spend.
-2. Set `GEMINI_API_KEY` in the Supabase project's **Edge Functions → Secrets**. Do not put it in a URL or frontend configuration. Existing `GEMINI_MODEL` secrets are ignored; the Flash Latest alias is fixed in code.
-3. In Administration → Coverage choose **Compare only**, daily ceiling **4** (or lower) and monthly ceiling **100** (or lower). Either ceiling zero disables requests.
-4. Verify Health and the first real comparison. An API key cannot establish billing status by itself; confirm the project tier before activation.
-5. Assess a sample over several days before opting into Apply mode. Narrow free-tier quotas, 429 responses, invalid keys and unavailable models pause evaluation and preserve collection.
-
-## Architecture
+Health shows request usage, the current Pacific-day count, pending/reviewed/failed coverage, missing public extraction, last batch size, token usage, actual model version, error/cooldown and recent assessments. Counts are dated snapshots. A pause or quota limit can leave the feed temporarily empty; the UI explains pending review instead of claiming discovery is complete.
 
 ```mermaid
 flowchart TD
-  Public["Public discoveries and excerpts"] --> Rules["Rules and stored links"]
-  Rules --> Sample["Rotating candidate sample"]
-  Profile["Approved public team context"] --> Sample
-  Sample --> Cache["Input and version cache"]
-  Cache --> Reserve["Atomic rolling, month and hour limits"]
-  Reserve --> Gemini["Flash Latest: no tools"]
-  Gemini --> Validate["Strict JSON and exact evidence"]
-  Validate --> Compare["Admin comparisons"]
-  Validate --> Mode{"Apply mode and confident?"}
-  Mode -->|Yes| Blend["70% AI and 30% rules"]
-  Mode -->|No| Keep["Preserve rules score"]
-  Gemini -->|Failure| Pause["24-hour pause; collection continues"]
+  Sources["Search and watched sources"] --> Capture["Public extraction and rules"]
+  Capture --> Queue["Durable review queue"]
+  Queue --> Reserve["Atomic request budget and claims"]
+  Reserve --> Batch["Flash Latest: up to five links"]
+  Batch --> Validate["Per-link identity and evidence"]
+  Validate --> Admission{"Useful and supported?"}
+  Admission -->|Yes| Feed["Reviewed suggestions"]
+  Admission -->|No| Hold["Withheld or bounded enrichment"]
+  Hold --> Queue
+  Capture --> Library["Existing saved library"]
 ```
 
-Implementation: [evaluation helpers](../supabase/functions/_shared/evaluation.ts), [collector](../supabase/functions/collector/index.ts), [private reservations and permissions](../supabase/migrations/20261011104500_conservative_evaluation.sql). See [discovery rules](DISCOVERY.md), [architecture](ARCHITECTURE.md) and [security](SECURITY.md).
-
-Provider references: [models](https://ai.google.dev/gemini-api/docs/models), [pricing](https://ai.google.dev/gemini-api/docs/pricing), [rate limits](https://ai.google.dev/gemini-api/docs/rate-limits), [generation API](https://ai.google.dev/api/generate-content), [terms](https://ai.google.dev/gemini-api/terms).
+References: [Google rate limits](https://ai.google.dev/gemini-api/docs/rate-limits), [structured output](https://ai.google.dev/gemini-api/docs/structured-output), [billing](https://ai.google.dev/gemini-api/docs/billing), [architecture](ARCHITECTURE.md), [operations](OPERATIONS.md).

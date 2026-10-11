@@ -62,13 +62,13 @@ flowchart TD
 
 Before storing a search result, the collector checks typed fields, bounded lengths, canonical public HTTPS identity and at least 60 characters of usable excerpt. It rejects credentialed/private URLs, obvious portfolio/hiring/finance/promotional patterns and technical relevance below 45. Tracking variants of an already stored URL do not create another reference.
 
-Substantive exploration snippets may be retained below the normal rules threshold for semantic sampling; they remain out of the default feed unless promoted. The provider's relevance score is not copied into the card's match number. StackSignal computes its own score from the public title and excerpt; a later approved-host fetch can refresh metadata and ranking with page text. Unknown domains remain searchable references but are not automatically fetched or added to the approved-host list.
+Substantive exploration snippets may be retained below the normal rules threshold for semantic sampling; they remain out of suggestions until a useful, supported AI review admits them. The provider's relevance score is not copied into the card's match number. StackSignal computes its own score from the public title and excerpt; a later approved-host fetch can refresh metadata and ranking with page text. Unknown domains remain searchable references but are not automatically fetched or added to the approved-host list.
 
 A search excerpt retains provider, query, search window, hostname and date provenance. **Web search result** means the search provider returned it. **Link checked** means StackSignal subsequently fetched the destination. Neither label means its benchmark or technical claims were validated. Provider-reported dates remain distinguished from publisher-extracted dates; unknown dates stay unknown.
 
 ## 4. Exact stored-score rules
 
-The baseline classifier is deterministic; optional Gemini comparison mode leaves these scores unchanged. See [basicRelevance](../lib/domain.ts), [relevance.ts](../supabase/functions/_shared/relevance.ts) and [web-discovery.ts](../supabase/functions/_shared/web-discovery.ts).
+The baseline classifier is deterministic; optional Gemini comparison mode leaves stored scores unchanged while suggested-feed admission still requires useful AI review. See [basicRelevance](../lib/domain.ts), [relevance.ts](../supabase/functions/_shared/relevance.ts) and [web-discovery.ts](../supabase/functions/_shared/web-discovery.ts).
 
 | Stage | Current rule |
 | --- | --- |
@@ -91,7 +91,7 @@ A score of 98 can mean that a title/excerpt contains many relevant terms. It doe
 
 ## 5. What each person sees
 
-The configured minimum score is currently **55**, editable from 45 to 85. Weekly, radar and documentation-update views apply that threshold to the stored score. Followed-release alerts bypass this generic threshold because the administrator selected the dependency. Date/view/type filters and personal hidden state still apply. **All discoveries** bypasses the weekly date/minimum-score gates for stored items; it cannot restore a candidate that was never ingested.
+The administrator's minimum score (45…85) applies to the **AI assessment** for suggested-feed admission. Every feed mode requires useful, medium/high-confidence, practical/advanced material with validated evidence; releases receive the same review gate. All reviewed removes the date cutoff but never bypasses AI admission. Saved library references remain accessible independently. New to radar uses review time, so a queued older reference can surface after successful review without changing its publication date.
 
 The card displays the **stored score**. When sorting by relevance, the database adds a separate personal ordering adjustment: +2 per helpful item, otherwise −2 per hidden item, when that prior item shares a topic or tag; the total is capped at −12…+12. That adjustment changes order, not the number printed on the card. Recency sorting uses dates instead.
 
@@ -105,14 +105,14 @@ Saving or reading alone does not train the classifier. A submitted missed link c
 | --- | --- |
 | Missing a topic | Add/refine a web query; add a feed or release watch for an important dependency |
 | Too many tangential results | Narrow the query, adjust topic priorities/interests or raise the minimum score |
-| Interesting unfamiliar material is absent | Retain broad exploration queries and inspect New to radar / All discoveries |
+| Interesting unfamiliar material is absent | Retain broad exploration queries and inspect New to radar / All reviewed |
 | A result is personally irrelevant | Use Not relevant after confirmation; restore it through Hidden signals if needed |
 | No recent web discoveries | Check Health for key readiness, last success/error and quota deferral; check the monthly ceiling |
 | A useful article has no weekly entry | Check its publication date; an undated/older discovery belongs in New to radar rather than a fabricated publication week |
 
 Tavily uses basic searches, at most eight results per response, a hard 24-request UTC-day cap and a configured monthly cap no greater than 800. The current workspace uses 800. Reservations include failed attempts; other consumers of the Tavily account are outside these app limits. See [WEB_DISCOVERY.md](WEB_DISCOVERY.md) for secret configuration and provider billing boundaries.
 
-The [conservative Gemini evaluator](GEMINI_EVALUATION.md) is a separate optional layer: Flash Latest samples strong, borderline and unfamiliar discoveries with an atomic four-attempt rolling 24-hour cap, 100 monthly cap and one-hour spacing. Comparison mode preserves scores; Apply mode blends only confident, evidenced assessments. A free-tier API key is required. Enabling Tavily alone never enables Gemini.
+The [conservative Gemini evaluator](GEMINI_EVALUATION.md) is a separate optional layer: Flash Latest evaluates strong, borderline and unfamiliar discoveries in batches with an atomic 16-request rolling/Pacific-day cap, 496 monthly cap and five-minute spacing. Comparison mode preserves scores; Apply mode blends only confident, evidenced assessments. A free-tier API key is required. Enabling Tavily alone never enables Gemini.
 
 ## What “I don't know what I don't know” means here
 

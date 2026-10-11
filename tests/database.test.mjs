@@ -160,6 +160,8 @@ test("PostgreSQL access, isolation, invitation and concurrency invariants", asyn
         "insert into ss_articles(url,title,published_at,topic,score) values('https://kubernetes.io/docs/','OpenShift GPU operators',now(),'Platforms',70) returning id",
       )
     ).rows[0].id;
+    const review={topic:"Platforms",score:90,confidence:"high",depth:"advanced",decision:"useful",evidence:"Reviewed public engineering excerpt",evaluated_at:new Date().toISOString()};
+    await db.query("update ss_articles set reference_meta=$2::jsonb where id=$1",[article,JSON.stringify({evaluation:review})]);
     await as(writer);
     await action("save", { article_id: article, folder_id: child });
     const lib = await action("library", { folder: parent, q: "GPU" });
@@ -334,8 +336,8 @@ test("PostgreSQL access, isolation, invitation and concurrency invariants", asyn
     assert.deepEqual(profile.priorities, previousProfile.priorities);
     await fails(() => action("profile_save",{repo_queries:["a".repeat(161)]}),"Invalid");
     await fails(() => action("profile_save",{min_score:99}),"Invalid");
-    await fails(() => action("profile_save",{gemini_daily_limit:5}),"Invalid");
-    await fails(() => action("profile_save",{gemini_monthly_limit:101}),"Invalid");
+    await fails(() => action("profile_save",{gemini_daily_limit:17}),"Invalid");
+    await fails(() => action("profile_save",{gemini_monthly_limit:497}),"Invalid");
     await fails(() => action("profile_save",{gemini_mode:"automatic"}),"Invalid");
     await action("profile_save",{gemini_mode:"rerank",gemini_daily_limit:4,gemini_monthly_limit:100});
     await action("profile_save",{min_score:60});
@@ -344,26 +346,47 @@ test("PostgreSQL access, isolation, invitation and concurrency invariants", asyn
     await fails(() => db.query("select * from ss_private.evaluation_attempts"),"permission denied");
     await db.exec("reset role");
     await db.query("update ss_articles set reference_meta=reference_meta||$2::jsonb where id=$1",[article,JSON.stringify({public_evaluation_input:{text:"Public excerpt"}})]);
-    const reserve=async(k,d=4,m=100)=>(await db.query("select ss_reserve_evaluation($1,$2,$3,$4) ok",[article,k.repeat(64),d,m])).rows[0].ok;
-    assert.equal(await reserve("a",5),false,"hard cap cannot be bypassed with RPC arguments");
-    assert.equal(await reserve("a"),true);
-    assert.equal(await reserve("b"),false,"hourly gate spans different content");
-    for (const k of ["b","c","d"]) {
-      await db.exec("update ss_private.evaluation_attempts set attempted_at=attempted_at-interval '2 hours'");
-      assert.equal(await reserve(k),true);
+    await db.query("update ss_articles set content_hash=$2,reference_meta=reference_meta||'{\"evaluation\":null}'::jsonb where id=$1",[article,"a".repeat(64)]);
+    const batchIds=[article];
+    for(let i=1;i<5;i++) batchIds.push((await db.query("insert into ss_articles(url,title,content_hash,reference_meta) values($1,'Pending public link',$2,$3::jsonb) returning id",["https://kubernetes.io/test-batch-"+i,"a".repeat(64),JSON.stringify({public_evaluation_input:{text:"Public engineering excerpt"}})])).rows[0].id);
+    const items=k=>batchIds.map(id=>({id,cache_key:k.repeat(64),content_hash:"a".repeat(64)}));
+    const reserve=async(k,d=4,m=100)=>(await db.query("select ss_reserve_evaluation_batch($1::jsonb,$2,$3) value",[JSON.stringify(items(k)),d,m])).rows[0].value;
+    assert.equal((await reserve("a",17)).request_id,undefined,"hard cap cannot be bypassed");
+    assert.equal((await reserve("a")).items.length,5);
+    assert.equal((await db.query("select ss_evaluation_usage() value")).rows[0].value.used_24h,1,"five articles consume one request");
+    assert.equal((await reserve("b")).request_id,undefined,"global five minute gate");
+    await db.exec("update ss_private.evaluation_requests set attempted_at=attempted_at-interval '6 minutes'");
+    assert.equal((await reserve("a")).request_id,undefined,"claimed batch is not duplicated by concurrent/repeated runs");
+    for(const k of ["b","c","d"]) {
+      await db.exec("update ss_private.evaluation_requests set attempted_at=attempted_at-interval '6 minutes'");
+      assert((await reserve(k)).request_id);
     }
-    await db.exec("update ss_private.evaluation_attempts set attempted_at=attempted_at-interval '2 hours'");
-    assert.equal(await reserve("e"),false,"rolling 24 hour ceiling includes failed attempts");
-    await db.exec("update ss_private.evaluation_attempts set attempted_at=now()-interval '25 hours'");
-    assert.equal(await reserve("a"),false,"identical input claim persists across daily windows");
-    // Reset timestamps within this month to verify monthly quota independently.
-    await db.exec("update ss_private.evaluation_attempts set attempted_at=date_trunc('month',now() at time zone 'UTC') at time zone 'UTC'");
-    assert.equal(await reserve("e",4,4),false,"monthly ceiling");
-    await db.exec("delete from ss_private.evaluation_attempts");
+    await db.exec("update ss_private.evaluation_requests set attempted_at=attempted_at-interval '6 minutes'");
+    assert.equal((await reserve("e")).request_id,undefined,"configured rolling ceiling includes failures");
+    await db.exec("update ss_private.evaluation_requests set attempted_at=now()-interval '25 hours'");
+    assert.equal((await reserve("e",4,4)).request_id,undefined,"monthly ceiling remains independent");
+    await db.exec("delete from ss_private.evaluation_claims;delete from ss_private.evaluation_requests");
+    for(let attempt=0;attempt<3;attempt++) {
+      await db.exec("update ss_private.evaluation_claims set attempted_at=now()-interval '7 hours';update ss_private.evaluation_requests set attempted_at=now()-interval '6 minutes'");
+      assert((await reserve("a",16,496)).request_id);
+    }
+    await db.exec("update ss_private.evaluation_claims set attempted_at=now()-interval '7 hours';update ss_private.evaluation_requests set attempted_at=now()-interval '6 minutes'");
+    assert.equal((await reserve("a",16,496)).request_id,undefined,"at most three attempts per unchanged input");
+    assert.equal((await db.query("select ss_reserve_evaluation($1,$2,4,100) ok",[article,"f".repeat(64)])).rows[0].ok,false,"retired collector cannot bypass batch ledger");
+    await db.exec("delete from ss_private.evaluation_claims;delete from ss_private.evaluation_requests");
+    await as(owner);
+    for(const mode of ["week","radar","archive","updates","releases"]) assert.equal((await action("feed",{mode})).total,0,"unevaluated records never enter suggestions");
+    await fails(()=>db.query("select ss_reserve_evaluation_batch('[]',16,496)"),"permission denied");
+    await fails(()=>db.query("select * from ss_private.evaluation_requests"),"permission denied");
+    await db.exec("reset role");
+    await db.query("update ss_articles set reference_meta=reference_meta||$2::jsonb where id=$1",[article,JSON.stringify({evaluation:{...review,decision:"insufficient_evidence",confidence:"low",depth:"unknown",evidence:""}})]);
+    await as(owner);assert.equal((await action("feed",{mode:"archive"})).total,0,"uncertain assessments stay withheld");
+    await db.exec("reset role");
+    await db.query("update ss_articles set reference_meta=reference_meta||$2::jsonb where id=$1",[article,JSON.stringify({evaluation:review})]);
     await as(owner);
     await fails(() => action("source_delete",{id:watch}),"Confirmation");
     await db.exec("reset role");
-    await db.query("update ss_articles set reference_meta=$2::jsonb,published_at=now(),score=88 where id=$1", [article,JSON.stringify({alert_kind:"release",source_id:watch,origin:"source_watch"})]);
+    await db.query("update ss_articles set reference_meta=$2::jsonb,published_at=now(),score=88 where id=$1", [article,JSON.stringify({alert_kind:"release",source_id:watch,origin:"source_watch",evaluation:review})]);
     await db.query("delete from ss_feedback where article_id=$1",[article]);
     await as(owner);
     assert.equal((await action("feed",{mode:"releases"})).total,1);
@@ -385,7 +408,7 @@ test("PostgreSQL access, isolation, invitation and concurrency invariants", asyn
     await action("source_delete",{id:watch,confirmed:true});
     assert.equal((await action("feed",{mode:"releases"})).total,1,"removing a watch preserves its links");
     await db.exec("reset role");
-    await db.query("update ss_articles set reference_meta='{\"origin\":\"discovery\"}',published_at=null where id=$1",[article]);
+    await db.query("update ss_articles set reference_meta=$2::jsonb,published_at=null where id=$1",[article,JSON.stringify({origin:"discovery",evaluation:review})]);
     await as(owner);
     assert.equal((await action("feed",{mode:"radar"})).total,1);
     assert.equal((await action("feed",{mode:"week"})).total,0,"discovery never invents a publication date");

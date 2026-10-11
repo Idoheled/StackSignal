@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { publicTeam, publicInput, evaluationRequest, parseEvaluation, effectiveScore, evaluationCandidates, MAX_INPUT_BYTES, nextEvaluationAt, samePublicInput } from "../supabase/functions/_shared/evaluation.ts";
+import { publicTeam, publicInput, evaluationRequest, parseEvaluation, effectiveScore, evaluationCandidates, MAX_INPUT_BYTES, nextEvaluationAt, samePublicInput, batchEvaluationRequest, parseBatchEvaluation } from "../supabase/functions/_shared/evaluation.ts";
 const text = "This reproducible guide configures KV cache offloading and compares latency under controlled request concurrency. ";
 const input = publicInput({title:"Cache engineering",kind:"Discovery",reference_meta:{link_status:"search_result"}},text)!;
 const result = {topic:"Inference",score:90,confidence:"high",depth:"advanced",decision:"useful",summary:"Cache offloading guidance.",reason:"Relevant cache engineering.",action:"Review the concurrency comparison.",evidence:"configures KV cache offloading"};
@@ -31,24 +31,35 @@ test("evaluation rejects invented evidence, incomplete or malformed output; acce
   assert.equal(effectiveScore(80,{...result,confidence:"medium"},"rerank",false),80);
   assert.equal(effectiveScore(80,result,"rerank",false),87);
 });
-test("sampling reserves attention for low keyword exploration while avoiding guaranteed release alerts",()=>{
+test("sampling reserves attention for low keyword exploration while reviewing followed releases too",()=>{
   const row=(id:string,score:number,meta={})=>({id,score,reference_meta:{public_evaluation_input:input,...meta}});
   const rows=[row("strong",95),row("borderline",60),row("unfamiliar",20),row("release",88,{alert_kind:"release"}),{id:"private",score:90}];
   assert.equal(evaluationCandidates(rows,0)[0].id,"strong");
   assert.equal(evaluationCandidates(rows,1)[0].id,"borderline");
   assert.equal(evaluationCandidates(rows,2)[0].id,"unfamiliar");
-  assert.equal(evaluationCandidates(rows,0).length,3);
+  assert.equal(evaluationCandidates(rows,0).length,4);
 });
 
-test("pacing spreads remaining monthly attempts, respects daily spacing and rolls into a new month",()=>{
-  const now=Date.parse("2026-10-11T11:00:00Z"), last="2026-10-11T10:00:00Z";
-  const next=nextEvaluationAt({used_month:1,last_attempt:last},4,100,now);
-  assert(next>=Date.parse(last)+6*3600000);
-  assert.equal(nextEvaluationAt({used_month:100,last_attempt:last},4,100,now),Date.parse("2026-11-01T00:00:00Z"));
-  assert.equal(nextEvaluationAt({used_month:0},4,100,now),0);
-  assert.equal(nextEvaluationAt({used_month:1,last_attempt:last},1,100,now),Date.parse(last)+86400000);
-  const feb=Date.parse("2028-02-01T00:00:00Z");
-  assert.equal(nextEvaluationAt({used_month:99,last_attempt:"2028-02-01T00:00:00Z"},4,100,feb),Date.parse("2028-03-01T00:00:00Z"));
-  const rollover=nextEvaluationAt({used_month:0,last_attempt:"2026-10-31T23:00:00Z"},4,100,Date.parse("2026-11-01T01:00:00Z"));
-  assert.equal(rollover,Date.parse("2026-11-01T05:00:00Z"));
+test("batch judgments stay bound to their own source and fail closed on identities",()=>{
+  const second={...input,text:"This reproducible guide explains NUMA placement and GPU topology for inference."};
+  const sources=[{id:"one",input},{id:"two",input:second}];
+  const request=batchEvaluationRequest(sources,publicTeam({}));
+  assert.equal(request.generationConfig.maxOutputTokens,1800);
+  assert.equal(request.store,false);assert.equal("tools" in request,false);
+  const valid2={...result,evidence:"NUMA placement and GPU topology"};
+  const parsed=parseBatchEvaluation(output({results:[{id:"two",assessment:valid2},{id:"one",assessment:result}]}),sources);
+  assert.equal(parsed.valid.size,2);assert.equal(parsed.invalid.length,0);
+  const crossed=parseBatchEvaluation(output({results:[{id:"two",assessment:result},{id:"one",assessment:result}]}),sources);
+  assert.equal(crossed.valid.size,1);assert.deepEqual(crossed.invalid,["two"]);
+  for(const ids of [["one","one"],["one","unknown"]]) assert.throws(()=>parseBatchEvaluation(output({results:ids.map(id=>({id,assessment:result}))}),sources));
+  assert.throws(()=>parseBatchEvaluation(output({results:[]},"MAX_TOKENS"),sources));
+  assert.deepEqual(parseBatchEvaluation(output({results:[]}),sources).invalid,["one","two"]);
+  assert.throws(()=>batchEvaluationRequest(Array.from({length:6},(_,i)=>({id:String(i),input})),publicTeam({})));
+});
+test("on-demand pacing reserves five-minute spacing and stops at configured budgets",()=>{
+  const now=Date.parse("2026-10-11T11:00:00Z"),last="2026-10-11T10:59:00Z";
+  assert.equal(nextEvaluationAt({used_month:1,last_attempt:last},16,496,now),Date.parse(last)+300000);
+  assert.equal(nextEvaluationAt({used_month:496,last_attempt:last},16,496,now),Date.parse("2026-11-01T00:00:00Z"));
+  assert.equal(nextEvaluationAt({used_month:0},16,496,now),0);
+  assert(nextEvaluationAt({used_month:16,used_24h:16,last_attempt:last},16,496,now)>now);
 });

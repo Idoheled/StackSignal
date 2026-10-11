@@ -72,6 +72,8 @@ flowchart TD
   Schedule["Supabase Cron · five-minute tick"] --> Collector["Edge Function · bounded collection"]
   Public["Public feeds, documentation and GitHub"] --> Collector
   Collector --> Search["Tavily Search API · public technical queries"]
+  Collector --> Review["Gemini Flash Latest · up to five public links"]
+  Review --> Data
   Collector --> Data
   Admin["Administrator · watches and profile"] --> Web
 ```
@@ -86,6 +88,7 @@ The website and collector run independently. Collection continues while the team
 | **Supabase PostgreSQL** | Data, database authorization, audited mutations, queue leases and usage counters |
 | **Supabase Edge Function + Cron** | Scheduled fetching, extraction, normalization, relevance and retry/deferral |
 | **Tavily Search API** | Public internet discovery from saved technical queries; excerpts retain search provenance |
+| **Gemini Flash Latest** | Independent public-excerpt judgments, exact evidence validation and reviewed-only suggestion admission |
 | **GitHub Actions** | Types, policy tests, browser checks, verified build deployment and live smoke checks |
 
 Read the [architecture](docs/ARCHITECTURE.md) for request paths, data relationships and trust boundaries, and the [design decisions](docs/DESIGN.md) for the reasoning behind them.
@@ -98,7 +101,7 @@ StackSignal has several complementary discovery lanes:
 - **Publications:** consume feeds and approved documentation pages; preserve publisher metadata and detect meaningful page changes.
 - **New projects:** run administrator-editable public repository queries, alternating popularity and recency to widen the radar.
 - **Team submissions:** preserve a missed link, queue supported metadata extraction, save it and optionally record helpful feedback.
-- **Web search:** Tavily is active in the deployed workspace with 20 editable queries: 15 recent-week searches and five rotating exploration searches per daily sweep. It uses basic searches, capped at 24 requests daily and 800 monthly. Separate installations start disabled. See [activation and limits](docs/WEB_DISCOVERY.md). Optional [Flash Latest evaluation](docs/GEMINI_EVALUATION.md) reviews a durable public-input queue with strict rolling/day and monthly caps, monthly pacing and visible coverage counts; comparison mode preserves feed scores. The deployed workspace is active in Apply mode on a confirmed Free-tier Google project; keep that project on the Free tier. Separate installations require activation.
+- **Web search:** Tavily is active in the deployed workspace with 20 editable queries: 15 recent-week searches and five rotating exploration searches per daily sweep. It uses basic searches, capped at 24 requests daily and 800 monthly. Separate installations start disabled. See [activation and limits](docs/WEB_DISCOVERY.md). Optional [Flash Latest evaluation](docs/GEMINI_EVALUATION.md) reviews a durable public-input queue with strict rolling/day and monthly caps, on-demand batching and visible coverage counts; every suggested-feed mode admits only useful, supported AI reviews. The deployed workspace is active in Apply mode on a confirmed Free-tier Google project; keep that project on the Free tier. Separate installations require activation.
 
 Ranking uses concrete technical terms, topic priorities, administrator interests, release signals and bounded feedback. Cards explain the match; scores express **relevance**, not truth or production readiness. There is no mandatory LLM in the default collection path. Read [how discovery and scoring work](docs/DISCOVERY.md) for the exact rules, a worked example, personalization and known limits.
 

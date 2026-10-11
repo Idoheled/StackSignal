@@ -45,7 +45,7 @@ const EMPTY = {
       "RoCE InfiniBand NCCL performance",
     ],
     gemini_daily_limit: 0,
-    gemini_monthly_limit: 100,
+    gemini_monthly_limit: 496,
     gemini_mode: "off",
     search_monthly_limit: 0,
     repo_discovery: true,
@@ -394,19 +394,19 @@ export default function AdminPanel({
             <p className="subtle">Tavily searches these public technical queries daily. Three quarters target recent material; a rotating quarter explores beyond the past week. Search snippets retain provenance; only approved hosts are automatically fetched.</p>
             <label>Gemini evaluation mode
               <select name="gemini_mode" defaultValue={data.profile.gemini_mode || "off"}>
-                <option value="off">Off</option><option value="shadow">Compare only (recommended)</option><option value="rerank">Apply confident evaluations to ranking</option>
+                <option value="off">Off</option><option value="shadow">Evaluate without changing stored ranking</option><option value="rerank">Apply confident evaluations to ranking</option>
               </select>
             </label>
-            <label>Monthly Gemini attempt ceiling<input type="number" name="gemini_monthly_limit" min={0} max={100} defaultValue={data.profile.gemini_monthly_limit ?? 100} /></label>
-            <p className="subtle">Keep the Google API project on the Free tier. Flash Latest reviews a budgeted queue of public discoveries. It cannot guarantee AI review of every item within free quotas. Hard limits: 4 attempts in 24 hours and 100 per UTC calendar month; failures count. Calls are spaced across the remaining month. Saved mode and budgets survive redeployments. Compare mode preserves your feed. Only public excerpts and recognized public stack terms reach Google. A separate free-tier API key is required.</p>
+            <label>Monthly Gemini request ceiling<input type="number" name="gemini_monthly_limit" min={0} max={496} defaultValue={data.profile.gemini_monthly_limit ?? 496} /></label>
+            <p className="subtle">The suggested feed shows only useful AI-reviewed links with supporting evidence, including followed releases. Flash Latest evaluates up to five public excerpts per request. Hard ceilings: 16 requests per rolling 24 hours and Pacific calendar day, 496 per UTC month, five minutes between requests. Failed requests count. Pending, uncertain and failed links stay out of suggestions; saved library links remain accessible. Pause or lower budgets at any time. Saved settings survive redeployments. Keep your Google project on the Free tier and dedicated to StackSignal.</p>
             <div className="form-grid">
               <label>
-                Gemini attempts per 24 hours
+                Gemini requests per day
                 <input
                   type="number"
                   name="gemini_daily_limit"
                   min={0}
-                  max={4}
+                  max={16}
                   defaultValue={data.profile.gemini_daily_limit}
                 />
               </label>
@@ -525,9 +525,9 @@ export default function AdminPanel({
             <h3>Web discovery</h3>
             <h3>Gemini evaluation</h3>
             <p className="subtle">{(data.evaluation_health?.state || "not configured").replaceAll("_", " ")} · {data.profile.gemini_mode || "off"} · {data.evaluation_health?.model || "gemini-flash-latest"}</p>
-            <p className="subtle">Attempts: {data.evaluation_health?.usage?.used_24h || 0} / {data.profile.gemini_daily_limit || 0} in 24 hours · {data.evaluation_health?.usage?.used_month || 0} / {data.profile.gemini_monthly_limit ?? 100} this month. Last success: {dateLabel(data.evaluation_health?.last_success)}</p>
-            {data.evaluation_health?.next_attempt_at && <p className="subtle">Next paced opportunity: {new Date(data.evaluation_health.next_attempt_at).toLocaleString()}. Quotas, cooldowns and pending inputs can delay it.</p>}
-            {data.evaluation_health?.coverage && <p className="subtle">AI coverage: {data.evaluation_health.coverage.evaluated} reviewed · {data.evaluation_health.coverage.pending} awaiting review · {data.evaluation_health.coverage.failed} failed · {data.evaluation_health.coverage.eligible} eligible public inputs. Updated {dateLabel(data.evaluation_health.coverage.checked_at)}. Rules continue while AI is pending. Release alerts bypass this queue.</p>}
+            <p className="subtle">Requests: {data.evaluation_health?.usage?.used_24h || 0} / {data.profile.gemini_daily_limit || 0} in 24 hours · {data.evaluation_health?.usage?.used_provider_day || 0} on the current Pacific day · {data.evaluation_health?.usage?.used_month || 0} / {data.profile.gemini_monthly_limit ?? 496} this month. Last success: {dateLabel(data.evaluation_health?.last_success)}</p>
+            {data.evaluation_health?.next_attempt_at && <p className="subtle">Next evaluation opportunity: {new Date(data.evaluation_health.next_attempt_at).toLocaleString()}. Quotas, cooldowns and pending inputs can delay it.</p>}
+            {data.evaluation_health?.coverage && <p className="subtle">AI coverage: {data.evaluation_health.coverage.evaluated} reviewed · {data.evaluation_health.coverage.pending} awaiting review · {data.evaluation_health.coverage.failed} failed · {data.evaluation_health.coverage.eligible} eligible public inputs · {data.evaluation_health.coverage.missing_public_input || 0} without extracted public text. Updated {dateLabel(data.evaluation_health.coverage.checked_at)}. Up to five links per request. Pending and insufficient-evidence results are withheld from suggestions. Releases receive review too.</p>}
             {data.evaluation_health?.resolved_model && <p className="subtle">Last successful model: {data.evaluation_health.resolved_model}</p>}
             {data.evaluation_health?.last_error && <p className="source-error">{data.evaluation_health.last_error}</p>}
             {(data.evaluation_health?.comparisons || []).map((c:any) => <div className="evaluation-comparison" key={c.article_id + c.evaluated_at}>

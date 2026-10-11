@@ -98,14 +98,14 @@ Run `supabase/cron.sql` in the SQL editor. It prepares a **paused** job and pres
 
 Keep `net`, `cron` and `vault` out of the exposed Data API schemas. The managed `pg_net` extension retains platform-owned database role grants; do not assume a privilege-revocation command changed these. The October 3 live check confirmed that anonymous Data API requests to all three internal schemas return `406/PGRST106`, and article access is denied with `401/42501`.
 
-Verify the cron run history and collector function logs. Open Sources in StackSignal: the first successful polls should acquire timestamps, followed by new items as queued extraction finishes. Undated material appears in All discoveries, not This week. A source that errors is visible as needing attention; it is not silently reported healthy.
+Verify the cron run history and collector function logs. Open Sources in StackSignal: the first successful polls should acquire timestamps, followed by new items as queued extraction finishes. Undated material appears in All reviewed, not This week. A source that errors is visible as needing attention; it is not silently reported healthy.
 
 ## 6. Optional discovery and AI
 
 You can skip this entire step. The app still collects configured RSS/release/documentation sources and uses deterministic topic scoring.
 
 - **Tavily:** create a free API key, add `TAVILY_API_KEY`. Search calls start disabled. Set a ceiling of at most 800 basic searches/month after configuring the provider. Queries run once daily; additional source feeds run independently. Do not enable automatic paid overages. Only generic administrator-authored search queries leave the workspace.
-- **Gemini:** use a Google AI Studio project marked Free with available `gemini-flash-latest` quota; set only `GEMINI_API_KEY` in function secrets. Start in Compare only with at most four attempts per rolling 24 hours and 100 per month, globally spaced one hour apart. Actual project limits can be lower. Model failures pause evaluation while rules and discovery continue. See [activation and privacy](GEMINI_EVALUATION.md).
+- **Gemini:** use a Google AI Studio project marked Free with available `gemini-flash-latest` quota; set only `GEMINI_API_KEY` in function secrets. Start in Evaluate without changing ranking with up to five links per request, at most 16 requests per rolling/Pacific day and 496 per month, globally spaced five minutes apart. Actual project limits can be lower. Model failures pause evaluation while rules and discovery continue. See [activation and privacy](GEMINI_EVALUATION.md).
 - **GitHub:** public releases work without a token. `GITHUB_READ_TOKEN` is optional if you need a higher API limit; use minimal read-only privileges, no repository write access.
 
 Re-run `node scripts/upload-collector-secrets.mjs` after changing optional keys. Update usage ceilings in Administration → Coverage. Provider-side limits are authoritative; the local ceilings are an additional safeguard.
@@ -153,10 +153,10 @@ For a member who forgot a password, use the admin-generated one-hour recovery li
 
 In **Administration → Coverage**, add a public GitHub repository URL (for example `https://github.com/kserve/kserve`) and select **GitHub project / releases**. Choose stable-only or include prereleases, a priority and a polling interval. Click an existing source to edit it, request another check or remove its watch; removing a watch preserves articles, bookmarks and notes. Pause/resume and removal require confirmation.
 
-**Discover → Releases** lists followed releases published in the past week. The unread-release banner is personal and clears as those links are opened. **New to radar** shows recently discovered projects/publications, including older material that is newly useful to the team. It does not pretend that discovery time is publication time. **All discoveries** keeps the full retained archive searchable.
+**Discover → Releases** lists followed releases published in the past week. The unread-release banner is personal and clears as those links are opened. **New to radar** shows recently discovered projects/publications, including older material that is newly useful to the team. It does not pretend that discovery time is publication time. **All reviewed** keeps the full retained archive searchable.
 
 Public project search runs daily with up to twelve editable GitHub queries, bounded rate limits and alternating recency/popularity ordering. Four additional feeds cover arXiv distributed systems/machine learning, PyTorch and NetBox. All watches are editable. Automatic fetching stays on the approved public publisher hosts in `supabase/functions/_shared/content.ts`; adding another domain requires an operator review/change to that allowlist, not browser access to arbitrary internal URLs.
 
 Review match reasons and use Helpful / Not relevant. Personal ranking responds to your topic/tag feedback, and future analysis also uses bounded aggregate technical-tag feedback. Coverage preferences set the match threshold and topic priorities. **Health & audit** shows delayed sources, job failures, discovery success/partial results and provider budgets. None of these signals establishes that a benchmark claim has been independently reproduced.
 
-No Gemini or external web-search API is enabled. Public feeds, release polling, local relevance and GitHub project discovery work without those services. They expand coverage but cannot guarantee every relevant document or project across the web.
+Independent installs leave Gemini and web-search budgets disabled until activation. The current workspace has both enabled. Public feeds and GitHub discovery can collect without Gemini, but suggestions remain withheld until useful AI review; existing saved library access is retained. Finite queries, provider quotas and public extraction leave coverage gaps.

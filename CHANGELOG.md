@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-10-11 — Batched, reviewed-only discovery
+
+- Evaluate up to five public links per Flash Latest request with independent identity and evidence validation.
+- Enforce service-only request/claim ledgers: 16 requests per rolling/Pacific day, 496 per UTC month and five-minute spacing; historical reservations preserved.
+- Withhold pending, uncertain, failed and irrelevant material from every suggested-feed mode and release alerts; retain saved library access.
+- Queue approved-host public extraction, bounded delayed retries and one enrichment for insufficient snippets. Preserve cached ranking on metadata-only updates.
+- Show pending-review status and request/coverage diagnostics; document quota capacity and limitations.
+
 ## 2026-10-11
 
 - Preserved the owner's saved Apply preference across deployments; added month-aware pacing, an oldest-pending public-input queue without seven-day expiry, and administrator coverage/failure counts. Hard 4/day and 100/month attempt caps remain enforced independently.

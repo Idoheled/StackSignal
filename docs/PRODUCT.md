@@ -20,7 +20,7 @@ StackSignal has two connected jobs: discover useful public engineering material 
 | **Releases** | Followed release items published in the last seven days, subject to stable/prerelease settings | Upgrade awareness and unread release alerts |
 | **New to radar** | Non-release items first discovered in the last seven days through source watches/public discovery, subject to relevance filtering | Projects or material you had not encountered, even if published earlier |
 | **Updated docs** | Items with a recorded update/detected-change time in the last seven days, subject to relevance filtering | Changes to existing material; inspect the item type and date basis |
-| **All discoveries** | Stored discovery history without the weekly time window/minimum-score gate; other filters and personal hidden state still apply | Older references and broader review |
+| **All reviewed** | Stored discovery history without the weekly time window/minimum-score gate; other filters and personal hidden state still apply | Older references and broader review |
 
 Unread state and hidden/not-relevant state are personal. Saved links and folder structure are shared. An alert means there are unread followed releases in the weekly window; it is an in-app entry into the Releases view.
 
@@ -102,7 +102,7 @@ flowchart TD
 
 Specific stack terms carry more weight than generic vendor mentions. The deterministic ranker recognizes performance, security, compatibility and implementation signals, and discounts some promotional/finance headlines. Followed releases receive a strong relevance floor because the administrator explicitly selected the dependency.
 
-Optional [Gemini evaluation](GEMINI_EVALUATION.md) samples strong, borderline and exploratory public discoveries. Administrators can compare assessments without changing scores, then opt into confident semantic ranking. The existing deployment is active in Apply mode on a confirmed Free-tier Google project, using `gemini-flash-latest`; Health records the actual resolved version. Separate installations require free-tier API-key activation. [Tavily web discovery](WEB_DISCOVERY.md) is active in the existing deployment, rotating recent coverage with broader exploration and filtering obvious portfolio/hiring/finance noise. Source watches, feeds, public repository discovery and local relevance work without requiring a paid LLM.
+Optional [Gemini evaluation](GEMINI_EVALUATION.md) evaluates strong, borderline and exploratory public discoveries in batches. Administrators can compare assessments without changing scores, then opt into confident semantic ranking. The existing deployment is active in Apply mode on a confirmed Free-tier Google project, using `gemini-flash-latest`; Health records the actual resolved version. Separate installations require free-tier API-key activation. [Tavily web discovery](WEB_DISCOVERY.md) is active in the existing deployment, rotating recent coverage with broader exploration and filtering obvious portfolio/hiring/finance noise. Source watches, feeds, public repository discovery and local relevance work without requiring a paid LLM.
 
 The card displays the stored technical score, while relevance sorting also uses a bounded personal adjustment. Interests and feedback do not automatically rewrite search queries. For exact arithmetic, a worked example and current limits, read [Discovery and scoring](DISCOVERY.md).
 

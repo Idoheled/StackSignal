@@ -170,10 +170,10 @@ test("semantic sweep is cached, comparison-only, private-context safe and pauses
       calls++;
       assert.equal(url.pathname,"/v1beta/models/gemini-flash-latest:generateContent");
       assert.equal(new Headers(init?.headers).get("x-goog-api-key"),"test-only-gemini-key");
-      assert.equal(init?.redirect,"error");assert.equal(body.generationConfig.maxOutputTokens,650);assert.equal(body.generationConfig.thinkingConfig.thinkingLevel,"LOW");
+      assert.equal(init?.redirect,"error");assert.equal(body.generationConfig.maxOutputTokens,900);assert.equal(body.generationConfig.thinkingConfig.thinkingLevel,"LOW");
       assert(!JSON.stringify(body).includes("private.internal"));assert.equal("tools" in body,false);
       if(provider!==200) return new Response("provider details should not be exposed",{status:provider});
-      return Response.json({modelVersion:"gemini-3.8-flash",candidates:[{finishReason:"STOP",content:{parts:[{text:JSON.stringify({topic:"Inference",score:90,confidence:"high",depth:"advanced",decision:"useful",summary:"Cache comparison.",reason:"Applicable engineering.",action:"Review controlled latency measurements.",evidence:"configures KV cache offloading"})}]}}],usageMetadata:{promptTokenCount:500,candidatesTokenCount:100}});
+      return Response.json({modelVersion:"gemini-3.8-flash",candidates:[{finishReason:"STOP",content:{parts:[{text:JSON.stringify({results:[{id:"public-article",assessment:{topic:"Inference",score:90,confidence:"high",depth:"advanced",decision:"useful",summary:"Cache comparison.",reason:"Applicable engineering.",action:"Review controlled latency measurements.",evidence:"configures KV cache offloading"}}]})}]}}],usageMetadata:{promptTokenCount:500,candidatesTokenCount:100}});
     }
     assert.equal(url.hostname,"database.example");
     if(url.pathname.endsWith("ss_take_budget")) return Response.json(false);
@@ -181,7 +181,7 @@ test("semantic sweep is cached, comparison-only, private-context safe and pauses
     if(url.pathname.endsWith("ss_enqueue_sources")) return Response.json(null);
     if(url.pathname.endsWith("ss_claim_jobs")) return Response.json([]);
     if(url.pathname.endsWith("ss_evaluation_usage")) return Response.json({used_24h:used,used_month:used,last_attempt:lastAttempt});
-    if(url.pathname.endsWith("ss_reserve_evaluation")) {assert(body.daily_max<=4);assert(body.monthly_max<=100);used++;return Response.json(true);}
+    if(url.pathname.endsWith("ss_reserve_evaluation_batch")) {assert(body.daily_max<=16);assert(body.monthly_max<=496);used++;return Response.json({request_id:used,items:body.items});}
     if(url.pathname.endsWith("ss_settings")) {
       if(body) {if(body.key==="evaluation_health") health=body.value;return Response.json([body]);}
       if(url.searchParams.get("key")==="eq.profile") return Response.json([{value:{gemini_mode:mode,gemini_daily_limit:daily,gemini_monthly_limit:100,repo_discovery:false,interests:"vLLM, private.internal",search_monthly_limit:0}}]);
@@ -193,6 +193,7 @@ test("semantic sweep is cached, comparison-only, private-context safe and pauses
       if(!url.searchParams.has("id")) {
         assert.equal(url.searchParams.has("discovered_at"),false,"older public discoveries remain eligible");
         assert.equal(url.searchParams.get("order"),"discovered_at.asc,id.asc");
+        if(row.reference_meta.evaluation) return Response.json([]);
       }
       if(body) {writes.push(body);row={...row,...body};return Response.json([row]);}
       return Response.json([{...row,...(race && url.searchParams.has("id")?{content_hash:"changed"}:{})}]);
@@ -213,5 +214,52 @@ test("semantic sweep is cached, comparison-only, private-context safe and pauses
     race=false;used=0;provider=429;await run();assert.equal(health.state,"cooldown");assert(row.reference_meta.evaluation_failed_at,"failed inputs remain visible for inspection without retrying");assert(!JSON.stringify(health).includes("provider details"));
     const after=calls;await run();assert.equal(calls,after,"provider errors are not automatically retried");
     daily=0;health={};await run();assert.equal(calls,after,"paused integration makes no provider calls");
+    daily=4;provider=503;used=0;health={};row.reference_meta.evaluation_failed_at=undefined;await run();
+    assert.equal(health.state,"cooldown");
+    assert(Date.parse(health.cooldown_until)<=Date.now()+901000,"transient capacity errors back off for fifteen minutes, not a day");
   } finally {globalThis.fetch=originalFetch;delete environment.GEMINI_API_KEY;}
+});
+
+test("multi-link batches save independent valid reviews and withhold an invalid neighbor",async()=>{
+  const savedFetch=globalThis.fetch;environment.GEMINI_API_KEY="test-batch-key";
+  const excerpt="A reproducible inference benchmark configures KV cache offloading and documents controlled concurrency.";
+  const rows=["one","two","three"].map(id=>({id,url:"https://github.com/a/"+id,score:70,kind:id==="two" ? "Release" : "Article",content_hash:id,reference_meta:{public_evaluation_input:{title:id,text:excerpt,scope:"publisher_excerpt"},...(id==="two"?{alert_kind:"release"}:{})}}));
+  let health:any={},calls=0,reservations=0;
+  globalThis.fetch=async(input,init)=>{
+    const u=new URL(String(input)),body=init?.body?JSON.parse(String(init.body)):undefined;
+    if(u.hostname==="generativelanguage.googleapis.com") {
+      calls++;const inputs=JSON.parse(body.contents[0].parts[0].text).public_sources;
+      assert.equal(inputs.length,3);assert.equal(body.generationConfig.maxOutputTokens,2700);
+      const results=inputs.map((i:any)=>({id:i.id,assessment:{topic:"Inference",score:85,confidence:"high",depth:"advanced",decision:"useful",summary:"Controlled cache benchmark.",reason:"Useful infrastructure experiment.",action:"Compare concurrency conditions.",evidence:i.id==="three" ? "Fabricated unrelated evidence" : "configures KV cache offloading"}}));
+      return Response.json({candidates:[{finishReason:"STOP",content:{parts:[{text:JSON.stringify({results:results.reverse()})}]}}]});
+    }
+    if(u.pathname.endsWith("ss_take_budget")) return Response.json(false);
+    if(u.pathname.endsWith("ss_enqueue_sources")) return Response.json(null);
+    if(u.pathname.endsWith("ss_claim_jobs")) return Response.json([]);
+    if(u.pathname.endsWith("ss_feedback_weights")) return Response.json({});
+    if(u.pathname.endsWith("ss_evaluation_usage")) return Response.json({used_24h:reservations,used_provider_day:reservations,used_month:reservations});
+    if(u.pathname.endsWith("ss_reserve_evaluation_batch")) {reservations++;return Response.json({request_id:reservations,items:body.items});}
+    if(u.pathname.endsWith("ss_settings")) {
+      if(body) {if(body.key==="evaluation_health") health=body.value;return Response.json([body]);}
+      return Response.json([{value:u.searchParams.get("key")==="eq.profile" ? {gemini_mode:"rerank",gemini_daily_limit:16,gemini_monthly_limit:496,repo_discovery:false,search_monthly_limit:0} : health}]);
+    }
+    if(u.pathname.endsWith("ss_articles")) {
+      if(init?.method==="HEAD") return new Response(null,{headers:{"content-range":"0-0/3"}});
+      if(u.searchParams.get("reference_meta->>public_evaluation_input")==="is.null") return Response.json([]);
+      const id=u.searchParams.get("id")?.replace("eq.","");
+      if(id) {const row=rows.find(r=>r.id===id)!;if(body) Object.assign(row,body);return Response.json([row]);}
+      return Response.json(rows.filter((r:any)=>!r.reference_meta.evaluation&&!r.reference_meta.evaluation_failed_at));
+    }
+    throw Error("Unexpected "+u.pathname);
+  };
+  try {
+    await handler(new Request("https://collector.example",{method:"POST",headers:{"x-collector-secret":secret}}));
+    assert.equal(calls,1);assert.equal(reservations,1);
+    assert.equal((rows[0].reference_meta as any).evaluation.score,85);
+    assert.equal((rows[1].reference_meta as any).evaluation.score,85,"followed releases are independently reviewed");
+    assert.equal((rows[2].reference_meta as any).evaluation,undefined);
+    assert((rows[2].reference_meta as any).evaluation_failed_at);
+    assert((rows[2].reference_meta as any).evaluation_retry_at);
+    assert.equal(health.state,"partial_batch");assert.equal(health.last_batch_reviewed,2);
+  } finally {globalThis.fetch=savedFetch;delete environment.GEMINI_API_KEY;}
 });

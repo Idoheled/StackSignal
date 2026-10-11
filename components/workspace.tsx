@@ -648,7 +648,7 @@ function Hub({
               : "Recover your work.";
   const description =
     view === "feed"
-      ? "The releases, research and ideas worth your attention."
+      ? "AI-reviewed releases, research and ideas worth your attention."
       : view === "library"
         ? "Collect what matters. Make it useful together."
         : view === "sources"
@@ -940,7 +940,7 @@ function Hub({
                       <TabsTrigger value="releases">Releases</TabsTrigger>
                       <TabsTrigger value="radar">New to radar</TabsTrigger>
                       <TabsTrigger value="updates">Updated docs</TabsTrigger>
-                      <TabsTrigger value="archive">All discoveries</TabsTrigger>
+                      <TabsTrigger value="archive">All reviewed</TabsTrigger>
                     </TabsList>
                   </Tabs>
                 ) : (
@@ -988,6 +988,7 @@ function Hub({
                   </button>
                 ))}
               </div>
+              {view === "feed" && !preview && <p className="subtle" role="status">Only useful AI-reviewed links appear here.{stats.review_pending > 0 && <> {stats.review_pending} public links are awaiting review. Your saved library remains available.</>}</p>}
               <div className="feed-layout">
                 <section className="signal-list">
                   <div className="results-row">
@@ -1011,7 +1012,7 @@ function Hub({
                             : mode === "releases"
                               ? "followed releases published in the past 7 days"
                             : mode === "radar"
-                              ? "first discovered in the past 7 days · may be older"
+                              ? "AI-reviewed in the past 7 days · sources may be older"
                             : mode === "updates"
                               ? "changed in the past 7 days"
                               : "including undated references"}
@@ -1090,14 +1091,14 @@ function Hub({
                           ? "No matching titles."
                           : view === "library"
                             ? "A place for what matters."
-                            : "You’re up to date."}
+                            : "No reviewed signals in this view."}
                       </h3>
                       <p>
                         {query
                           ? "Try another keyword or search across all folders."
                           : view === "library"
                             ? "Save a signal or add a link to start your collection."
-                            : "New signals appear here after the collector finds matching publications. Undated links live in All discoveries."}
+                            : "New signals appear after AI review finds useful, sufficiently supported material. Pending reviews and quota pauses can delay publication; try All reviewed for older or undated links."}
                       </p>
                       {canWrite && view === "library" && (
                         <button
@@ -1168,12 +1169,12 @@ function Hub({
                               onClick={(event) => openArticle(a, event.currentTarget)}
                             >
                               <Sparkles size={13} />
-                              {a.analysis_status === "reference"
+                              {a.reference_meta?.evaluation ? "AI reviewed" : a.analysis_status === "reference"
                                 ? "Team reference"
                                 : a.analysis_status === "ai"
                                   ? "AI assisted match"
                                   : "Topic match"}
-                              <span>{a.score}</span>
+                              <span>{a.reference_meta?.evaluation?.score ?? a.score}</span>
                             </button>
                             <div className="article-actions">
                               {canWrite && (
@@ -1565,7 +1566,7 @@ function Hub({
                 </span>
                 <p>{picked.reason}</p>
                 {picked.evidence && <blockquote>{picked.evidence}</blockquote>}
-                {picked.analysis_status === "ai" && picked.reference_meta?.evaluation && <p className="subtle">{picked.reference_meta.evaluation.scope.replaceAll("_", " ")} · {picked.reference_meta.evaluation.confidence} confidence · {picked.reference_meta.evaluation.depth}{picked.reference_meta.evaluation.action && <> · Consider: {picked.reference_meta.evaluation.action}</>}</p>}
+                {picked.reference_meta?.evaluation && <p className="subtle">{picked.reference_meta.evaluation.scope.replaceAll("_", " ")} · {picked.reference_meta.evaluation.confidence} confidence · {picked.reference_meta.evaluation.depth}{picked.reference_meta.evaluation.action && <> · Consider: {picked.reference_meta.evaluation.action}</>}</p>}
                 <small>
                   {picked.analysis_status === "ai"
                     ? "AI assisted assessment of a public excerpt · verify against the original"
