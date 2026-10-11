@@ -379,14 +379,15 @@ export default function AdminPanel({
               <div className="form-grid">{TOPICS.slice(1).map(t => <label key={t}>{t} priority<input type="number" min={-20} max={20} name={"priority:"+t} defaultValue={data.profile.priorities?.[t] || 0} /></label>)}</div>
             </div>
             <label>
-              Optional web-search queries{" "}
+              Web-search queries{" "}
               <span className="optional">One per line · up to 20</span>
               <textarea
                 name="queries"
-                rows={4}
+                rows={6}
                 defaultValue={data.profile.queries.join("\n")}
               />
             </label>
+            <p className="subtle">Tavily searches these public technical queries daily. Three quarters target recent material; a rotating quarter explores beyond the past week. Search snippets retain provenance; only approved hosts are automatically fetched.</p>
             <div className="form-grid">
               <label>
                 Daily Gemini call ceiling
@@ -510,6 +511,11 @@ export default function AdminPanel({
               return <div key={t}><strong>{t}</strong><span>{watches.length} active watches · {watches.filter(s => s.last_error || !s.last_success_at || Date.now()-Date.parse(s.last_success_at) > Math.max(3600000,s.interval_minutes*120000)).length} awaiting / delayed</span></div>;
             })}</div>
             <p className="subtle">Coverage comes from your watchlist, publication feeds and daily public project search. Optional web search and AI need separately configured API keys; a subscription does not activate them here.</p>
+            <h3>Web discovery</h3>
+            <p className="subtle">Tavily: {data.web_discovery_health?.configured ? Number(data.profile.search_monthly_limit) > 0 ? (data.web_discovery_health.state || "ready").replaceAll("_", " ") : "paused" : "API key not configured"} · Last successful search: {dateLabel(data.web_discovery_health?.last_success)}</p>
+            <p className="subtle">Ceiling: {data.profile.search_monthly_limit || 0} basic searches per month · Hard daily ceiling: 24. Provider billing and credits are managed in your Tavily account.</p>
+            {data.web_discovery_health?.last_error && <p className="source-error">{data.web_discovery_health.last_error}</p>}
+            {data.web_discovery_health?.last_query && <p className="subtle">Last query: {data.web_discovery_health.last_query}<br />{data.web_discovery_health.last_accepted || 0} new references · {data.web_discovery_health.last_duplicates || 0} already known · {data.web_discovery_health.last_filtered || 0} filtered</p>}
           </div>
           <div className="health-actions">
             <button

@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Focused Tavily web discovery with rotating recent/exploration queries, bounded basic-search usage, canonical deduplication, noise filtering, truthful snippet/date provenance and administrator health status.
 - Branded repository landing page, role-based onboarding, product guide, documentation hub and design decision records; expanded architecture and trust-boundary diagrams.
 - Wrap long titles, tags and metadata inside cards/details.
 - Full-width phone details with dynamic viewport height, safe-area spacing, independent scrolling and a persistent 44-pixel close control.

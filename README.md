@@ -96,7 +96,7 @@ StackSignal has several complementary discovery lanes:
 - **Publications:** consume feeds and approved documentation pages; preserve publisher metadata and detect meaningful page changes.
 - **New projects:** run administrator-editable public repository queries, alternating popularity and recency to widen the radar.
 - **Team submissions:** preserve a missed link, queue supported metadata extraction, save it and optionally record helpful feedback.
-- **Optional providers:** Gemini analysis and Tavily web discovery require explicit configuration and budgets. Their budgets start at zero and they are currently disabled.
+- **Web search:** Tavily runs focused internet queries when its collector key and budget are configured, mixing recent-week coverage with broader exploration. See [activation and limits](docs/WEB_DISCOVERY.md). Gemini analysis remains a separate optional integration.
 
 Ranking uses concrete technical terms, topic priorities, administrator interests, release signals and bounded feedback. Cards explain the match; scores express **relevance**, not truth or production readiness. There is no mandatory LLM in the default collection path.
 

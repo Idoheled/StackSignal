@@ -2138,7 +2138,7 @@ td .text-button {
 .release-alert {display:flex;align-items:center;gap:12px;width:100%;padding:16px 20px;margin:0 0 22px;border:1px solid var(--border);border-radius:12px;background:color-mix(in srgb,var(--primary) 9%,var(--background));color:var(--foreground);text-align:left;cursor:pointer;}
 .release-alert span {flex:1;font-size:13px;line-height:1.6;}
 .release-alert strong {color:var(--primary);}
-.radar-settings {display:grid;gap:16px;padding:22px;margin:4px 0 24px;border:1px solid var(--border);border-radius:12px;}
+.radar-settings {display:grid;gap:16px;padding:22px;margin:4px 0 24px;border:1px solid var(--border);border-radius:12px;overflow-wrap:anywhere;min-width:0;}
 .radar-settings h3 {margin:0;font-size:16px;}
 .radar-settings .check-label {display:flex;flex-direction:row;align-items:center;gap:10px;}
 .profile-form input[type=checkbox] {width:16px;min-height:16px;height:16px;padding:0;}

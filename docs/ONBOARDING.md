@@ -66,7 +66,7 @@ The administrator is the protected owner. Invitations create maintainers or read
 5. Inspect results and health after the queue runs. A manual scan makes work due; it does not bypass quotas or fetch synchronously.
 6. Pause or remove stale watches with confirmation. Removing a watch preserves existing articles, saved links and notes.
 
-Gemini/Tavily are currently disabled and their budgets default to zero. Enabling either involves provider credentials and explicit budget review, not just broader keywords. See [coverage](COVERAGE.md) and [design decisions](DESIGN.md).
+Gemini analysis remains disabled. [Web discovery](WEB_DISCOVERY.md) requires the collector's Tavily key and an explicit monthly ceiling; Health reports whether the key is configured and real searches are succeeding. A new independent installation defaults provider budgets to zero. See [coverage](COVERAGE.md) and [design decisions](DESIGN.md).
 
 ## Developers
 

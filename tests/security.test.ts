@@ -183,6 +183,33 @@ test("configured service rejects anonymous and cross-site access before data cal
   );
   assert.equal(calls, 0);
 });
+
+test("web discovery health is read only after the administrator RPC authorizes access", async () => {
+  let role = "maintainer", healthReads = 0;
+  const token = "test." + Buffer.from(JSON.stringify({aal:"aal2",session_id:"10000000-0000-4000-8000-000000000001"})).toString("base64url") + ".test";
+  const cookie = await seal({access_token:token,refresh_token:"test-refresh",expires_at:Date.now()/1000+3600},config.SESSION_SECRET);
+  const handler=createService(config,async(input,init)=>{
+    const url=new URL(String(input));
+    const body=init?.body ? JSON.parse(String(init.body)) : {};
+    if(url.pathname==="/auth/v1/user") return Response.json({id:"owner"});
+    if(url.pathname.endsWith("ss_rate_limit")) return Response.json(true);
+    if(url.pathname.endsWith("ss_api")) {
+      if(body.action==="me") return Response.json({id:"owner",role});
+      return role==="admin" ? Response.json({profile:{}}) : Response.json({code:"42501"},{status:403});
+    }
+    if(url.pathname.endsWith("ss_settings")) {
+      healthReads++;
+      assert.equal(url.searchParams.get("key"),"eq.web_discovery_health");
+      return Response.json([{value:{configured:true,state:"active"}}]);
+    }
+    throw new Error("Unexpected request");
+  });
+  const request=()=>new Request(origin+"/api/action",{method:"POST",headers:{origin,"content-type":"application/json",cookie:"__Host-stacksignal="+cookie},body:JSON.stringify({action:"admin",payload:{}})});
+  assert.equal((await handler(request())).status,403);assert.equal(healthReads,0);
+  role="admin";
+  const response=await handler(request());assert.equal(response.status,200);
+  assert.equal((await response.json()).web_discovery_health.state,"active");assert.equal(healthReads,1);
+});
 test("login delegates one CAPTCHA verification to Auth; failed credentials reveal nothing", async () => {
   const paths: string[] = [];
   const handler = createService(config, async (input) => {

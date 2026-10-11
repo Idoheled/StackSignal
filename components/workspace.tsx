@@ -1533,6 +1533,7 @@ function Hub({
               {picked.reference_meta?.prerelease && <div className="notice">Prerelease: assess compatibility before adopting it.</div>}
               {picked.reference_meta?.date_basis === "change_detected" && <p className="subtle">Updated time records when StackSignal detected a substantial page change; it is not a publisher-supplied release date.</p>}
               {picked.reference_meta?.discovery_lane === "repository_search" && <p className="subtle">Found through public project discovery. {picked.reference_meta.stars?.toLocaleString()} stars · License: {picked.reference_meta.license}. Activity and stars are discovery signals, not an endorsement.</p>}
+              {picked.reference_meta?.discovery_lane === "web_search" && <p className="subtle">Found by {picked.reference_meta.search_provider || "web search"} · {picked.reference_meta.search_window === "explore" ? "broader exploration" : "recent coverage"}. {picked.reference_meta.source_tier === "known_publisher" ? "Known technical publisher." : "Open-web source; assess its credibility."} {picked.reference_meta.date_basis === "search_provider" ? "Any publication date is search-reported; verify the original." : ""}</p>}
               {picked.reference_meta?.origin && (
                 <div className="reference-provenance">
                   <strong>{linkReviewLabel(picked.reference_meta)}</strong>

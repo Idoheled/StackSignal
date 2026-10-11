@@ -574,6 +574,11 @@ export function createService(c: Config, network: typeof fetch = fetch) {
       if (["invite", "recovery", "submit", "rescan", "source_scan", "source_save", "source_delete", "export"].includes(action))
         await guardRate("sensitive:" + user.id + ":" + action, 10, 600);
       const out = await rpc("ss_api", { action, p: payload }, s.access_token);
+      if (action === "admin") {
+        // The role/MFA gate above and ss_api have already authorized the administrator.
+        const health = await sb("/rest/v1/ss_settings?key=eq.web_discovery_health&select=value", "GET", undefined, undefined, true);
+        out.web_discovery_health = health[0]?.value || {};
+      }
       return respond(out);
     } catch (e) {
       if (e instanceof HttpError)

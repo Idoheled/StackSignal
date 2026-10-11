@@ -212,6 +212,26 @@ test("legacy watch pagination and repository casing do not create another follow
   assert(!sameGitHubWatch("https://api.github.com/repos/NVIDIA/nccl/releases?per_page=10", "https://github.com/nvidia/other"));
 });
 
+test("web candidates retain dates and source provenance without treating snippets as verified pages", async () => {
+  const { webCandidate, webSearchRequest, lowValueDiscovery } = await import("../supabase/functions/_shared/web-discovery.ts");
+  const base={title:"vLLM KV cache offloading benchmark",url:"https://docs.vllm.ai/guide?utm_campaign=test",content:"A reproducible vLLM benchmark measures KV cache offloading, throughput and latency for distributed inference."};
+  const candidate=webCandidate({...base,published_date:"2025-05-01"},TEAM_PROFILE,"public query","explore")!;
+  assert.equal(candidate.published_at,"2025-05-01T00:00:00.000Z");
+  assert.equal(candidate.reference_meta.link_status,"search_result");
+  assert.equal(candidate.reference_meta.source_tier,"known_publisher");
+  assert.equal(webCandidate({...base,url:"https://new-tool.example/guide"},TEAM_PROFILE,"public query","recent")!.reference_meta.source_tier,"open_web");
+  assert.equal(webCandidate({...base,published_date:"2099-01-01"},TEAM_PROFILE,"q","recent")!.published_at,null);
+  for (const url of ["http://docs.vllm.ai/x","https://localhost/x","https://192.168.1.1/x","https://user:pass@docs.vllm.ai/x"])
+    assert.equal(webCandidate({...base,url},TEAM_PROFILE,"q","recent"),null);
+  assert.equal(webCandidate({...base,title:"Kubernetes GPU portfolio"},TEAM_PROFILE,"q","recent"),null);
+  assert.equal(webCandidate({...base,content:"Short"},TEAM_PROFILE,"q","recent"),null);
+  assert.equal(webCandidate({...base,title:"Weekend cooking",content:"A delicious recipe with fresh vegetables and a detailed guide to making homemade soup for your family."},TEAM_PROFILE,"q","recent"),null);
+  assert(lowValueDiscovery("Engineering job vacancy","GPU Kubernetes","https://company.example/jobs/gpu"));
+  assert.equal(webSearchRequest("vLLM","explore").time_range,undefined);
+  assert.equal(webSearchRequest("vLLM","recent").time_range,"week");
+  assert.throws(()=>webSearchRequest("secret\nquery","recent"));
+});
+
 test("release candidates are labeled even when the publisher omits the prerelease flag", async () => {
   const { isPrerelease } = await import("../supabase/functions/_shared/github.ts");
   assert(isPrerelease({tag_name:"0.5.6rc4-cu129",prerelease:false}));

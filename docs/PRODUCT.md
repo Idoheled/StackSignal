@@ -101,7 +101,7 @@ flowchart TD
 
 Specific stack terms carry more weight than generic vendor mentions. The deterministic ranker recognizes performance, security, compatibility and implementation signals, and discounts some promotional/finance headlines. Followed releases receive a strong relevance floor because the administrator explicitly selected the dependency.
 
-Optional Gemini analysis can add structured public-text analysis with supporting evidence, but it is currently disabled. Optional broad web search is also disabled. The default system combines source watches, feeds, public repository discovery and local relevance without requiring a paid LLM.
+Optional Gemini analysis can add structured public-text analysis with supporting evidence, but it is currently disabled. [Tavily web discovery](WEB_DISCOVERY.md) adds focused internet searches when its collector key and budget are configured, rotating recent coverage with broader exploration and filtering obvious portfolio/hiring/finance noise. Source watches, feeds, public repository discovery and local relevance work without requiring a paid LLM.
 
 ## What the product does not claim
 

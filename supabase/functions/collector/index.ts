@@ -14,6 +14,7 @@ import { githubItems, githubAPIForLink, isPrerelease } from "../_shared/github.t
 import { TOPIC_TERMS } from "../../../lib/domain.ts";
 import { repositorySearchURL, DEFAULT_REPO_QUERIES } from "../../../lib/source-config.ts";
 import { relevance } from "../_shared/relevance.ts";
+import { webCandidate, webSearchRequest, lowValueDiscovery } from "../_shared/web-discovery.ts";
 class Deferred extends Error { retryAt: number; constructor(message: string, retryAt = Date.now() + 3600000) { super(message); this.retryAt = retryAt; } }
 class SourceTooLarge extends Error { constructor() { super("Source exceeds size limit"); } }
 const env = (k: string) => Deno.env.get(k) || "";
@@ -300,8 +301,8 @@ async function ingest(item: any, profile: any) {
     content_hash: hash,
     reference_meta: {
       ...old[0]?.reference_meta, ...item.reference_meta, signals,
-      link_status: old[0]?.reference_meta?.link_status === "title-match" ? "title-match" : "checked",
-      checked_at: new Date().toISOString(),
+      link_status: old[0]?.reference_meta?.link_status === "title-match" ? "title-match" : item.reference_meta?.link_status === "search_result" ? "search_result" : "checked",
+      ...(item.reference_meta?.link_status === "search_result" ? {} : { checked_at: new Date().toISOString() }),
     },
   };
   if (old[0]) await db("ss_articles?id=eq." + old[0].id, "PATCH", record);
@@ -426,6 +427,7 @@ async function articleJob(job: any, profile: any) {
       source: new URL(res.url).hostname,
       kind: job.payload.kind,
       topic: job.payload.topic,
+      reference_meta: m.published_at ? { date_basis: "publisher", note: "Metadata extracted from the approved publisher page. Technical claims have not been independently validated." } : undefined,
     },
     profile,
   );
@@ -438,6 +440,10 @@ async function discovery(profile: any) {
   const seconds = Math.ceil((nextMonth - Date.now()) / 1000);
   for (const q of (profile.queries || []).slice(0, 20)) {
     if (typeof q !== "string" || q.length > 300) continue;
+    if (profile._allowedQueries && !profile._allowedQueries.includes(q)) continue;
+    const lane = profile._searchLane === "explore" ? "explore" : "recent";
+    if (!(await budget("web-search-day:" + date.toISOString().slice(0, 10), 24, 86400)))
+      throw new Deferred("Daily web search ceiling reached", Date.UTC(date.getUTCFullYear(),date.getUTCMonth(),date.getUTCDate()+1));
     if (
       !(await budget(
         "search:" + month,
@@ -445,53 +451,52 @@ async function discovery(profile: any) {
         seconds,
       ))
     )
-      break;
+      throw new Deferred("Monthly web search ceiling reached", nextMonth + 1000);
     const res = await fetch("https://api.tavily.com/search", {
       method: "POST",
       headers: {
         Authorization: "Bearer " + env("TAVILY_API_KEY"),
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({
-        query: q,
-        search_depth: "basic",
-        topic: "general",
-        time_range: "week",
-        max_results: 5,
-        include_answer: false,
-        include_raw_content: false,
-      }),
+      body: JSON.stringify(webSearchRequest(q, lane)),
+      redirect: "error",
       signal: AbortSignal.timeout(12000),
     });
+    if (res.status === 429 || res.status === 432 || res.status === 433)
+      throw new Deferred("Web search provider throttled or exhausted its quota", res.status === 429 ? Date.now()+3600000 : nextMonth+1000);
     if (!res.ok)
       throw new Error("Discovery provider returned HTTP " + res.status);
-    const out = await res.json();
-    for (const x of out.results || []) {
+    const out = JSON.parse(await bodyText(res));
+    if (!Array.isArray(out.results)) throw new Error("Invalid web search response");
+    let accepted = 0, filtered = 0, duplicates = 0;
+    for (const x of out.results.slice(0, 8)) {
+      const item = webCandidate(x, profile, q, lane);
+      if (!item) { filtered++; continue; }
       const existing = await db(
-        "ss_articles?url=eq." + encodeURIComponent(x.url) + "&select=id",
+        "ss_articles?url=eq." + encodeURIComponent(item.url) + "&select=id",
       );
-      if (existing.length) continue;
-      await ingest(
-        {
-          title: x.title,
-          url: x.url,
-          summary:
-            "Found by a discovery query. Publication date and source metadata are awaiting verification.",
-          text: textOnly(String(x.content || "")).slice(0, 3000),
-          reference_meta: { origin: "discovery", discovery_lane: "web_search" },
-          kind: "Discovery",
-          published_at: null,
-        },
-        profile,
-      );
+      if (existing.length) { duplicates++; continue; }
+      await ingest(item, profile);
+      accepted++;
       try {
-        const url = safeURL(x.url, hosts);
+        const url = safeURL(item.url, hosts);
+        if (new URL(url).pathname.toLowerCase().endsWith(".pdf")) continue;
         await rpc("ss_queue_item", { job_kind: "article", item: { url } });
       } catch {
         /* Keep public link visible as an undated reference; do not fetch unapproved hosts. */
       }
     }
+    await webHealth({ state: "active", last_success: new Date().toISOString(), last_error: null,
+      last_query: q, last_window: lane, last_results: Math.min(out.results.length,8),
+      last_accepted: accepted, last_filtered: filtered, last_duplicates: duplicates });
   }
+}
+async function webHealth(patch: any) {
+  const old = await db("ss_settings?key=eq.web_discovery_health&select=value");
+  if (patch.configured && patch.monthly_ceiling > 0 && !patch.state &&
+      (!old[0]?.value?.state || ["missing_key","paused"].includes(old[0].value.state))) patch.state = "ready";
+  await db("ss_settings?on_conflict=key", "POST", { key: "web_discovery_health",
+    value: { ...old[0]?.value, ...patch }, updated_at: new Date().toISOString() }, "resolution=merge-duplicates,return=representation");
 }
 async function repoDiscovery(query: string, profile: any) {
   if (profile.repo_discovery === false) return;
@@ -501,6 +506,7 @@ async function repoDiscovery(query: string, profile: any) {
   if (!Array.isArray(result.items)) throw new Error("Invalid GitHub search response");
   for (const x of result.items.slice(0,6)) {
     if (x.private || x.fork || x.archived || !/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(x.full_name || "")) continue;
+    if (lowValueDiscovery(x.full_name, String(x.description || ""))) continue;
     const url = "https://github.com/" + x.full_name;
     await ingest({ url, title: x.full_name, source: "GitHub", author: x.owner?.login,
       summary: textOnly(String(x.description || "")).slice(0,600), text: [x.description, ...(x.topics || [])].join(" "),
@@ -535,21 +541,20 @@ Deno.serve(async (request) => {
     await rpc("ss_enqueue_sources");
     const settings = await db("ss_settings?key=eq.profile&select=value");
     const profile = { ...settings[0].value, _aiCalls: 0, _tagWeights: await rpc("ss_feedback_weights") };
+    const webEnabled = !!env("TAVILY_API_KEY") && Number(profile.search_monthly_limit) > 0;
+    await webHealth({ configured: !!env("TAVILY_API_KEY"), monthly_ceiling: Math.min(Number(profile.search_monthly_limit)||0,800),
+      daily_ceiling: 24, ...(webEnabled ? {} : { state: env("TAVILY_API_KEY") ? "paused" : "missing_key" }) });
     if (profile.repo_discovery !== false && await budget("repository-discovery:" + day, 1, 86400)) {
       for (const query of (profile.repo_queries || DEFAULT_REPO_QUERIES).slice(0,12))
         await rpc("ss_queue_item", { job_kind: "discovery", item: { lane: "repository", query } });
     }
     if (
-      env("TAVILY_API_KEY") &&
+      webEnabled &&
       (await budget("discovery-run:" + day, 1, 86400))
     )
-      await db(
-        "ss_jobs",
-        "POST",
-        (profile.queries || [])
-          .slice(0, 20)
-          .map((query: string) => ({ kind: "discovery", payload: { query } })),
-      );
+      for (const [index, query] of (profile.queries || []).slice(0,20).entries())
+        await rpc("ss_queue_item", { job_kind: "discovery", item: { query,
+          lane: "web", window: (Math.floor(Date.now()/86400000)+index)%4===0 ? "explore" : "recent", scheduled_day: day } });
     const jobs = await rpc("ss_claim_jobs", { batch_size: 8 });
     const start = Date.now();
     for (const job of jobs) {
@@ -564,7 +569,7 @@ Deno.serve(async (request) => {
       try {
         if (job.kind === "source") await sourceJob(job, profile);
         else if (job.kind === "discovery")
-          await (job.payload.lane === "repository" ? repoDiscovery(job.payload.query, profile) : discovery({ ...profile, queries: [job.payload.query] }));
+          await (job.payload.lane === "repository" ? repoDiscovery(job.payload.query, profile) : discovery({ ...profile, queries: [job.payload.query], _allowedQueries: profile.queries, _searchLane: job.payload.window }));
         else if (job.kind === "analyze") await ingest(job.payload, profile);
         else await articleJob(job, profile);
         await db("ss_jobs?id=eq." + job.id, "PATCH", {
@@ -573,6 +578,8 @@ Deno.serve(async (request) => {
         });
         count++;
       } catch (e) {
+        if (job.kind === "discovery" && job.payload.lane !== "repository")
+          await webHealth({ state: e instanceof Deferred ? "deferred" : "error", last_error: (e as Error).message.slice(0,200) });
         if (job.kind === "discovery" && job.payload.lane === "repository") {
           const previous = await db("ss_settings?key=eq.discovery_health&select=value");
           await db("ss_settings?on_conflict=key", "POST", { key: "discovery_health", value: { ...previous[0]?.value,

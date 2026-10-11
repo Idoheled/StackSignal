@@ -41,6 +41,10 @@ export type Article = {
     stars?: number;
     license?: string;
     date_basis?: string;
+    search_provider?: string;
+    search_query?: string;
+    search_window?: string;
+    source_tier?: string;
   };
   liked?: boolean;
   hidden?: boolean;

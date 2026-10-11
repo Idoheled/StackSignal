@@ -44,6 +44,8 @@ export function linkReviewLabel(meta?: { link_status?: string }) {
       return "Link checked";
     case "submitted":
       return "Metadata pending";
+    case "search_result":
+      return "Web search result";
     default:
       return "";
   }

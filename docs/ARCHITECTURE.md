@@ -91,7 +91,7 @@ Each authorized tick enqueues due watches, performs bounded daily maintenance/di
 | Fetch/parser failure | Record the error and retry within queue bounds |
 | Partial required pagination | Keep the previous ETag until the required pages succeed |
 
-Public repository discovery runs bounded queries over recently active, non-archived/non-fork public projects. Alternating popularity/recency broadens results, but does not guarantee repository quality or exhaustive coverage. Optional Tavily/Gemini calls are behind credentials and explicit budgets; both are currently disabled.
+Public repository discovery runs bounded queries over recently active, non-archived/non-fork public projects. Alternating popularity/recency broadens results, but does not guarantee repository quality or exhaustive coverage. Tavily web discovery uses bounded focused searches, rotating recent/exploration windows, canonical deduplication and source/snippet provenance. Provider calls require credentials and explicit budgets. Gemini analysis is separate and remains disabled. See [web discovery](WEB_DISCOVERY.md).
 
 ### Relevance has two stages
 

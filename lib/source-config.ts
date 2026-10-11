@@ -27,6 +27,30 @@ export const DEFAULT_REPO_QUERIES = [
   "inference benchmark optimization",
 ];
 
+/** Generic public technical queries only: never include private notes or infrastructure identifiers. */
+export const DEFAULT_WEB_QUERIES = [
+  "KServe llm-d distributed inference deployment release notes",
+  "NVIDIA Dynamo NIXL KV cache offloading performance",
+  "vLLM inference scheduler prefix caching performance optimization",
+  "LLM inference speculative decoding quantization benchmark",
+  "OpenShift GPU DRA DRANET resource claims",
+  "Kubernetes KAI NUMA GPU topology aware scheduling",
+  "NVIDIA network operator NIC configuration RoCE",
+  "RoCE PFC ECN congestion lossless fabric benchmark",
+  "NCCL DeepEP GPUDirect RDMA multi node inference",
+  "Cisco Dell HPE GPU server BIOS NUMA PCIe firmware tuning",
+  "HyperShift OpenShift bare metal performance profiles",
+  "LLM gateway KV aware routing token rate limits",
+  "LLM KV cache NVMe offloading LMCache KVBM",
+  "LLM cold start model distribution weight cache",
+  "MLPerf inference datacenter AIPerf benchmark",
+  "GPU cluster readiness DCGM RDMA observability",
+  "NetBox Foreman Redfish bare metal provisioning automation",
+  "AI inference runtime open source new tools research",
+  "distributed inference disaggregated prefill decode MoE research",
+  "LLM serving security vulnerability breaking changes",
+];
+
 export function repositorySearchURL(query: string, now = Date.now()) {
   const q = query.trim();
   if (!q || q.length > 160 || /[\r\n\x00-\x1f]/.test(q))
