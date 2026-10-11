@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 let handler: (request: Request) => Promise<Response>;
+const healthFixture={checked_at:new Date().toISOString(),stars:400,watchers:10,recent_releases:3,latest_release:new Date().toISOString(),pushed_at:new Date().toISOString(),license:"Apache-2.0",active:true};
 const secret = "test-only-collector-secret-1234567890";
 const environment: Record<string,string> = {SUPABASE_URL:"https://database.example",SUPABASE_SERVICE_ROLE_KEY:"test-service-key",COLLECTOR_SECRET:secret};
 (globalThis as any).Deno = {
@@ -35,15 +36,17 @@ test("collector authenticates, deduplicates releases, defers publisher limits, a
         return Response.json([{html_url:"https://github.com/a/b/releases/tag/v2",tag_name:"v2",name:"v2",body:"Fix crash",published_at:"2026-10-09T00:00:00Z",prerelease:false}]);
       }
       assert.equal(u.pathname,"/search/repositories");
-      return Response.json({items:[{full_name:"engineering/gpu-inference",description:"GPU inference serving with KV cache offloading",topics:["vllm"],owner:{login:"engineering"},created_at:"2020-01-01T00:00:00Z",pushed_at:"2026-10-09T00:00:00Z",stargazers_count:40,license:{spdx_id:"Apache-2.0"}}]});
+      return Response.json({items:[{full_name:"engineering/gpu-inference",description:"GPU inference serving with KV cache offloading",topics:["vllm"],owner:{login:"engineering"},created_at:"2020-01-01T00:00:00Z",pushed_at:"2026-10-09T00:00:00Z",stargazers_count:400,license:{spdx_id:"Apache-2.0"}}]});
     }
     assert.equal(u.hostname,"database.example");
     if (init?.method === "POST" || init?.method === "PATCH") writes.push({path:u.pathname,body});
-    if (u.pathname.endsWith("ss_take_budget")) return Response.json(!body.budget_key.startsWith("maintenance:") && !body.budget_key.startsWith("repository-discovery:"));
+    if (u.pathname.endsWith("ss_take_budget")) return Response.json(!body.budget_key.startsWith("maintenance:") && !body.budget_key.startsWith("repository-discovery:") && !body.budget_key.startsWith("trending-discovery:") && !body.budget_key.startsWith("repo-health-queue:"));
     if (u.pathname.endsWith("ss_claim_jobs")) return Response.json([job]);
     if (u.pathname.endsWith("ss_feedback_weights")) return Response.json({});
     if (u.pathname.endsWith("ss_enqueue_sources")) return Response.json(null);
+    if (u.pathname.endsWith("ss_queue_item")) return Response.json(null);
     if (u.pathname.endsWith("ss_queue_items")) return Response.json(body.items.length);
+    if (u.pathname.endsWith("ss_settings") && u.searchParams.get("key")?.startsWith("eq.repo_health:")) return Response.json([{value:healthFixture}]);
     if (u.pathname.endsWith("ss_settings")) return Response.json([{value:{repo_discovery:true,repo_queries:[],gemini_daily_limit:0,search_monthly_limit:0}}]);
     if (u.pathname.endsWith("ss_sources")) return Response.json([{id:"source",url:"https://api.github.com/repos/a/b/releases?per_page=10",name:"a/b",type:"github",active,revision:1,include_prereleases:false}]);
     if (u.pathname.endsWith("ss_articles")) {
@@ -161,7 +164,7 @@ test("semantic sweep is cached, comparison-only, private-context safe and pauses
   environment.GEMINI_API_KEY="test-only-gemini-key";
   const excerpt="This reproducible guide configures KV cache offloading and compares latency under controlled request concurrency.";
   const source={title:"Cache engineering",text:excerpt,scope:"search_snippet"};
-  let mode="shadow", daily=4, provider=200, calls=0, row:any={id:"public-article",score:70,kind:"Discovery",content_hash:"a".repeat(64),reference_meta:{public_evaluation_input:source}};
+  let mode="shadow", daily=4, provider=200, calls=0, row:any={url:"https://kubernetes.io/public-guide",id:"public-article",score:70,kind:"Discovery",content_hash:"a".repeat(64),reference_meta:{repo_health:healthFixture,public_evaluation_input:source}};
   let health:any={}, used=0, race=false, lastAttempt:string|undefined;
   const writes:any[]=[];
   globalThis.fetch=async(input,init)=>{
@@ -180,6 +183,7 @@ test("semantic sweep is cached, comparison-only, private-context safe and pauses
     if(url.pathname.endsWith("ss_feedback_weights")) return Response.json({});
     if(url.pathname.endsWith("ss_enqueue_sources")) return Response.json(null);
     if(url.pathname.endsWith("ss_claim_jobs")) return Response.json([]);
+    if(url.pathname.endsWith("ss_evaluation_candidates")) return Response.json(row.reference_meta.evaluation ? [] : [row]);
     if(url.pathname.endsWith("ss_evaluation_usage")) return Response.json({used_24h:used,used_month:used,last_attempt:lastAttempt});
     if(url.pathname.endsWith("ss_reserve_evaluation_batch")) {assert(body.daily_max<=16);assert(body.monthly_max<=496);used++;return Response.json({request_id:used,items:body.items});}
     if(url.pathname.endsWith("ss_settings")) {
@@ -223,7 +227,7 @@ test("semantic sweep is cached, comparison-only, private-context safe and pauses
 test("multi-link batches save independent valid reviews and withhold an invalid neighbor",async()=>{
   const savedFetch=globalThis.fetch;environment.GEMINI_API_KEY="test-batch-key";
   const excerpt="A reproducible inference benchmark configures KV cache offloading and documents controlled concurrency.";
-  const rows=["one","two","three"].map(id=>({id,url:"https://github.com/a/"+id,score:70,kind:id==="two" ? "Release" : "Article",content_hash:id,reference_meta:{public_evaluation_input:{title:id,text:excerpt,scope:"publisher_excerpt"},...(id==="two"?{alert_kind:"release"}:{})}}));
+  const rows=["one","two","three"].map(id=>({id,url:"https://github.com/a/"+id,score:70,kind:id==="two" ? "Release" : "Article",content_hash:id,reference_meta:{repo_health:healthFixture,public_evaluation_input:{title:id,text:excerpt,scope:"publisher_excerpt"},...(id==="two"?{alert_kind:"release"}:{})}}));
   let health:any={},calls=0,reservations=0;
   globalThis.fetch=async(input,init)=>{
     const u=new URL(String(input)),body=init?.body?JSON.parse(String(init.body)):undefined;
@@ -237,9 +241,11 @@ test("multi-link batches save independent valid reviews and withhold an invalid 
     if(u.pathname.endsWith("ss_enqueue_sources")) return Response.json(null);
     if(u.pathname.endsWith("ss_claim_jobs")) return Response.json([]);
     if(u.pathname.endsWith("ss_feedback_weights")) return Response.json({});
+    if(u.pathname.endsWith("ss_evaluation_candidates")) return Response.json(rows.filter((r:any)=>!r.reference_meta.evaluation&&!r.reference_meta.evaluation_failed_at));
     if(u.pathname.endsWith("ss_evaluation_usage")) return Response.json({used_24h:reservations,used_provider_day:reservations,used_month:reservations});
     if(u.pathname.endsWith("ss_reserve_evaluation_batch")) {reservations++;return Response.json({request_id:reservations,items:body.items});}
     if(u.pathname.endsWith("ss_settings")) {
+      if(u.searchParams.get("key")?.startsWith("eq.repo_health:")) return Response.json([{value:healthFixture}]);
       if(body) {if(body.key==="evaluation_health") health=body.value;return Response.json([body]);}
       return Response.json([{value:u.searchParams.get("key")==="eq.profile" ? {gemini_mode:"rerank",gemini_daily_limit:16,gemini_monthly_limit:496,repo_discovery:false,search_monthly_limit:0} : health}]);
     }
@@ -262,4 +268,40 @@ test("multi-link batches save independent valid reviews and withhold an invalid 
     assert((rows[2].reference_meta as any).evaluation_retry_at);
     assert.equal(health.state,"partial_batch");assert.equal(health.last_batch_reviewed,2);
   } finally {globalThis.fetch=savedFetch;delete environment.GEMINI_API_KEY;}
+});
+
+test("official OpenShift detail payloads allow bounded large changelogs and still reject oversized responses",async()=>{
+  const originalFetch=globalThis.fetch;
+  const source={id:"openshift-test",name:"OpenShift preview",type:"openshift",url:"https://amd64.ocp.releases.ci.openshift.org/api/v1/releasestream/4-dev-preview/tags",revision:1,active:true,include_prereleases:true,priority:"core"};
+  const writes:any[]=[];
+  let oversized=false;
+  globalThis.fetch=async(input,init)=>{
+    const u=new URL(String(input)),body=init?.body?JSON.parse(String(init.body)):undefined;
+    if(u.hostname==="amd64.ocp.releases.ci.openshift.org") {
+      if(u.pathname.endsWith('/tags')) return Response.json({tags:[{name:'4.23.0-ec.1',phase:'Accepted'}]});
+      if(oversized) return new Response('',{headers:{'content-length':'8000001'}});
+      return Response.json({name:'4.23.0-ec.1',phase:'Accepted',changeLog:btoa('Created: 2026-10-10 12:00:00 +0000\nGPU Kubernetes resource allocation'),padding:'x'.repeat(2_100_000)});
+    }
+    assert.equal(u.hostname,'database.example');
+    if(init?.method==='POST'||init?.method==='PATCH') writes.push({path:u.pathname,body});
+    if(u.pathname.endsWith('ss_take_budget')) return Response.json(false);
+    if(u.pathname.endsWith('ss_enqueue_sources')) return Response.json(null);
+    if(u.pathname.endsWith('ss_feedback_weights')) return Response.json({});
+    if(u.pathname.endsWith('ss_claim_jobs')) return Response.json([{id:'openshift-job',kind:'source',attempts:1,payload:{source_id:source.id}}]);
+    if(u.pathname.endsWith('ss_sources')) return Response.json(body?[body]:[source]);
+    if(u.pathname.endsWith('ss_articles')) return Response.json([]);
+    if(u.pathname.endsWith('ss_settings')) return Response.json(body?[body]:u.searchParams.get('key')==='eq.profile'?[{value:{repo_discovery:false,gemini_daily_limit:0,search_monthly_limit:0}}]:[]);
+    if(u.pathname.endsWith('ss_queue_items')||u.pathname.endsWith('ss_jobs')) return Response.json(null);
+    throw new Error('Unexpected request '+u.pathname);
+  };
+  try {
+    const run=()=>handler(new Request('https://collector.example',{method:'POST',headers:{'x-collector-secret':secret}}));
+    assert.equal((await run()).status,200);
+    const queued=writes.find(x=>x.path.endsWith('ss_queue_items')).body.items;
+    assert.equal(queued.length,1);assert.equal(queued[0].title,'OpenShift 4.23.0-ec.1');assert.equal(queued[0].reference_meta.prerelease,true);
+    assert.equal(queued[0].published_at,'2026-10-10T12:00:00.000Z');
+    oversized=true;await run();
+    assert.equal(writes.filter(x=>x.path.endsWith('ss_queue_items')).length,1,'oversized official payloads never create partial fabricated releases');
+    assert.equal(writes.filter(x=>x.path.endsWith('ss_sources')).at(-1).body.last_error,'Source exceeds size limit');
+  } finally {globalThis.fetch=originalFetch;}
 });

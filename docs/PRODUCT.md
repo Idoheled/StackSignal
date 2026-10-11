@@ -76,7 +76,7 @@ When you submit a missed public link, StackSignal preserves the reference, saves
 
 ## Follow projects and monitor source health
 
-Administrators can add/edit GitHub watches, feeds and documentation sources, including topic, priority, interval, active state and release channel. GitHub repository URLs normalize to release API endpoints; duplicate project watches are rejected.
+Administrators can add/edit GitHub watches, feeds, official OpenShift release streams and documentation sources, including topic, priority, interval, active state and release channel. GitHub repository URLs normalize to release API endpoints; duplicate project watches are rejected.
 
 - Stable releases are the default. Drafts are excluded; prereleases require opt-in.
 - Existing results retain canonical release URLs/tag metadata; repeated polling does not create a new unread item for the same article.
@@ -116,3 +116,5 @@ The card displays the stored technical score, while relevance sorting also uses 
 - A complete database/Auth backup through the application export.
 
 For collection rules and provenance, read [coverage](COVERAGE.md). For trust boundaries, recovery and known verification limits, read [security](SECURITY.md) and [operator onboarding](ONBOARDING.md#operators).
+
+Repository suggestion thresholds and daily/weekly Trending are editable under Administration → Coverage. Details show real watcher counts, release activity, license and snapshot age. See [maintenance and platform probes](REPOSITORY_DISCOVERY.md).

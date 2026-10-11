@@ -206,3 +206,9 @@ The public excerpt is captured at ingestion. A separate sweep loads the oldest p
 ### Persistent evaluation queue and pacing
 
 Administrator Apply/Compare/Off settings live in `ss_settings` and are read by each collector invocation. Website deployment has no profile-seeding step. The collector reads the oldest bounded pending public-input window, rotates lanes by attempt count, and retains older candidates beyond the weekly feed window. Successful assessments are cached; changed source inputs become pending again. Failed inputs are tracked separately for inspection. A five-minute gate supports on-demand evaluation; the database enforces rolling/Pacific-day, monthly and per-input retry limits across concurrent invocations. Separate bounded extraction jobs recover public text for older references. Source updates clear stale reviews; metadata-only updates preserve cached ranking. Health exposes dated coverage counts and pacing state after administrator authorization.
+
+## Repository and platform discovery
+
+GitHub Search and daily/weekly Trending feed bounded public candidates into a cached maintenance gate (stars, real watchers, recent releases, push age, license and active state). The gate applies again inside service-only AI candidate/reservation RPCs and authenticated feed reads, under the current saved administrator policy. Weak or unknown projects cannot consume review slots or bypass admission through a followed release. Library access remains independent.
+
+The `openshift` source type reads approved amd64 OpenShift 4/5 release-stream APIs and per-tag changelogs, recording Accepted status, RC/preview channel and publisher dates. It never treats CI acceptance as supported GA. Existing administrator source controls edit these probes. See [repository and release probes](REPOSITORY_DISCOVERY.md).

@@ -2,7 +2,7 @@ import { dateISO, textOnly } from "./content.ts";
 import { canonicalLink } from "../../../lib/links.ts";
 
 export function isPrerelease(value: { prerelease?: boolean; tag_name?: string }) {
-  return value.prerelease === true || /(?:^|[\d._-])(?:alpha|beta|rc|preview|pre|dev|nightly|canary)(?:[._-]?\d+)?(?:[._+-]|$)/i.test(String(value.tag_name || ""));
+  return value.prerelease === true || /(?:^|[\d._-])(?:alpha|beta|rc|ec|preview|pre|dev|nightly|canary)(?:[._-]?\d+)?(?:[._+-]|$)/i.test(String(value.tag_name || ""));
 }
 
 /** Parse documented GitHub API objects. PR creation is not a software release or a merge. */

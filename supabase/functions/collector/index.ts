@@ -15,6 +15,8 @@ import { repositorySearchURL, DEFAULT_REPO_QUERIES } from "../../../lib/source-c
 import { relevance } from "../_shared/relevance.ts";
 import { webCandidate, webSearchRequest, lowValueDiscovery } from "../_shared/web-discovery.ts";
 import { EVALUATOR_VERSION, EVALUATION_MODEL, publicInput, publicTeam, evaluationRequest, parseEvaluation, effectiveScore, evaluationCandidates, candidateLane, nextEvaluationAt, samePublicInput, batchEvaluationRequest, parseBatchEvaluation, MAX_BATCH_SIZE, DAILY_REQUEST_CAP, MONTHLY_REQUEST_CAP } from "../_shared/evaluation.ts";
+import { repositoryHealth, repositoryAdmitted, repositoryName, trendingProjects } from "../_shared/repository-health.ts";
+import { openshiftWatchURL, openshiftTags, openshiftItem } from "../_shared/openshift.ts";
 class Deferred extends Error { retryAt: number; constructor(message: string, retryAt = Date.now() + 3600000) { super(message); this.retryAt = retryAt; } }
 class SourceTooLarge extends Error { constructor() { super("Source exceeds size limit"); } }
 const env = (k: string) => Deno.env.get(k) || "";
@@ -61,8 +63,8 @@ async function budget(key: string, max: number, seconds: number) {
     window_seconds: seconds,
   });
 }
-async function bodyText(res: Response) {
-  if (Number(res.headers.get("content-length") || 0) > 2_000_000) {
+async function bodyText(res: Response, maxBytes=2_000_000) {
+  if (Number(res.headers.get("content-length") || 0) > maxBytes) {
     await res.body?.cancel();
     throw new SourceTooLarge();
   }
@@ -74,7 +76,7 @@ async function bodyText(res: Response) {
     const { value, done } = await reader.read();
     if (done) break;
     size += value.length;
-    if (size > 2_000_000) {
+    if (size > maxBytes) {
       await reader.cancel();
       throw new SourceTooLarge();
     }
@@ -88,7 +90,7 @@ async function bodyText(res: Response) {
   }
   return new TextDecoder().decode(bytes);
 }
-async function fetchPublic(input: string, etag?: string) {
+async function fetchPublic(input: string, etag?: string, maxBytes=2_000_000) {
   let url = safeURL(input, hosts);
   for (let hop = 0; hop < 4; hop++) {
     // Exact operator-controlled host allowlist is the trust boundary; arbitrary submitted domains are never fetched.
@@ -144,11 +146,41 @@ async function fetchPublic(input: string, etag?: string) {
     return {
       url,
       unchanged: false,
-      text: await bodyText(res),
+      text: await bodyText(res,maxBytes),
       etag: res.headers.get("etag"),
     };
   }
   throw new Error("Too many source redirects");
+}
+async function repoHealth(name:string, suppliedReleases?:any[]) {
+  const key="repo_health:"+name.toLowerCase();
+  const cached=(await db("ss_settings?key=eq."+encodeURIComponent(key)+"&select=value"))[0]?.value;
+  if(cached?.checked_at && Date.parse(cached.checked_at)>Date.now()-86400000) return cached;
+  const metadataKey="repo_metadata:"+name.toLowerCase();
+  let metadata=(await db("ss_settings?key=eq."+encodeURIComponent(metadataKey)+"&select=value"))[0]?.value;
+  if(!metadata?.captured_at || Date.parse(metadata.captured_at)<Date.now()-86400000) {
+    const value=JSON.parse((await fetchPublic("https://api.github.com/repos/"+name)).text);
+    if(value.private!==false) throw new Error("Only public repository metadata can be collected");
+    metadata={captured_at:new Date().toISOString(),value};
+    await db("ss_settings?on_conflict=key","POST",{key:metadataKey,value:metadata},"resolution=merge-duplicates,return=representation");
+  }
+  const releases=suppliedReleases || JSON.parse((await fetchPublic("https://api.github.com/repos/"+name+"/releases?per_page=20")).text);
+  if(!Array.isArray(releases)) throw new Error("Invalid repository release history");
+  const health=repositoryHealth(metadata.value,releases);
+  await db("ss_settings?on_conflict=key","POST",{key,value:health},"resolution=merge-duplicates,return=representation");
+  return health;
+}
+async function queueRepoHealthChecks() {
+  const filter="deleted_at=is.null&url=like.https://github.com/*&or=(reference_meta->repo_health->>checked_at.is.null,reference_meta->repo_health->>checked_at.lt."+new Date(Date.now()-86400000).toISOString()+")&select=url&order=discovered_at.asc&limit=100";
+  const reviewed=await db("ss_articles?"+filter+"&reference_meta->evaluation->>decision=eq.useful");
+  const rows=[...reviewed,...await db("ss_articles?"+filter)];
+  let queued=0;
+  for(const name of new Set(rows.map((r:any)=>repositoryName(r.url)).filter(Boolean))) {
+    if(queued>=2) break;
+    if(await budget("repo-health-queue:"+name+":"+new Date().toISOString().slice(0,10),1,86400)) {
+      await rpc("ss_queue_item",{job_kind:"article",item:{url:"https://github.com/"+name,health_only:true}});queued++;
+    }
+  }
 }
 async function evaluationHealth(patch: any) {
   const old = await db("ss_settings?key=eq.evaluation_health&select=value");
@@ -183,7 +215,7 @@ async function failedEvaluation(row: any, delay=86400000) {
 async function queueMissingPublicInputs() {
   const rows=await db("ss_articles?deleted_at=is.null&reference_meta->>public_evaluation_input=is.null&reference_meta->>public_extraction_requested=is.null&select=id,url,kind,topic,content_hash,reference_meta&order=discovered_at.asc,id.asc&limit=8");
   for(const row of rows) {
-    const approved=!!safeURL(row.url,hosts) && !new URL(row.url).pathname.toLowerCase().endsWith(".pdf");
+    let approved=false; try { approved=!!safeURL(row.url,hosts) && !new URL(row.url).pathname.toLowerCase().endsWith(".pdf"); } catch { /* Unapproved references stay private and unfetched. */ }
     if(approved) await rpc("ss_queue_item",{job_kind:"article",item:{url:row.url,kind:row.kind,topic:row.topic}});
     await db("ss_articles?id=eq."+row.id+(row.content_hash ? "&content_hash=eq."+encodeURIComponent(row.content_hash) : "&content_hash=is.null"),"PATCH",{reference_meta:{...row.reference_meta,public_extraction_requested:approved ? "queued" : "unsupported"}});
   }
@@ -214,11 +246,11 @@ async function evaluateSweep(profile: any) {
   if(next>Date.now()) {
     await evaluationHealth({configured:true,mode,model:EVALUATION_MODEL,state:"pacing_wait",next_attempt_at:new Date(next).toISOString(),daily_ceiling:limit,monthly_ceiling:monthly,usage}); return;
   }
-  const filter=eligibleEvaluation+"&reference_meta->>evaluation=is.null&or=(reference_meta->>evaluation_failed_at.is.null,reference_meta->>evaluation_retry_at.lte."+new Date().toISOString()+")";
-  const rows=await db("ss_articles?"+filter+"&select=id,url,score,content_hash,discovered_at,reference_meta,kind&order=discovered_at.asc,id.asc&limit=50");
+  const rows=await rpc("ss_evaluation_candidates");
   const team=publicTeam(profile), candidates=[];
   // Oldest queue window plus rotating lane preference balances useful known material and unfamiliar ideas.
   for(const row of evaluationCandidates(rows,Number(usage.used_month)||0)) {
+    if(repositoryName(row.url) && !repositoryAdmitted(row.reference_meta.repo_health,profile)) continue;
     const input=row.reference_meta.public_evaluation_input;
     const cache_key=await digest(JSON.stringify({version:EVALUATOR_VERSION,model:EVALUATION_MODEL,input,team}));
     candidates.push({...row,cache_key}); if(candidates.length===50) break;
@@ -281,7 +313,7 @@ async function ingest(item: any, profile: any) {
     return;
   }
   const u = new URL(url);
-  if (item.kind === "Release" && u.hostname === "github.com") {
+  if (item.kind === "Release") {
     const tag = item.reference_meta?.tag || u.pathname.split("/releases/tag/")[1];
     item.reference_meta = { ...item.reference_meta, prerelease: isPrerelease({ prerelease: item.reference_meta?.prerelease, tag_name: tag }) };
   }
@@ -290,6 +322,8 @@ async function ingest(item: any, profile: any) {
     if (!watched[0]?.active || watched[0].revision !== item.reference_meta.source_revision) return;
     if (item.reference_meta.prerelease && !watched[0].include_prereleases) return;
   }
+  const repo=repositoryName(url);
+  if(repo && !item.reference_meta?.repo_health) item.reference_meta={...item.reference_meta,repository:repo,repo_health:await repoHealth(repo)};
   const old = await db(
     "ss_articles?url=eq." +
       encodeURIComponent(url) +
@@ -379,9 +413,21 @@ async function sourceJob(job: any, profile: any) {
     } else res = await fetchPublic(requestURL.toString(), source.etag);
     const meta = { origin: "source_watch", source_id: source.id, source_revision: source.revision };
     if (!res.unchanged) {
-      if (source.type === "github") {
+      if (source.type === "openshift") {
+        openshiftWatchURL(source.url);
+        const tags=openshiftTags(JSON.parse(res.text),source);
+        const entries=[];
+        for(const tag of tags) {
+          const link=source.url.replace(/\/tags$/, "/release/"+encodeURIComponent(tag.name));
+          const detail=JSON.parse((await fetchPublic(link,undefined,8_000_000)).text);
+          entries.push(openshiftItem(detail,source,tag.name));
+        }
+        await rpc("ss_queue_items",{job_kind:"analyze",items:entries});
+        await db("ss_sources?id=eq."+source.id+"&revision=eq."+source.revision,"PATCH",{last_item_count:entries.length});
+      } else if (source.type === "github") {
+        const health=await repoHealth(requestURL.pathname.split("/").slice(2,4).join("/"),releaseList ? JSON.parse(res.text) : undefined);
         const entries = githubItems(JSON.parse(res.text), source);
-        await rpc("ss_queue_items", { job_kind: "analyze", items: entries.map(payload => ({ ...payload, reference_meta: { ...payload.reference_meta, ...meta } })) });
+        await rpc("ss_queue_items", { job_kind: "analyze", items: entries.map(payload => ({ ...payload, reference_meta: { ...payload.reference_meta, ...meta, repo_health:health } })) });
         await db("ss_sources?id=eq." + source.id + "&revision=eq." + source.revision, "PATCH", { last_item_count: entries.length });
       } else if (source.type === "rss") {
         if (!/<(?:rss|feed|rdf:RDF)\b/i.test(res.text)) throw new Error("The URL did not return an RSS or Atom feed");
@@ -438,7 +484,16 @@ async function articleJob(job: any, profile: any) {
   const repo=repository.hostname==="github.com" && repository.pathname.match(/^\/([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+)\/?$/);
   if(repo) {
     const endpoint="https://api.github.com/repos/"+repo[1]+"/"+repo[2];
-    const metadata=JSON.parse((await fetchPublic(endpoint)).text);
+    const health=await repoHealth(repo[1]+"/"+repo[2]);
+    if(job.payload.health_only) {
+      const rows=await db("ss_articles?deleted_at=is.null&url=ilike."+encodeURIComponent("https://github.com/"+repo[1]+"/"+repo[2]+"*")+"&select=id,url,content_hash,reference_meta&limit=100");
+      for(const row of rows) if(repositoryName(row.url)?.toLowerCase()===(repo[1]+"/"+repo[2]).toLowerCase())
+        await db("ss_articles?id=eq."+row.id+(row.content_hash ? "&content_hash=eq."+encodeURIComponent(row.content_hash) : "&content_hash=is.null"),"PATCH",{reference_meta:{...row.reference_meta,repo_health:health,repository:repo[1]+"/"+repo[2]}});
+      return;
+    }
+    if(job.payload.discovery_lane && !repositoryAdmitted(health,profile)) return;
+    const cached=(await db("ss_settings?key=eq."+encodeURIComponent("repo_metadata:"+(repo[1]+"/"+repo[2]).toLowerCase())+"&select=value"))[0]?.value;
+    const metadata=cached?.value || JSON.parse((await fetchPublic(endpoint)).text);
     if(metadata.private) throw new Error("Only public repository content can be evaluated");
     let readme="";
     try {
@@ -450,8 +505,14 @@ async function articleJob(job: any, profile: any) {
     } catch(e) { if(e instanceof Deferred) throw e; /* Metadata may suffice without a README. */ }
     await ingest({url:job.payload.url,title:metadata.full_name,source:"GitHub",author:metadata.owner?.login,kind:"Repository",topic:job.payload.topic,
       summary:String(metadata.description||""),text:[metadata.description,...(metadata.topics||[]),readme].join(" "),published_at:metadata.created_at,updated_at:metadata.pushed_at,
-      reference_meta:{repository:metadata.full_name,license:metadata.license?.spdx_id||"Unspecified"}},profile);
+      reference_meta:{...job.payload.reference_meta,repository:metadata.full_name,repo_health:health,stars:health.stars,license:health.license,...(job.payload.discovery_lane ? {origin:"discovery",discovery_lane:job.payload.discovery_lane} : {})}},profile);
     return;
+  }
+  const commit=repository.hostname==="github.com" && repository.pathname.match(/^\/([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+)\/commit\/([a-f0-9]{40})$/);
+  if(commit) {
+    const x=JSON.parse((await fetchPublic("https://api.github.com/repos/"+commit[1]+"/"+commit[2]+"/commits/"+commit[3])).text);
+    const text=String(x.commit?.message||"");
+    await ingest({url:job.payload.url,title:text.split("\n")[0],source:"GitHub",kind:"Commit",topic:job.payload.topic,summary:text.slice(0,600),text,author:x.author?.login,published_at:x.commit?.committer?.date,reference_meta:{repository:commit[1]+"/"+commit[2],note:"Commit reference; this is not a published release or proof of deployment."}},profile);return;
   }
   const apiURL = githubAPIForLink(job.payload.url);
   if (apiURL) {
@@ -559,11 +620,15 @@ async function repoDiscovery(query: string, profile: any) {
   for (const x of result.items.slice(0,6)) {
     if (x.private || x.fork || x.archived || !/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(x.full_name || "")) continue;
     if (lowValueDiscovery(x.full_name, String(x.description || ""))) continue;
+    if(Number(x.stargazers_count)<(profile.repo_min_stars ?? 100)) continue;
+    const health=await repoHealth(x.full_name);
+    if(!repositoryAdmitted(health,profile)) continue;
     const url = "https://github.com/" + x.full_name;
+    await rpc("ss_queue_item",{job_kind:"article",item:{url,discovery_lane:"repository_search"}});
     await ingest({ url, title: x.full_name, source: "GitHub", author: x.owner?.login,
       summary: textOnly(String(x.description || "")).slice(0,600), text: [x.description, ...(x.topics || [])].join(" "),
       kind: "Repository", published_at: dateISO(x.created_at), updated_at: dateISO(x.pushed_at),
-      reference_meta: { origin: "discovery", discovery_lane: "repository_search", repository: x.full_name,
+      reference_meta: { origin: "discovery", discovery_lane: "repository_search", repository: x.full_name, repo_health:health,
         stars: Math.max(0, Number(x.stargazers_count) || 0), license: String(x.license?.spdx_id || "Unspecified").slice(0,80) },
     }, profile);
   }
@@ -571,6 +636,14 @@ async function repoDiscovery(query: string, profile: any) {
   await db("ss_settings?on_conflict=key", "POST", { key: "discovery_health", value: { ...previous[0]?.value,
     repository_last_success: new Date().toISOString(), repository_results: result.items.length,
     repository_partial: !!result.incomplete_results, repository_last_error: null }, updated_at: new Date().toISOString() }, "resolution=merge-duplicates,return=representation");
+}
+async function trendingDiscovery(window:string,profile:any) {
+  if(profile.trending_discovery===false || profile.repo_discovery===false) return;
+  if(!["daily","weekly"].includes(window)) throw new Error("Invalid Trending period");
+  const result=trendingProjects((await fetchPublic("https://github.com/trending?since="+window)).text);
+  for(const x of result) await rpc("ss_queue_item",{job_kind:"article",item:{url:"https://github.com/"+x.repository,discovery_lane:"github_trending",reference_meta:{trending_period:window,trending_rank:x.rank,trending_checked_at:new Date().toISOString()}}});
+  const previous=await db("ss_settings?key=eq.discovery_health&select=value");
+  await db("ss_settings?on_conflict=key","POST",{key:"discovery_health",value:{...previous[0]?.value,["trending_"+window+"_success"]:new Date().toISOString(),trending_last_error:null}},"resolution=merge-duplicates,return=representation");
 }
 Deno.serve(async (request) => {
   const headers = {
@@ -596,6 +669,9 @@ Deno.serve(async (request) => {
     const webEnabled = !!env("TAVILY_API_KEY") && Number(profile.search_monthly_limit) > 0;
     await webHealth({ configured: !!env("TAVILY_API_KEY"), monthly_ceiling: Math.min(Number(profile.search_monthly_limit)||0,800),
       daily_ceiling: 24, ...(webEnabled ? {} : { state: env("TAVILY_API_KEY") ? "paused" : "missing_key" }) });
+    try { await queueRepoHealthChecks(); } catch { /* Queue public health checks without interrupting collection. */ }
+    if(profile.repo_discovery!==false && profile.trending_discovery!==false && await budget("trending-discovery:"+day,1,86400))
+      for(const window of ["daily","weekly"]) await rpc("ss_queue_item",{job_kind:"discovery",item:{lane:"trending",window,scheduled_day:day}});
     if (profile.repo_discovery !== false && await budget("repository-discovery:" + day, 1, 86400)) {
       for (const query of (profile.repo_queries || DEFAULT_REPO_QUERIES).slice(0,12))
         await rpc("ss_queue_item", { job_kind: "discovery", item: { lane: "repository", query } });
@@ -621,7 +697,7 @@ Deno.serve(async (request) => {
       try {
         if (job.kind === "source") await sourceJob(job, profile);
         else if (job.kind === "discovery")
-          await (job.payload.lane === "repository" ? repoDiscovery(job.payload.query, profile) : discovery({ ...profile, queries: [job.payload.query], _allowedQueries: profile.queries, _searchLane: job.payload.window }));
+          await (job.payload.lane === "trending" ? trendingDiscovery(job.payload.window,profile) : job.payload.lane === "repository" ? repoDiscovery(job.payload.query, profile) : discovery({ ...profile, queries: [job.payload.query], _allowedQueries: profile.queries, _searchLane: job.payload.window }));
         else if (job.kind === "analyze") await ingest(job.payload, profile);
         else await articleJob(job, profile);
         await db("ss_jobs?id=eq." + job.id, "PATCH", {
@@ -630,12 +706,12 @@ Deno.serve(async (request) => {
         });
         count++;
       } catch (e) {
-        if (job.kind === "discovery" && job.payload.lane !== "repository")
+        if (job.kind === "discovery" && !(["repository","trending"].includes(job.payload.lane)))
           await webHealth({ state: e instanceof Deferred ? "deferred" : "error", last_error: (e as Error).message.slice(0,200) });
-        if (job.kind === "discovery" && job.payload.lane === "repository") {
+        if (job.kind === "discovery" && ["repository","trending"].includes(job.payload.lane)) {
           const previous = await db("ss_settings?key=eq.discovery_health&select=value");
           await db("ss_settings?on_conflict=key", "POST", { key: "discovery_health", value: { ...previous[0]?.value,
-            repository_last_error: (e as Error).message.slice(0,200) }, updated_at: new Date().toISOString() }, "resolution=merge-duplicates,return=representation");
+            [job.payload.lane==="trending" ? "trending_last_error" : "repository_last_error"]: (e as Error).message.slice(0,200) }, updated_at: new Date().toISOString() }, "resolution=merge-duplicates,return=representation");
         }
         await db("ss_jobs?id=eq." + job.id, "PATCH", {
           status: e instanceof Deferred ? "pending" : job.attempts >= 4 ? "failed" : "pending",

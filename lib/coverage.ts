@@ -108,6 +108,7 @@ export const COVERAGE_TERMS: Record<string, string[]> = {
     "modelexpress",
     "speculative decoding",
     "dflash",
+    "deepgemm", "moonep", "mscclpp", "chunkkv", "cacheblend", "hybrid sparse offloading", "nvme over tcp", "nvmeordma",
     "quantization",
     "batching",
     "llm serving",
@@ -119,6 +120,7 @@ export const COVERAGE_TERMS: Record<string, string[]> = {
     "openshift",
     "hypershift",
     "kubernetes",
+    "kagent", "agent substrate", "agentgateway", "agent sandbox",
     "kubevirt",
     "operator",
     "leaderworkerset",
@@ -162,6 +164,7 @@ export const COVERAGE_TERMS: Record<string, string[]> = {
     "nic configuration",
     "nic-configuration",
     "doca",
+    "avi kubernetes operator", "openfga", "anthropic messages",
   ],
   Hardware: [
     "redfish",

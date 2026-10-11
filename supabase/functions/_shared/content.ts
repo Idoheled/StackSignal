@@ -1,6 +1,15 @@
 import { canonicalLink } from "../../../lib/links.ts";
 // Text-only extraction. Source markup is never rendered or executed in the application.
 export const TRUSTED_HOSTS = [
+  "amd64.ocp.releases.ci.openshift.org",
+  "kagent.dev",
+  "builtonenvoy.io",
+  "docs.lmcache.ai",
+  "techdocs.broadcom.com",
+  "www.vastdata.com",
+  "neurips.cc",
+  "runinfra.ai",
+  "www.deepep.org",
   "api.github.com",
   "github.com",
   "raw.githubusercontent.com",

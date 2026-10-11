@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-10-11 — Maintained repositories and platform release probes
+
+- Enforce administrator-editable GitHub stars, actual watchers, recent releases, activity and declared-license gates before AI reservation and feed admission; preserve saved references.
+- Add daily/weekly top-five GitHub Trending probes with truthful publisher rank and relevance review.
+- Monitor official OpenShift 4/5 stable and dev-preview release streams; decode per-release changelogs and label RC/engineering previews and CI acceptance.
+- Import an idempotent, sanitized second reading batch; add kagent, agent sandboxes, gateway authorization, cache research and collective communication coverage.
+- Add repository health diagnostics, service-only candidate selection, source-type/channel validation and regression tests.
+- Separate discovery queue identities by lane/period so weekly Trending is not suppressed by the daily probe; accommodate bounded official OpenShift changelogs without widening ordinary page limits.
+
 ## 2026-10-11 — Batched, reviewed-only discovery
 
 - Evaluate up to five public links per Flash Latest request with independent identity and evidence validation.

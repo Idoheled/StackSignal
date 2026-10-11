@@ -10,7 +10,7 @@ The steps below are for a new independent deployment. They are not outstanding s
 
 ## 1. Get the source and tools
 
-Extract the delivered source archive. Install Node.js 24, the pinned pnpm version using Corepack, and the official Supabase CLI. In the project directory:
+Clone [Idoheled/StackSignal](https://github.com/Idoheled/StackSignal), or extract the source archive. Install Node.js 24, the pinned pnpm version using Corepack, and the official Supabase CLI. In the project directory:
 
 ```sh
 corepack enable
@@ -102,7 +102,7 @@ Verify the cron run history and collector function logs. Open Sources in StackSi
 
 ## 6. Optional discovery and AI
 
-You can skip this entire step. The app still collects configured RSS/release/documentation sources and uses deterministic topic scoring.
+You can skip provider activation during setup. The app still collects configured sources and computes deterministic topic signals, but suggestions require useful AI review; saved library references remain available.
 
 - **Tavily:** create a free API key, add `TAVILY_API_KEY`. Search calls start disabled. Set a ceiling of at most 800 basic searches/month after configuring the provider. Queries run once daily; additional source feeds run independently. Do not enable automatic paid overages. Only generic administrator-authored search queries leave the workspace.
 - **Gemini:** use a Google AI Studio project marked Free with available `gemini-flash-latest` quota; set only `GEMINI_API_KEY` in function secrets. Start in Evaluate without changing ranking with up to five links per request, at most 16 requests per rolling/Pacific day and 496 per month, globally spaced five minutes apart. Actual project limits can be lower. Model failures pause evaluation while rules and discovery continue. See [activation and privacy](GEMINI_EVALUATION.md).
@@ -126,16 +126,7 @@ Use a maintainer and a read-only test member. Confirm:
 
 ## Maintenance, upgrades and recovery
 
-Commit your source into a **private** Git repository you control. The delivered project is already versioned in its private hosting source repository; GitHub account access was not available here. To create your own separate history after extracting the archive:
-
-```sh
-git init
-git add .
-git commit -m "Initial StackSignal implementation"
-git branch -M main
-git remote add origin YOUR_PRIVATE_GIT_REMOTE
-git push -u origin main
-```
+The maintained upstream is [Idoheled/StackSignal](https://github.com/Idoheled/StackSignal). Its main workflow validates source, tests three browser engines and automatically deploys the existing Cloudflare Worker. See [DEPLOYMENT.md](DEPLOYMENT.md) for the exact pipeline, privileges and rollback procedure. Do not recreate its repository or provider resources. Independent installations should use a repository/account they control and adjust the fixed deployment targets before enabling CI.
 
 Before any push, confirm `.env.setup` and `.bootstrap-credentials.txt` are ignored. For upgrades, review dependency changes, run `pnpm typecheck` and `pnpm test`, apply any new migrations, build with `pnpm build:standalone`, and deploy with the same Wrangler command. Keep previous deploy versions for rollback; do not roll back a database by deleting tables.
 
@@ -160,3 +151,9 @@ Public project search runs daily with up to twelve editable GitHub queries, boun
 Review match reasons and use Helpful / Not relevant. Personal ranking responds to your topic/tag feedback, and future analysis also uses bounded aggregate technical-tag feedback. Coverage preferences set the match threshold and topic priorities. **Health & audit** shows delayed sources, job failures, discovery success/partial results and provider budgets. None of these signals establishes that a benchmark claim has been independently reproduced.
 
 Independent installs leave Gemini and web-search budgets disabled until activation. The current workspace has both enabled. Public feeds and GitHub discovery can collect without Gemini, but suggestions remain withheld until useful AI review; existing saved library access is retained. Finite queries, provider quotas and public extraction leave coverage gaps.
+
+## Additive references and release probes
+
+The original import and October 11 expansion are already applied in the existing workspace. For an independent installation, review `lib/knowledge-expansion.ts`, then use `node scripts/import-knowledge-expansion.mjs` with the privileged local setup file after creating the owner and applying all migrations. The batch is immutable and deduplicates existing URLs/folders. It excludes private chat transcripts, contacts and internal sandbox URLs.
+
+Coverage controls repository stars, **actual watchers**, recent release count/activity and daily/weekly Trending. GitHub root links, releases, PRs and commits all require those maintenance signals before AI review and feed admission. A saved reference does not bypass the suggested-feed gate. The **OpenShift release stream** source accepts only the official amd64 4/5 stable/dev-preview tags API URLs; enable prereleases deliberately to see RC/engineering previews. These CI streams do not establish supported upgrade paths. See [REPOSITORY_DISCOVERY.md](REPOSITORY_DISCOVERY.md) for fields, cache freshness, exact limits and source controls.

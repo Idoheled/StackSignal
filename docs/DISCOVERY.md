@@ -6,7 +6,7 @@ StackSignal separates **finding material**, **judging technical fit**, and **ord
 
 ## Current configuration
 
-As verified on October 11, 2026, the deployed workspace has active Tavily search, 20 web queries, eight GitHub project-discovery queries and 61 active source watches. The first web sweep completed all 20 queries and stored 86 new references. Gemini evaluation is active in Apply mode using `gemini-flash-latest` on a confirmed Free-tier API project; the first assessment resolved to `gemini-3.8-flash` and preserved the feed score. These are dated observations, not counts that every installation should have; check Administration → Health for current state.
+As verified on October 11, 2026, the deployed workspace has active Tavily search, 20 web queries, eight GitHub project-discovery queries and 61 active source watches before the second reading batch (88 after its additive import). The first web sweep completed all 20 queries and stored 86 new references. Gemini evaluation is active in Apply mode using `gemini-flash-latest` on a confirmed Free-tier API project; the first assessment resolved to `gemini-3.8-flash` and preserved the feed score. These are dated observations, not counts that every installation should have; check Administration → Health for current state.
 
 A separate installation starts with provider budgets at zero. The original seed import and its eight historical web queries do not overwrite the existing workspace's live profile; do not rerun the import to configure discovery. Prepared web queries are in [source-config.ts](../lib/source-config.ts); the deployed profile is held in PostgreSQL and edited through Administration → Coverage.
 
@@ -16,13 +16,15 @@ A separate installation starts with provider budgets at zero. The original seed 
 | --- | --- | --- | --- |
 | Web discovery | Tavily Search REST API | Administrator-authored web queries | Documentation, articles, papers, tools, projects and news across public domains |
 | New GitHub projects | GitHub repository Search API | Separate administrator-authored repository queries | Public, non-fork, non-archived repositories pushed within the past 30 days |
+| Trending projects | GitHub daily and weekly Trending pages | First five repositories in publisher order, then maintenance and AI gates | Relevant projects beyond saved queries |
+| OpenShift releases | Official amd64 release-controller API | Editable OpenShift 4/5 stable and dev-preview watches | Accepted payloads and decoded changelogs, with RC/preview labeling |
 | Followed dependencies | GitHub release/issue/PR APIs | Explicit watches, interval, priority and channel | Releases and changes for selected projects; stable releases by default |
 | Publications and documentation | RSS/Atom and approved-host HTTP fetching | Explicit feed/page watches | New feed entries and meaningful changes to watched pages |
 | Team submissions | StackSignal submission and supported metadata extraction | A member supplies a missed public link | A reference to save and review; optionally a helpful-feedback signal |
 
 The website reads stored results. It does not initiate a new paid search for every visitor or every page refresh. Supabase Cron ticks every five minutes and the collector leases at most eight jobs per tick. Watch intervals, queue load and provider limits determine when each result arrives.
 
-GitHub project search alternates sorting by activity and stars on successive UTC days, returning at most six results per query. Those signals widen the radar; they do not certify repository quality. Search engines and RSS feeds are distinct from the optional Gemini classifier.
+GitHub project search alternates sorting by activity and stars on successive UTC days, returning at most six results per query. All GitHub suggestions additionally require current stars, actual watchers, release history, activity and declared-license checks. [Repository discovery](REPOSITORY_DISCOVERY.md) documents the thresholds, caching, Trending and OpenShift probes. These signals do not certify security or code quality. Search engines and RSS feeds are distinct from the optional Gemini classifier.
 
 ## 2. What the web searches are based on
 
@@ -36,7 +38,7 @@ Examples from the active 20-query profile:
 | Cache and data movement | `NVIDIA Dynamo NIXL KV cache offloading performance` |
 | Lossless networking | `RoCE PFC ECN congestion lossless fabric benchmark` |
 | GPU placement | `Kubernetes KAI NUMA GPU topology aware scheduling` |
-| Discover unfamiliar work | `AI inference runtime open source new tools research` |
+| Discover unfamiliar work | `AI infrastructure open source kagent agentgateway agent sandboxes tools research` |
 | Upgrade risk | `LLM serving security vulnerability breaking changes` |
 
 Administrators can change any query without a deployment. Interests and topic priorities affect local matching; changing them does **not** automatically rewrite the web queries. Likewise, following a repository creates a release watch, not a new web-search query.
@@ -57,7 +59,9 @@ flowchart TD
   Rank --> Store["Stored reference and provenance"]
   Store -->|"Approved host"| Fetch["Queue bounded page extraction"]
   Fetch --> Store
-  Store --> Feed["Date, threshold and personal ordering"]
+  Store --> Quality["GitHub maintenance gate when applicable"]
+  Quality --> Review["Useful AI review with exact evidence"]
+  Review --> Feed["Date, threshold and personal ordering"]
 ```
 
 Before storing a search result, the collector checks typed fields, bounded lengths, canonical public HTTPS identity and at least 60 characters of usable excerpt. It rejects credentialed/private URLs, obvious portfolio/hiring/finance/promotional patterns and technical relevance below 45. Tracking variants of an already stored URL do not create another reference.
@@ -93,7 +97,7 @@ A score of 98 can mean that a title/excerpt contains many relevant terms. It doe
 
 The administrator's minimum score (45…85) applies to the **AI assessment** for suggested-feed admission. Every feed mode requires useful, medium/high-confidence, practical/advanced material with validated evidence; releases receive the same review gate. All reviewed removes the date cutoff but never bypasses AI admission. Saved library references remain accessible independently. New to radar uses review time, so a queued older reference can surface after successful review without changing its publication date.
 
-The card displays the **stored score**. When sorting by relevance, the database adds a separate personal ordering adjustment: +2 per helpful item, otherwise −2 per hidden item, when that prior item shares a topic or tag; the total is capped at −12…+12. That adjustment changes order, not the number printed on the card. Recency sorting uses dates instead.
+Reviewed cards display the **AI assessment score**; unreviewed saved references retain their local score. Stored ranking is separate. When sorting by relevance, the database adds a separate personal ordering adjustment: +2 per helpful item, otherwise −2 per hidden item, when that prior item shares a topic or tag; the total is capped at −12…+12. That adjustment changes order, not the number printed on the card. Recency sorting uses dates instead.
 
 Shared tag learning uses active members' helpful/hidden feedback from the last 90 days. Each tag's sum is capped at −4…+4, and the ingestion contribution is capped at −8…+8. Feedback affects future/reprocessed ingestion and personal retrieval; it does not automatically rescore every historical article after each click.
 
@@ -116,6 +120,6 @@ The [conservative Gemini evaluator](GEMINI_EVALUATION.md) is a separate optional
 
 ## What “I don't know what I don't know” means here
 
-Explicit watches cover known dependencies. Open-web queries, new-project search and rotating exploration broaden discovery beyond the watchlist. This is useful coverage, not autonomous exhaustive research: query design, indexing, finite result counts and heuristic ranking all leave gaps. The current product has no automatic research planner, embedding-based semantic ranker or independent claim-verification engine.
+Explicit watches cover known dependencies. Open-web queries, GitHub Trending, new-project search and rotating exploration broaden discovery beyond the watchlist. This is useful coverage, not autonomous exhaustive research: query design, indexing, finite result counts and heuristic ranking all leave gaps. The current product has no automatic research planner, embedding-based semantic ranker or independent claim-verification engine.
 
 Keep source evidence visible, use feedback, and revise coverage as the team's stack evolves. Every useful discovery still deserves a human applicability check before production use.

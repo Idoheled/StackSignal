@@ -4,6 +4,8 @@ StackSignal uses Tavily, public GitHub discovery and source watches to find link
 
 ## What members see
 
+GitHub links must first pass the [current repository maintenance policy](REPOSITORY_DISCOVERY.md). The same gate is enforced at candidate selection, atomic reservation and feed read. This does not certify code security or peer review.
+
 Every suggested-feed mode, including releases and All reviewed, admits only completed, useful assessments with medium/high confidence, practical/advanced depth, an exact source quote and an AI score meeting the administrator's minimum score. Pending links, low-confidence judgments, introductory/tangential results, insufficient evidence and errors stay out of suggestions. Saved library links remain accessible, including references members saved before this policy. Library titles and notes are not submitted to Google.
 
 This week retains the publisher's seven-day date window. New to radar uses the assessment date, so a backlogged or undated reference can surface when its review completes without inventing a publication date. All reviewed has no age cutoff. Followed-release alerts and unread counts require review too, and respect prerelease settings.
@@ -32,7 +34,7 @@ The owner's October 11, 2026 AI Studio screenshots show **5 RPM, 250,000 input T
 
 ## Durable queue and extraction
 
-The sweep loads the oldest 50 eligible pending public inputs, rotates preference among strong/borderline/exploration lanes and submits up to five atomically reserved inputs. Already leased inputs are skipped within the window, so an interrupted request does not unnecessarily block all other work. There is no seven-day queue expiry.
+The sweep loads the oldest 50 eligible pending public inputs **after filtering GitHub repository health**, rotates preference among strong/borderline/exploration lanes and submits up to five atomically reserved inputs. Already leased inputs are skipped within the window, so an interrupted request does not unnecessarily block all other work. There is no seven-day queue expiry.
 
 Existing references without public text enter a separate bounded extraction queue: up to eight records per tick, once per record, only for existing approved public hosts. PDFs and unsupported hosts remain visible in administrator coverage as missing public input. Public GitHub repository extraction uses API metadata and a bounded public README when available. Imported chat text, private notes and arbitrary user titles are never evaluation inputs.
 

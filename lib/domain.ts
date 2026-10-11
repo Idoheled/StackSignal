@@ -39,6 +39,8 @@ export type Article = {
     signals?: string[];
     discovery_lane?: string;
     stars?: number;
+    repo_health?: {checked_at:string;stars:number;watchers:number;recent_releases:number;latest_release:string|null;pushed_at:string|null;license:string;active:boolean};
+    trending_period?:string;trending_rank?:number;release_phase?:string;release_stream?:string;
     license?: string;
     date_basis?: string;
     search_provider?: string;

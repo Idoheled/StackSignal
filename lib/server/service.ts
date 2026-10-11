@@ -1,3 +1,4 @@
+import { openshiftWatchURL } from "../../supabase/functions/_shared/openshift.ts";
 import { githubWatchURL } from "../source-config.ts";
 import { safeURL } from "../../supabase/functions/_shared/content.ts";
 import { normalizeUsername, validUsername, strongPassword } from "../domain.ts";
@@ -568,7 +569,7 @@ export function createService(c: Config, network: typeof fetch = fetch) {
       if (["submit", "source_save"].includes(action))
         payload.url = publicHttpsURL(String(payload.url || ""));
       if (action === "source_save") {
-        try { payload.url = payload.type === "github" ? githubWatchURL(payload.url) : safeURL(payload.url); }
+        try { payload.url = payload.type === "github" ? githubWatchURL(payload.url) : payload.type === "openshift" ? openshiftWatchURL(payload.url) : safeURL(payload.url); }
         catch (e) { throw new HttpError(400, (e as Error).message); }
       }
       if (["invite", "recovery", "submit", "rescan", "source_scan", "source_save", "source_delete", "export"].includes(action))

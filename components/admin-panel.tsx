@@ -49,6 +49,7 @@ const EMPTY = {
     gemini_mode: "off",
     search_monthly_limit: 0,
     repo_discovery: true,
+    trending_discovery:true,repo_min_stars:100,repo_min_watchers:5,repo_min_releases:2,repo_active_days:90,repo_release_days:180,
     repo_queries: DEFAULT_REPO_QUERIES,
     min_score: 55,
   },
@@ -348,6 +349,8 @@ export default function AdminPanel({
                   interests: d.get("interests"),
                   priorities: Object.fromEntries(TOPICS.slice(1).map(t => [t, Number(d.get("priority:"+t))])),
                   repo_discovery: d.get("repo_discovery") === "on",
+                  trending_discovery:d.get("trending_discovery")==="on",
+                  ...Object.fromEntries(["repo_min_stars","repo_min_watchers","repo_min_releases","repo_active_days","repo_release_days"].map(k=>[k,Number(d.get(k))])),
                   repo_queries: String(d.get("repo_queries") || "").split("\n").map(x => x.trim()).filter(Boolean),
                   min_score: Number(d.get("min_score")),
                   queries: String(d.get("queries"))
@@ -375,11 +378,20 @@ export default function AdminPanel({
             <div className="radar-settings">
               <div><h3>Look beyond the watchlist</h3><p className="subtle">Discover active public projects daily. No AI key or paid search is required. Queries are sent to GitHub: use public technical terms only.</p></div>
               <label className="check-label"><input type="checkbox" name="repo_discovery" defaultChecked={data.profile.repo_discovery !== false} /> Enable project discovery</label>
+              <label className="check-label"><input type="checkbox" name="trending_discovery" defaultChecked={data.profile.trending_discovery !== false} /> Probe GitHub’s top five daily and weekly projects</label>
+              <div className="form-grid">
+                <label>Minimum stars<input type="number" name="repo_min_stars" min={1} max={100000} defaultValue={data.profile.repo_min_stars ?? 100} /></label>
+                <label>Minimum watchers<input type="number" name="repo_min_watchers" min={1} max={10000} defaultValue={data.profile.repo_min_watchers ?? 5} /></label>
+                <label>Releases in the past year<input type="number" name="repo_min_releases" min={1} max={20} defaultValue={data.profile.repo_min_releases ?? 2} /></label>
+                <label>Last push within days<input type="number" name="repo_active_days" min={7} max={365} defaultValue={data.profile.repo_active_days ?? 90} /></label>
+                <label>Last release within days<input type="number" name="repo_release_days" min={30} max={730} defaultValue={data.profile.repo_release_days ?? 180} /></label>
+              </div>
+              <p className="subtle">All GitHub suggestions, including followed releases and PRs, must pass these checks and AI relevance review. Actual watchers are measured separately from stars. Public, active, non-fork repositories with a declared license only. Health refreshes daily and expires after seven days. These signals do not certify security or peer review. Saved references remain accessible even if they fail the policy.</p>
               <label>Repository discovery queries <span className="optional">One per line · up to 12 · 160 characters each</span>
                 <textarea name="repo_queries" rows={5} defaultValue={(data.profile.repo_queries || DEFAULT_REPO_QUERIES).join("\n")} />
               </label>
               <label>Minimum match score <input type="number" name="min_score" min={45} max={85} defaultValue={data.profile.min_score || 55} /></label>
-              <p className="subtle">Higher values produce a narrower feed. All discoveries remain searchable in the archive. Match scores measure relevance, not factual accuracy.</p>
+              <p className="subtle">Higher values produce a narrower feed. Only admitted AI-reviewed discoveries appear in All reviewed; saved references remain in the library. Match scores measure relevance, not factual accuracy.</p>
               <div className="form-grid">{TOPICS.slice(1).map(t => <label key={t}>{t} priority<input type="number" min={-20} max={20} name={"priority:"+t} defaultValue={data.profile.priorities?.[t] || 0} /></label>)}</div>
             </div>
             <label>
@@ -515,6 +527,8 @@ export default function AdminPanel({
           <div className="radar-settings">
             <h3>Discovery coverage</h3>
             <p className="subtle">Project search: {data.profile.repo_discovery === false ? "paused" : "enabled"} · Last success: {dateLabel(data.discovery_health?.repository_last_success)}</p>
+            <p className="subtle">Trending daily: {dateLabel(data.discovery_health?.trending_daily_success)} · Trending weekly: {dateLabel(data.discovery_health?.trending_weekly_success)}</p>
+            {data.discovery_health?.trending_last_error && <p className="source-error">{data.discovery_health.trending_last_error}</p>}
             {data.discovery_health?.repository_last_error && <p className="source-error">{data.discovery_health.repository_last_error}</p>}
             {data.discovery_health?.repository_partial && <p className="subtle">GitHub reported partial search results. The next daily search will continue coverage.</p>}
             <div className="coverage-grid">{TOPICS.slice(1).map(t => {
@@ -733,6 +747,7 @@ export default function AdminPanel({
                         <option value="rss">RSS / Atom</option>
                         <option value="github">GitHub project / releases</option>
                         <option value="page">Documentation page</option>
+                        <option value="openshift">OpenShift release stream</option>
                       </select>
                     </label>
                     <label>
@@ -747,7 +762,7 @@ export default function AdminPanel({
                     </label>
                   </div>
                   <label>Priority<select name="priority" defaultValue={dialog.source?.priority || "normal"}><option value="core">Core stack</option><option value="normal">Normal</option><option value="explore">Explore</option></select></label>
-                  <label className="check-label"><input type="checkbox" name="include_prereleases" defaultChecked={dialog.source?.include_prereleases || false} /> Include GitHub prereleases (clearly labeled)</label>
+                  <label className="check-label"><input type="checkbox" name="include_prereleases" defaultChecked={dialog.source?.include_prereleases || false} /> Include prereleases / RC / engineering previews (clearly labeled)</label>
                   <label>
                     Topic
                     <select

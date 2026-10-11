@@ -43,3 +43,7 @@ No raw chats, personal remarks, colleague names or internal deployment details a
 ## Repeatable import
 
 For a separate installation, after applying the required database migrations and creating the administrator, `node scripts/import-team-library.mjs` imports the batch in one transaction. An identical retry returns the recorded result and preserves renamed/moved folders and later curation. The importer reuses URLs, records folder identities, and refuses a changed payload under an already-used batch key. Regenerate the reviewed SQL with `node scripts/import-team-library.mjs --sql` if preparing a new batch. The existing deployment has already imported this batch; discovery changes belong in the live administrator profile.
+
+## Second reading batch — October 11, 2026
+
+[Knowledge expansion](../lib/knowledge-expansion.ts) adds 38 sanitized public references and 30 watch definitions. The live import created 28 new references, 29 additional bookmarks and 27 watches without recreating folders or changing existing owner settings. Coverage adds kagent/Agent Substrate, Agentgateway/OpenFGA, cache compression/offloading, MSCCLPP/MoonEP/DeepGEMM and individual gateway fixes. [Repository and OpenShift discovery](REPOSITORY_DISCOVERY.md) documents admission and remaining extraction limits. Private discussion text and contact details are not stored in the public seed.

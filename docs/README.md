@@ -44,3 +44,5 @@ Start with the purpose and your role, then follow the system into the source. Th
 - Use Mermaid for architecture, data relationships and workflow diagrams. Keep each diagram focused and readable on a phone.
 - Use synthetic examples and public technical references. Never add secrets, TOTP material, confidential chats, colleague identities or private production exports.
 - Explain incomplete verification precisely. A relevance score is not a benchmark validation; a source watch is not proof that its next fetch will succeed.
+
+- [Repository maintenance, Trending and OpenShift release probes](REPOSITORY_DISCOVERY.md): thresholds, public metadata, preview channels and the second reading batch.

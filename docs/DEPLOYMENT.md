@@ -52,6 +52,8 @@ Smoke checks verify configured Auth, disabled preview, anonymous denial, same-or
 
 Frontend CI does not migrate/reset the database, bootstrap users or deploy Supabase functions. Review migration names against live history, back up data and apply only the new migration/function version. Prefer additive schema changes compatible with the previous frontend. Record outcomes in `OPERATIONS.md`.
 
+The October 11 repository-discovery release separately applied `repository_health_release_probes` and `discovery_probe_identity`, then deployed collector version 17. Both daily/weekly Trending and all four official OpenShift streams were verified live. The frontend exposes the persistent administrator policy; deploying it does not repeat the additive reference import or reset provider budgets.
+
 ## Rollback
 
 Identify the last good Cloudflare version and inspect secret/schema changes. Roll back through Cloudflare's supported deployment history, or make a new GitHub revert commit and let CI deploy it. Run smoke checks and verify the affected authenticated workflow. Record the cause/recovery.

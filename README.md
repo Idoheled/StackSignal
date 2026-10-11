@@ -34,7 +34,7 @@ An AI infrastructure team works across hardware, lossless networking, Kubernetes
 >
 > Watch the known dependencies. Explore beyond them. Keep the original evidence close.
 
-Discovery combines explicit source watches with public feeds, repository searches and genuine Tavily web search. The shared library captures what people learn. Human judgment connects the two: a useful link becomes a saved reference, a discussion, or feedback that informs future ranking.
+Discovery combines explicit source watches with public feeds, repository searches, GitHub daily/weekly top-five probes, official OpenShift release streams and genuine Tavily web search. GitHub suggestions must pass maintenance checks and useful AI review. The shared library captures what people learn. Human judgment connects the two: a useful link becomes a saved reference, a discussion, or feedback that informs future ranking.
 
 ## A daily workflow
 
@@ -60,7 +60,7 @@ Administrators and maintainers curate content. Read-only members browse and read
 | **Routing and operations** | Envoy Gateway, Agent Router, inference extensions, Kuadrant, token policies and observability |
 | **Evidence and emerging work** | MLPerf, AIPerf, perftest, nccl-tests, DCGM, RDMA tooling, quantization, speculative decoding and adjacent AI tools |
 
-The initial import contains **136 public references in 29 folders**. These are seed-library counts, not a live inventory. Watches and discovery preferences evolve through administration. [Coverage and provenance](docs/COVERAGE.md) explains the initial material and its review status.
+The original import contains **136 public references in 29 folders**. A second additive batch brings kagent, Agentgateway, KV-cache research, collective kernels and additional issue/PR watches; see [repository discovery and release probes](docs/REPOSITORY_DISCOVERY.md). These are seed-library counts, not a live inventory. Watches and discovery preferences evolve through administration. [Coverage and provenance](docs/COVERAGE.md) explains the initial material and its review status.
 
 ## How everything connects
 
