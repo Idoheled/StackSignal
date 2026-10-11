@@ -11,7 +11,8 @@ await import("../supabase/functions/collector/index.ts");
 
 test("collector authenticates, deduplicates releases, defers publisher limits, and keeps real discovery dates", async () => {
   const originalFetch = globalThis.fetch;
-  let job: any, article: any, upstream = 200, active = true;
+  let job: any, article: any, upstream = 200, active = true, oversized = false, oversizedAtPage = 1;
+  const releaseRequests: string[] = [];
   const writes: {path:string;body:any}[] = [];
   globalThis.fetch = async (input, init) => {
     const u = new URL(String(input));
@@ -19,7 +20,17 @@ test("collector authenticates, deduplicates releases, defers publisher limits, a
     if (u.hostname === "api.github.com") {
       if (upstream === 429) return new Response("",{status:429,headers:{"retry-after":"120"}});
       if (u.pathname === "/repos/a/b/releases") {
-        assert.equal(u.searchParams.get("per_page"), "100", "legacy per_page=10 must not truncate the release check");
+        releaseRequests.push(u.search);
+        if (oversized) {
+          if (u.searchParams.get("per_page") === "20") {
+            if (Number(u.searchParams.get("page")) === oversizedAtPage) return new Response("",{headers:{"content-length":"2000001"}});
+            return Response.json(Array.from({length:20},(_,i)=>({html_url:"https://github.com/a/b/releases/tag/v3rc"+i,tag_name:"v3rc"+i,prerelease:true,published_at:"2026-10-09T00:00:00Z"})));
+          }
+          assert.equal(u.searchParams.get("per_page"),"10");
+          if (u.searchParams.get("page") === "1") return Response.json(Array.from({length:10},(_,i)=>({html_url:"https://github.com/a/b/releases/tag/v3rc"+i,tag_name:"v3rc"+i,prerelease:true,published_at:"2026-10-09T00:00:00Z"})));
+          return Response.json([{html_url:"https://github.com/a/b/releases/tag/v2",tag_name:"v2",name:"v2",body:"Fix crash",published_at:"2026-10-09T00:00:00Z",prerelease:false}]);
+        }
+        assert.equal(u.searchParams.get("per_page"), "20", "release payloads must stay bounded");
         return Response.json([{html_url:"https://github.com/a/b/releases/tag/v2",tag_name:"v2",name:"v2",body:"Fix crash",published_at:"2026-10-09T00:00:00Z",prerelease:false}]);
       }
       assert.equal(u.pathname,"/search/repositories");
@@ -31,6 +42,7 @@ test("collector authenticates, deduplicates releases, defers publisher limits, a
     if (u.pathname.endsWith("ss_claim_jobs")) return Response.json([job]);
     if (u.pathname.endsWith("ss_feedback_weights")) return Response.json({});
     if (u.pathname.endsWith("ss_enqueue_sources")) return Response.json(null);
+    if (u.pathname.endsWith("ss_queue_items")) return Response.json(body.items.length);
     if (u.pathname.endsWith("ss_settings")) return Response.json([{value:{repo_discovery:true,repo_queries:[],gemini_daily_limit:0,search_monthly_limit:0}}]);
     if (u.pathname.endsWith("ss_sources")) return Response.json([{id:"source",url:"https://api.github.com/repos/a/b/releases?per_page=10",name:"a/b",type:"github",active,revision:1,include_prereleases:false}]);
     if (u.pathname.endsWith("ss_articles")) {
@@ -58,6 +70,14 @@ test("collector authenticates, deduplicates releases, defers publisher limits, a
     job={id:"source-check",kind:"source",attempts:1,payload:{source_id:"source"}};
     await run();
     assert(writes.some(x=>x.path.endsWith("ss_queue_items")),"legacy release watches still queue release analysis");
+    oversized=true;releaseRequests.length=0;await run();
+    assert.deepEqual(releaseRequests,["?per_page=20&page=1","?per_page=10&page=1","?per_page=10&page=2"]);
+    assert.equal(writes.filter(x=>x.path.endsWith("ss_queue_items")).at(-1)!.body.items.length,1,"stable releases behind prerelease pages are retained");
+    assert(writes.some(x=>x.path.endsWith("ss_sources") && x.body.last_error===null));
+    oversizedAtPage=2;releaseRequests.length=0;await run();
+    assert.deepEqual(releaseRequests,["?per_page=20&page=1","?per_page=20&page=2","?per_page=10&page=1","?per_page=10&page=2"]);
+    assert.equal(writes.filter(x=>x.path.endsWith("ss_queue_items")).at(-1)!.body.items.length,1,"oversized later pages restart safely at the smaller size");
+    oversized=false;
     upstream=429;job={id:"rate-limit",kind:"source",attempts:1,payload:{source_id:"source"}};
     await run();
     const last=writes.filter(x=>x.path.endsWith("ss_jobs")).at(-1)!.body;

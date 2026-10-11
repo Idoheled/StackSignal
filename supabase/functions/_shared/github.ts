@@ -71,7 +71,7 @@ export function githubItems(
         updated_at:
           updated_at && Date.parse(updated_at) <= now ? updated_at : null,
         summary: summary.slice(0, 600),
-        text: summary,
+        text: summary.slice(0, 12000),
         priority: source.priority,
         reference_meta: {
           origin: source.id ? "source_watch" : "github",

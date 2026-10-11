@@ -15,6 +15,7 @@ import { TOPIC_TERMS } from "../../../lib/domain.ts";
 import { repositorySearchURL, DEFAULT_REPO_QUERIES } from "../../../lib/source-config.ts";
 import { relevance } from "../_shared/relevance.ts";
 class Deferred extends Error { retryAt: number; constructor(message: string, retryAt = Date.now() + 3600000) { super(message); this.retryAt = retryAt; } }
+class SourceTooLarge extends Error { constructor() { super("Source exceeds size limit"); } }
 const env = (k: string) => Deno.env.get(k) || "";
 const SUPABASE = env("SUPABASE_URL"),
   KEY = env("SUPABASE_SERVICE_ROLE_KEY");
@@ -60,8 +61,10 @@ async function budget(key: string, max: number, seconds: number) {
   });
 }
 async function bodyText(res: Response) {
-  if (Number(res.headers.get("content-length") || 0) > 2_000_000)
-    throw new Error("Source exceeds size limit");
+  if (Number(res.headers.get("content-length") || 0) > 2_000_000) {
+    await res.body?.cancel();
+    throw new SourceTooLarge();
+  }
   const reader = res.body?.getReader();
   if (!reader) return "";
   let size = 0;
@@ -72,7 +75,7 @@ async function bodyText(res: Response) {
     size += value.length;
     if (size > 2_000_000) {
       await reader.cancel();
-      throw new Error("Source exceeds size limit");
+      throw new SourceTooLarge();
     }
     parts.push(value);
   }
@@ -311,8 +314,35 @@ async function sourceJob(job: any, profile: any) {
   if (!source?.active) return;
   try {
     const requestURL = new URL(source.url);
-    if (source.type === "github" && requestURL.pathname.endsWith("/releases")) requestURL.searchParams.set("per_page", "100");
-    const res = await fetchPublic(requestURL.toString(), source.etag);
+    const releaseList = source.type === "github" && requestURL.pathname.endsWith("/releases");
+    const fetchReleases = async (size: number) => {
+      requestURL.searchParams.set("per_page", String(size));
+      requestURL.searchParams.set("page", "1");
+      const first = await fetchPublic(requestURL.toString(), source.etag);
+      if (first.unchanged) return first;
+      let values = JSON.parse(first.text);
+      if (!Array.isArray(values)) throw new Error("Invalid GitHub release list");
+      let pageValues = values;
+      const since = Math.max(Date.now() - 90 * 86400000, (Date.parse(source.last_success_at || "") || 0) - 7 * 86400000);
+      // Persist the first-page ETag only after every required page succeeds.
+      // Changed sources inspect a seven-day overlap; first scans cover up to 90 days.
+      for (let page = 2; page <= 5 && pageValues.length === size && pageValues.some((x: any) => Date.parse(x.published_at || "") >= since); page++) {
+        requestURL.searchParams.set("page", String(page));
+        const next = await fetchPublic(requestURL.toString());
+        pageValues = JSON.parse(next.text);
+        if (!Array.isArray(pageValues)) throw new Error("Invalid GitHub release list");
+        values = values.concat(pageValues);
+      }
+      return { ...first, text: JSON.stringify(values) };
+    };
+    let res;
+    if (releaseList) {
+      try { res = await fetchReleases(20); }
+      catch (e) {
+        if (!(e instanceof SourceTooLarge)) throw e;
+        res = await fetchReleases(10);
+      }
+    } else res = await fetchPublic(requestURL.toString(), source.etag);
     const meta = { origin: "source_watch", source_id: source.id, source_revision: source.revision };
     if (!res.unchanged) {
       if (source.type === "github") {
