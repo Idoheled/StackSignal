@@ -10,7 +10,13 @@
 - Existing owner `administrator` is active, has changed the temporary password, and completed a fresh TOTP enrollment at 10:44–10:45 UTC on October 10. The obsolete temporary administrator credential file was removed. Do not bootstrap/reset this account.
 - The original import contains 136 links, 136 bookmarks, 29 folders and 57 watches. It is immutable and already applied. Collection has since expanded the article count. Do not re-run the import with a changed batch payload.
 
-## Current discovery checkpoint
+## Current evaluation checkpoint — October 11
+
+The semantic-evaluation feature is deployed in collector **version 9** and the owner-private website. Application source commit: `0fdbcd96a19b13a7b49817ef674b682512a80fc5`. The `conservative_evaluation` migration is applied. Live configuration is **Compare only**, four attempts per rolling 24 hours and 100 per UTC month, with at least one-hour spacing. **Generation remains inactive pending a Gemini API key and free-tier project verification**; health reports `missing_key` and the attempt ledger is empty.
+
+Verification at `2026-10-11T10:20Z`: 61 active watches and 20 web queries are preserved; 63 public excerpts are available for sampling. Anonymous and authenticated roles cannot call the reservation RPC; the service role can. The new private ledger is RLS-enabled with no client policies by design. Live collector requests returned 401 without its secret and 200 with it. All 29 local tests, application/collector typechecks, the private Sites build and 171 relative documentation links passed. GitHub runs the separate production build, responsive checks and Cloudflare deployment on the pushed commit; consult Actions for the latest result. No existing account, save, note or folder was reset. See [evaluation architecture and activation](GEMINI_EVALUATION.md).
+
+## Web discovery checkpoint — historical pre-evaluation status
 
 Tavily web search is active through collector version 7. The saved profile contains 20 web queries with an 800-request monthly ceiling and a hard 24-request daily ceiling. All 20 jobs in the first daily sweep completed and stored 86 references; the latest search success at this checkpoint is `2026-10-11T07:35:03.563Z`. The five-minute Cron and 61 active watches are intact. Gemini remains disabled. Counts and timestamps are dated evidence; use Administration → Health for current state. See [activation evidence below](#tavily-web-search-activation--october-11).
 
