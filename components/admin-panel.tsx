@@ -45,6 +45,8 @@ const EMPTY = {
       "RoCE InfiniBand NCCL performance",
     ],
     gemini_daily_limit: 0,
+    gemini_monthly_limit: 100,
+    gemini_mode: "off",
     search_monthly_limit: 0,
     repo_discovery: true,
     repo_queries: DEFAULT_REPO_QUERIES,
@@ -353,6 +355,8 @@ export default function AdminPanel({
                     .map((x) => x.trim())
                     .filter(Boolean),
                   gemini_daily_limit: Number(d.get("gemini_daily_limit")),
+                  gemini_mode: d.get("gemini_mode"),
+                  gemini_monthly_limit: Number(d.get("gemini_monthly_limit")),
                   search_monthly_limit: Number(d.get("search_monthly_limit")),
                 });
                 notify("Coverage profile saved");
@@ -388,14 +392,21 @@ export default function AdminPanel({
               />
             </label>
             <p className="subtle">Tavily searches these public technical queries daily. Three quarters target recent material; a rotating quarter explores beyond the past week. Search snippets retain provenance; only approved hosts are automatically fetched.</p>
+            <label>Gemini evaluation mode
+              <select name="gemini_mode" defaultValue={data.profile.gemini_mode || "off"}>
+                <option value="off">Off</option><option value="shadow">Compare only (recommended)</option><option value="rerank">Apply confident evaluations to ranking</option>
+              </select>
+            </label>
+            <label>Monthly Gemini attempt ceiling<input type="number" name="gemini_monthly_limit" min={0} max={100} defaultValue={data.profile.gemini_monthly_limit ?? 100} /></label>
+            <p className="subtle">Flash-Lite samples strong, borderline and exploratory discoveries. Hard limits: 4 attempts in 24 hours, 100 per UTC calendar month and 1 per hour; failures count. Compare mode preserves your feed. Only public excerpts and recognized public stack terms reach Google. A separate free-tier API key is required.</p>
             <div className="form-grid">
               <label>
-                Daily Gemini call ceiling
+                Gemini attempts per 24 hours
                 <input
                   type="number"
                   name="gemini_daily_limit"
                   min={0}
-                  max={500}
+                  max={4}
                   defaultValue={data.profile.gemini_daily_limit}
                 />
               </label>
@@ -512,6 +523,15 @@ export default function AdminPanel({
             })}</div>
             <p className="subtle">Coverage comes from your watchlist, publication feeds and daily public project search. Optional web search and AI need separately configured API keys; a subscription does not activate them here.</p>
             <h3>Web discovery</h3>
+            <h3>Gemini evaluation</h3>
+            <p className="subtle">{(data.evaluation_health?.state || "not configured").replaceAll("_", " ")} · {data.profile.gemini_mode || "off"} · Gemini 3.5 Flash-Lite</p>
+            <p className="subtle">Attempts: {data.evaluation_health?.usage?.used_24h || 0} / {data.profile.gemini_daily_limit || 0} in 24 hours · {data.evaluation_health?.usage?.used_month || 0} / {data.profile.gemini_monthly_limit ?? 100} this month. Last success: {dateLabel(data.evaluation_health?.last_success)}</p>
+            {data.evaluation_health?.last_error && <p className="source-error">{data.evaluation_health.last_error}</p>}
+            {(data.evaluation_health?.comparisons || []).map((c:any) => <div className="evaluation-comparison" key={c.article_id + c.evaluated_at}>
+              <div><strong>{c.title}</strong><p className="subtle">Rules {c.rules_score} · AI {c.ai_score} · Applied {c.applied_score} · {c.confidence} confidence · {c.depth} · {c.scope.replaceAll("_", " ")}</p>
+                <p>{c.summary}</p><p className="subtle">{c.reason}</p>{c.action && <p className="subtle">Consider: {c.action}</p>}{c.evidence && <blockquote>{c.evidence}</blockquote>}
+              </div>
+            </div>)}
             <p className="subtle">Tavily: {data.web_discovery_health?.configured ? Number(data.profile.search_monthly_limit) > 0 ? (data.web_discovery_health.state || "ready").replaceAll("_", " ") : "paused" : "API key not configured"} · Last successful search: {dateLabel(data.web_discovery_health?.last_success)}</p>
             <p className="subtle">Ceiling: {data.profile.search_monthly_limit || 0} basic searches per month · Hard daily ceiling: 24. Provider billing and credits are managed in your Tavily account.</p>
             {data.web_discovery_health?.last_error && <p className="source-error">{data.web_discovery_health.last_error}</p>}

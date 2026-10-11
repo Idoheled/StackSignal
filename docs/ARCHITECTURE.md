@@ -92,7 +92,7 @@ Each authorized tick enqueues due watches, performs bounded daily maintenance/di
 | Fetch/parser failure | Record the error and retry within queue bounds |
 | Partial required pagination | Keep the previous ETag until the required pages succeed |
 
-Public repository discovery runs bounded queries over recently active, non-archived/non-fork public projects. Alternating popularity/recency broadens results, but does not guarantee repository quality or exhaustive coverage. Tavily web discovery uses bounded focused searches, rotating recent/exploration windows, canonical deduplication and source/snippet provenance. Provider calls require credentials and explicit budgets. Gemini analysis is separate and remains disabled. See [web discovery](WEB_DISCOVERY.md).
+Public repository discovery runs bounded queries over recently active, non-archived/non-fork public projects. Alternating popularity/recency broadens results, but does not guarantee repository quality or exhaustive coverage. Tavily web discovery uses bounded focused searches, rotating recent/exploration windows, canonical deduplication and source/snippet provenance. Provider calls require credentials and explicit budgets. Gemini evaluation is a separate, key-gated sampled sweep. Compare mode preserves ranking; explicit Apply mode uses only confident results. See [semantic evaluation](GEMINI_EVALUATION.md). See [web discovery](WEB_DISCOVERY.md).
 
 ### Active web-search architecture
 
@@ -194,3 +194,7 @@ The initial private seed catalog is server-side and checked against public clien
 | Production smoke | Configured Auth, disabled preview, anonymous denial, rejected cross-origin login and security headers | Human login, backup restoration or 100-user load |
 
 For precise controls and outstanding verification, use [SECURITY.md](SECURITY.md). For commands and component conventions, use [DEVELOPMENT.md](DEVELOPMENT.md).
+
+### Conservative evaluation architecture
+
+The public excerpt is captured at ingestion. A separate sweep selects recent candidates across strong, borderline and exploration lanes, checks the versioned input cache and reserves a request through service-only Postgres RPCs. A private, RLS-enabled attempt ledger plus transaction lock enforces rolling 24-hour, calendar-month and one-hour limits across concurrent ticks. The provider receives only the public excerpt and allowlisted engineering context. Strict evidence/structure validation precedes a guarded article update. Source enrichment races cannot overwrite changed content. Administration receives health and recent comparisons only after its role/MFA gate. Failure cooldowns leave the normal collector running. [The complete flow and operating modes](GEMINI_EVALUATION.md) document sampling, caching and the privacy boundary.

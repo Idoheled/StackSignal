@@ -12,7 +12,6 @@ if ((process.env.COLLECTOR_SECRET || "").length < 32)
 const keys = [
   "COLLECTOR_SECRET",
   "GEMINI_API_KEY",
-  "GEMINI_MODEL",
   "TAVILY_API_KEY",
   "GITHUB_READ_TOKEN",
   "COLLECTOR_ALLOWED_HOSTS",

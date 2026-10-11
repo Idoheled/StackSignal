@@ -199,7 +199,7 @@ test("web discovery health is read only after the administrator RPC authorizes a
     }
     if(url.pathname.endsWith("ss_settings")) {
       healthReads++;
-      assert.equal(url.searchParams.get("key"),"eq.web_discovery_health");
+      assert(["eq.web_discovery_health","eq.evaluation_health"].includes(url.searchParams.get("key")||""));
       return Response.json([{value:{configured:true,state:"active"}}]);
     }
     throw new Error("Unexpected request");
@@ -208,7 +208,7 @@ test("web discovery health is read only after the administrator RPC authorizes a
   assert.equal((await handler(request())).status,403);assert.equal(healthReads,0);
   role="admin";
   const response=await handler(request());assert.equal(response.status,200);
-  assert.equal((await response.json()).web_discovery_health.state,"active");assert.equal(healthReads,1);
+  assert.equal((await response.json()).web_discovery_health.state,"active");assert.equal(healthReads,2);
 });
 test("login delegates one CAPTCHA verification to Auth; failed credentials reveal nothing", async () => {
   const paths: string[] = [];

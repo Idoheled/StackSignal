@@ -1565,9 +1565,10 @@ function Hub({
                 </span>
                 <p>{picked.reason}</p>
                 {picked.evidence && <blockquote>{picked.evidence}</blockquote>}
+                {picked.analysis_status === "ai" && picked.reference_meta?.evaluation && <p className="subtle">{picked.reference_meta.evaluation.scope.replaceAll("_", " ")} · {picked.reference_meta.evaluation.confidence} confidence · {picked.reference_meta.evaluation.depth}{picked.reference_meta.evaluation.action && <> · Consider: {picked.reference_meta.evaluation.action}</>}</p>}
                 <small>
                   {picked.analysis_status === "ai"
-                    ? "AI assisted assessment · verify against the original"
+                    ? "AI assisted assessment of a public excerpt · verify against the original"
                     : "Transparent topic matching · not a quality guarantee"}
                 </small>
               </div>

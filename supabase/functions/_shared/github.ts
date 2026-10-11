@@ -63,6 +63,7 @@ export function githubItems(
           source.name.replace(/ releases$/, "") +
           " · " +
           String(releases ? x.name || x.tag_name : x.title || "Update"),
+        public_title: String(releases ? x.name || x.tag_name : x.title || "Update"),
         source: source.name.replace(/ releases$/, ""),
         topic: source.topic,
         kind,

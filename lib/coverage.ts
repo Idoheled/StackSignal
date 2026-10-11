@@ -83,6 +83,8 @@ export const TEAM_PROFILE = {
   ],
   // Optional APIs stay disabled until explicitly configured. No model subscription is assumed to include API use.
   gemini_daily_limit: 0,
+  gemini_mode: "off",
+  gemini_monthly_limit: 100,
   search_monthly_limit: 0,
 };
 

@@ -2,6 +2,9 @@
 
 ## 2026-10-11
 
+- Conservative Flash-Lite semantic evaluation: administrator Compare / Apply / Off controls, public-context sampling, exact-evidence validation and cached comparisons.
+- Service-only atomic evaluation reservations enforce four attempts in rolling 24 hours, 100 monthly and one-hour spacing, including failures; provider errors pause for 24 hours.
+
 - Activated genuine Tavily searches using server-side function secrets; verified the first full 20-query sweep and persisted results.
 - Documented discovery engines, saved-query selection, exact scoring arithmetic, personal/team feedback and known quality limits; updated Mermaid architecture and production checkpoints.
 - Focused Tavily web discovery with rotating recent/exploration queries, bounded basic-search usage, canonical deduplication, noise filtering, truthful snippet/date provenance and administrator health status.

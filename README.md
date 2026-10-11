@@ -98,7 +98,7 @@ StackSignal has several complementary discovery lanes:
 - **Publications:** consume feeds and approved documentation pages; preserve publisher metadata and detect meaningful page changes.
 - **New projects:** run administrator-editable public repository queries, alternating popularity and recency to widen the radar.
 - **Team submissions:** preserve a missed link, queue supported metadata extraction, save it and optionally record helpful feedback.
-- **Web search:** Tavily is active in the deployed workspace with 20 editable queries: 15 recent-week searches and five rotating exploration searches per daily sweep. It uses basic searches, capped at 24 requests daily and 800 monthly. Separate installations start disabled. See [activation and limits](docs/WEB_DISCOVERY.md). Gemini analysis remains disabled.
+- **Web search:** Tavily is active in the deployed workspace with 20 editable queries: 15 recent-week searches and five rotating exploration searches per daily sweep. It uses basic searches, capped at 24 requests daily and 800 monthly. Separate installations start disabled. See [activation and limits](docs/WEB_DISCOVERY.md). Optional [Flash-Lite evaluation](docs/GEMINI_EVALUATION.md) samples discoveries with strict rolling/day, month and hour limits; comparison mode preserves feed scores. Activation requires a free-tier API key.
 
 Ranking uses concrete technical terms, topic priorities, administrator interests, release signals and bounded feedback. Cards explain the match; scores express **relevance**, not truth or production readiness. There is no mandatory LLM in the default collection path. Read [how discovery and scoring work](docs/DISCOVERY.md) for the exact rules, a worked example, personalization and known limits.
 

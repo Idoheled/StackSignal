@@ -578,6 +578,8 @@ export function createService(c: Config, network: typeof fetch = fetch) {
         // The role/MFA gate above and ss_api have already authorized the administrator.
         const health = await sb("/rest/v1/ss_settings?key=eq.web_discovery_health&select=value", "GET", undefined, undefined, true);
         out.web_discovery_health = health[0]?.value || {};
+        const evaluation = await sb("/rest/v1/ss_settings?key=eq.evaluation_health&select=value", "GET", undefined, undefined, true);
+        out.evaluation_health = evaluation[0]?.value || {};
       }
       return respond(out);
     } catch (e) {

@@ -334,6 +334,31 @@ test("PostgreSQL access, isolation, invitation and concurrency invariants", asyn
     assert.deepEqual(profile.priorities, previousProfile.priorities);
     await fails(() => action("profile_save",{repo_queries:["a".repeat(161)]}),"Invalid");
     await fails(() => action("profile_save",{min_score:99}),"Invalid");
+    await fails(() => action("profile_save",{gemini_daily_limit:5}),"Invalid");
+    await fails(() => action("profile_save",{gemini_monthly_limit:101}),"Invalid");
+    await fails(() => action("profile_save",{gemini_mode:"automatic"}),"Invalid");
+    await action("profile_save",{gemini_mode:"shadow",gemini_daily_limit:4,gemini_monthly_limit:100});
+    await fails(() => db.query("select ss_reserve_evaluation($1,$2,4,100)",[article,"a".repeat(64)]),"permission denied");
+    await fails(() => db.query("select * from ss_private.evaluation_attempts"),"permission denied");
+    await db.exec("reset role");
+    await db.query("update ss_articles set reference_meta=reference_meta||$2::jsonb where id=$1",[article,JSON.stringify({public_evaluation_input:{text:"Public excerpt"}})]);
+    const reserve=async(k,d=4,m=100)=>(await db.query("select ss_reserve_evaluation($1,$2,$3,$4) ok",[article,k.repeat(64),d,m])).rows[0].ok;
+    assert.equal(await reserve("a",5),false,"hard cap cannot be bypassed with RPC arguments");
+    assert.equal(await reserve("a"),true);
+    assert.equal(await reserve("b"),false,"hourly gate spans different content");
+    for (const k of ["b","c","d"]) {
+      await db.exec("update ss_private.evaluation_attempts set attempted_at=attempted_at-interval '2 hours'");
+      assert.equal(await reserve(k),true);
+    }
+    await db.exec("update ss_private.evaluation_attempts set attempted_at=attempted_at-interval '2 hours'");
+    assert.equal(await reserve("e"),false,"rolling 24 hour ceiling includes failed attempts");
+    await db.exec("update ss_private.evaluation_attempts set attempted_at=now()-interval '25 hours'");
+    assert.equal(await reserve("a"),false,"identical input claim persists across daily windows");
+    // Reset timestamps within this month to verify monthly quota independently.
+    await db.exec("update ss_private.evaluation_attempts set attempted_at=date_trunc('month',now() at time zone 'UTC') at time zone 'UTC'");
+    assert.equal(await reserve("e",4,4),false,"monthly ceiling");
+    await db.exec("delete from ss_private.evaluation_attempts");
+    await as(owner);
     await fails(() => action("source_delete",{id:watch}),"Confirmation");
     await db.exec("reset role");
     await db.query("update ss_articles set reference_meta=$2::jsonb,published_at=now(),score=88 where id=$1", [article,JSON.stringify({alert_kind:"release",source_id:watch,origin:"source_watch"})]);

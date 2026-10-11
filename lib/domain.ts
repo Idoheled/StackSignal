@@ -45,6 +45,7 @@ export type Article = {
     search_query?: string;
     search_window?: string;
     source_tier?: string;
+    evaluation?: { scope: string; confidence: string; depth: string; action?: string };
   };
   liked?: boolean;
   hidden?: boolean;

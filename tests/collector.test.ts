@@ -143,7 +143,7 @@ test("web discovery bounds requests, preserves snippet provenance, filters noise
     assert.equal(articles[0].body.reference_meta.checked_at,undefined,"snippet is not a destination fetch");
     const extraction=writes.filter(x=>x.path.endsWith("ss_queue_item"));
     assert.equal(extraction.length,1);assert.match(extraction[0].body.item.url,/docs\.vllm\.ai/);
-    const health=writes.filter(x=>x.path.endsWith("ss_settings")).at(-1).body.value;
+    const health=writes.filter(x=>x.path.endsWith("ss_settings") && x.body.key==="web_discovery_health").at(-1).body.value;
     assert.equal(health.last_accepted,2);assert.equal(health.last_filtered,2);
     existing=true;await run();assert.equal(writes.filter(x=>x.path.endsWith("ss_articles")).length,2);
     status=429;await run();
@@ -154,4 +154,56 @@ test("web discovery bounds requests, preserves snippet provenance, filters noise
     monthly=0;await run();assert.equal(searches,before,"disabled search performs no provider call");
     monthly=800;allowDaily=true;job.payload.query="removed query";await run();assert.equal(searches,before,"queued obsolete queries do not run");
   } finally { globalThis.fetch=originalFetch;delete environment.TAVILY_API_KEY; }
+});
+
+test("semantic sweep is cached, comparison-only, private-context safe and pauses without retries", async()=>{
+  const originalFetch=globalThis.fetch;
+  environment.GEMINI_API_KEY="test-only-gemini-key";
+  const excerpt="This reproducible guide configures KV cache offloading and compares latency under controlled request concurrency.";
+  const source={title:"Cache engineering",text:excerpt,scope:"search_snippet"};
+  let mode="shadow", daily=4, provider=200, calls=0, row:any={id:"public-article",score:70,kind:"Discovery",content_hash:"a".repeat(64),reference_meta:{public_evaluation_input:source}};
+  let health:any={}, used=0, race=false;
+  const writes:any[]=[];
+  globalThis.fetch=async(input,init)=>{
+    const url=new URL(String(input)), body=init?.body?JSON.parse(String(init.body)):undefined;
+    if(url.hostname==="generativelanguage.googleapis.com") {
+      calls++;
+      assert.equal(url.pathname,"/v1beta/models/gemini-3.5-flash-lite:generateContent");
+      assert.equal(new Headers(init?.headers).get("x-goog-api-key"),"test-only-gemini-key");
+      assert.equal(init?.redirect,"error");assert.equal(body.generationConfig.maxOutputTokens,650);
+      assert(!JSON.stringify(body).includes("private.internal"));assert.equal("tools" in body,false);
+      if(provider!==200) return new Response("provider details should not be exposed",{status:provider});
+      return Response.json({candidates:[{finishReason:"STOP",content:{parts:[{text:JSON.stringify({topic:"Inference",score:90,confidence:"high",depth:"advanced",decision:"useful",summary:"Cache comparison.",reason:"Applicable engineering.",action:"Review controlled latency measurements.",evidence:"configures KV cache offloading"})}]}}],usageMetadata:{promptTokenCount:500,candidatesTokenCount:100}});
+    }
+    assert.equal(url.hostname,"database.example");
+    if(url.pathname.endsWith("ss_take_budget")) return Response.json(false);
+    if(url.pathname.endsWith("ss_feedback_weights")) return Response.json({});
+    if(url.pathname.endsWith("ss_enqueue_sources")) return Response.json(null);
+    if(url.pathname.endsWith("ss_claim_jobs")) return Response.json([]);
+    if(url.pathname.endsWith("ss_evaluation_usage")) return Response.json({used_24h:used,used_month:used});
+    if(url.pathname.endsWith("ss_reserve_evaluation")) {assert(body.daily_max<=4);assert(body.monthly_max<=100);used++;return Response.json(true);}
+    if(url.pathname.endsWith("ss_settings")) {
+      if(body) {if(body.key==="evaluation_health") health=body.value;return Response.json([body]);}
+      if(url.searchParams.get("key")==="eq.profile") return Response.json([{value:{gemini_mode:mode,gemini_daily_limit:daily,gemini_monthly_limit:100,repo_discovery:false,interests:"vLLM, private.internal",search_monthly_limit:0}}]);
+      if(url.searchParams.get("key")==="eq.evaluation_health") return Response.json([{value:health}]);
+      return Response.json([]);
+    }
+    if(url.pathname.endsWith("ss_articles")) {
+      if(body) {writes.push(body);row={...row,...body};return Response.json([row]);}
+      return Response.json([{...row,...(race && url.searchParams.has("id")?{content_hash:"changed"}:{})}]);
+    }
+    throw Error("Unexpected "+url.pathname);
+  };
+  const run=()=>handler(new Request("https://collector.example",{method:"POST",headers:{"x-collector-secret":secret}}));
+  try {
+    await run();assert.equal(calls,1);assert.equal(writes[0].score,undefined);assert.equal(row.score,70);
+    assert.equal(row.reference_meta.evaluation.ai_score,undefined);assert.equal(row.reference_meta.evaluation.score,90);
+    assert.equal(health.comparisons[0].rules_score,70);assert.equal(health.comparisons[0].applied_score,70);
+    await run();assert.equal(calls,1,"matching input is cached without another reservation or call");
+    row.reference_meta.evaluation=undefined;mode="rerank";await run();assert.equal(row.score,84);assert.equal(row.analysis_status,"ai");
+    row.reference_meta.evaluation=undefined;race=true;const before=writes.length;await run();assert.equal(writes.length,before,"changed content is not overwritten");
+    race=false;used=0;provider=429;await run();assert.equal(health.state,"cooldown");assert(!JSON.stringify(health).includes("provider details"));
+    const after=calls;await run();assert.equal(calls,after,"provider errors are not automatically retried");
+    daily=0;health={};await run();assert.equal(calls,after,"paused integration makes no provider calls");
+  } finally {globalThis.fetch=originalFetch;delete environment.GEMINI_API_KEY;}
 });

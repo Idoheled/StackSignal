@@ -2153,3 +2153,6 @@ td .text-button {
 .follow-project {margin-top:12px;}
 .feed-tabs {max-width:100%;overflow-x:auto;flex-shrink:0;}
 @media(max-width:760px){.discovery-toolbar {align-items:stretch;}.feed-tabs {width:100%;justify-content:flex-start;}.coverage-grid {grid-template-columns:1fr;}.radar-settings {padding:16px;}.release-alert {padding:14px;}.source-manage-actions {flex-wrap:wrap;}}
+
+.evaluation-comparison {min-width:0;padding:16px 0;border-bottom:1px solid var(--border);overflow-wrap:anywhere;}
+.evaluation-comparison blockquote {margin:12px 0;padding-left:12px;border-left:2px solid var(--primary);color:var(--muted-foreground);}

@@ -30,7 +30,7 @@ export function webCandidate(result: any, profile: any, query: string, lane: str
   const text = textOnly(result.content).slice(0, 4000).trim();
   if (!title || text.length < 60 || lowValueDiscovery(title, text, url)) return null;
   // A useful snippet must match the team's technical context, not just the search provider's query score.
-  if (relevance(title, text, profile).score < 45) return null;
+  if (relevance(title, text, profile).score < 45 && !(lane === "explore" && text.length >= 120)) return null;
   const repository = parsed.hostname === "github.com" && parsed.pathname.match(/^\/([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+)\/?$/)?.[1];
   return {
     title, url, text, summary: text.slice(0, 600), source: parsed.hostname,
