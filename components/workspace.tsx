@@ -1,6 +1,6 @@
 "use client";
 import { sameGitHubWatch } from "@/lib/source-config";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Activity,
   ArrowDownUp,
@@ -257,6 +257,7 @@ function Hub({
     [confirmation, setConfirmation] = useState<Confirm | null>(null),
     [working, setWorking] = useState(false),
     [light, setLight] = useState(false);
+  const detailOpener = useRef<HTMLElement | null>(null);
   const canWrite = member.role !== "reader";
   const notify = (s: string) => setToast(s);
   const reload = () => setRefresh((x) => x + 1);
@@ -579,7 +580,8 @@ function Hub({
     setQuery("");
     setTopic("All topics");
   }
-  function openArticle(a: Article) {
+  function openArticle(a: Article, opener: HTMLElement) {
+    detailOpener.current = opener;
     setSelected(a);
     setReply(null);
     setEditNote(null);
@@ -1143,7 +1145,7 @@ function Hub({
                           </div>
                           <button
                             className="signal-title"
-                            onClick={() => openArticle(a)}
+                            onClick={(event) => openArticle(a, event.currentTarget)}
                           >
                             <h2>{a.title}</h2>
                             <ArrowUpRight size={19} />
@@ -1163,7 +1165,7 @@ function Hub({
                           <div className="signal-footer">
                             <button
                               className="relevance"
-                              onClick={() => openArticle(a)}
+                              onClick={(event) => openArticle(a, event.currentTarget)}
                             >
                               <Sparkles size={13} />
                               {a.analysis_status === "reference"
@@ -1198,7 +1200,7 @@ function Hub({
                                 </button>
                               )}
                               <button
-                                onClick={() => openArticle(a)}
+                                onClick={(event) => openArticle(a, event.currentTarget)}
                                 aria-label="View notes and comments"
                                 title="Notes & comments"
                               >
@@ -1235,7 +1237,7 @@ function Hub({
                                         : "Not relevant"}
                                     </DropdownMenuItem>
                                     <DropdownMenuItem
-                                      onClick={() => openArticle(a)}
+                                      onClick={(event) => openArticle(a, event.currentTarget)}
                                     >
                                       Open details & notes
                                     </DropdownMenuItem>
@@ -1483,7 +1485,12 @@ function Hub({
           if (!v) setSelected(null);
         }}
       >
-        <SheetContent className="detail-sheet">
+        <SheetContent className="detail-sheet" onCloseAutoFocus={(event) => {
+          if (detailOpener.current?.isConnected) {
+            event.preventDefault();
+            detailOpener.current.focus({ preventScroll: true });
+          }
+        }}>
           <SheetHeader>
             <SheetTitle>Signal details</SheetTitle>
             <SheetDescription>

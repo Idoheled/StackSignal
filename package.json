@@ -14,6 +14,10 @@
     "db:generate": "drizzle-kit generate",
     "test": "node --experimental-transform-types --test tests/security.test.ts tests/database.test.mjs tests/knowledge.test.ts tests/collector.test.ts",
     "typecheck": "tsc --noEmit",
+    "typecheck:collector": "tsc -p tsconfig.collector.json",
+    "test:browser": "playwright test",
+    "deploy:cloudflare": "node scripts/deploy-standalone.mjs",
+    "smoke:production": "node scripts/verify-deployment.mjs",
     "build:standalone": "node scripts/build-standalone.mjs",
     "bootstrap": "node scripts/bootstrap-admin.mjs",
     "import:team": "node scripts/import-team-library.mjs"
@@ -48,6 +52,7 @@
     "@cloudflare/vite-plugin": "1.37.1",
     "@cloudflare/workers-types": "4.20260515.1",
     "@electric-sql/pglite": "^0.5.8",
+    "@playwright/test": "1.63.0",
     "@tailwindcss/postcss": "4.2.1",
     "@types/node": "22.19.19",
     "@types/react": "19.2.14",
