@@ -172,7 +172,7 @@ test("semantic sweep is cached, comparison-only, private-context safe and pauses
   environment.GEMINI_API_KEY="test-only-gemini-key";
   const excerpt="This reproducible guide configures KV cache offloading and compares latency under controlled request concurrency.";
   const source={title:"Cache engineering",text:excerpt,scope:"search_snippet"};
-  let mode="shadow", daily=4, provider=200, calls=0, row:any={url:"https://kubernetes.io/public-guide",id:"public-article",score:70,kind:"Discovery",content_hash:"a".repeat(64),reference_meta:{repo_health:healthFixture,public_evaluation_input:source}};
+  let mode="shadow", daily=4, provider=200, calls=0, row:any={discovered_at:"2026-10-10T00:00:00Z",url:"https://kubernetes.io/public-guide",id:"public-article",score:70,kind:"Discovery",content_hash:"a".repeat(64),reference_meta:{repo_health:healthFixture,public_evaluation_input:source}};
   let health:any={}, used=0, race=false, lastAttempt:string|undefined;
   const writes:any[]=[];
   globalThis.fetch=async(input,init)=>{
@@ -191,6 +191,9 @@ test("semantic sweep is cached, comparison-only, private-context safe and pauses
     if(url.pathname.endsWith("ss_feedback_weights")) return Response.json({});
     if(url.pathname.endsWith("ss_enqueue_sources")) return Response.json(null);
     if(url.pathname.endsWith("ss_claim_jobs")) return Response.json([]);
+    if(url.pathname.endsWith("ss_finish_evaluation_request")) return Response.json(null);
+    if(url.pathname.endsWith("ss_evaluation_pipeline")) return Response.json({});
+    if(url.pathname.endsWith("ss_review_coverage")) return Response.json({});
     if(url.pathname.endsWith("ss_evaluation_candidates")) return Response.json(row.reference_meta.evaluation ? [] : [row]);
     if(url.pathname.endsWith("ss_evaluation_usage")) return Response.json({used_24h:used,used_month:used,last_attempt:lastAttempt});
     if(url.pathname.endsWith("ss_reserve_evaluation_batch")) {assert(body.daily_max<=16);assert(body.monthly_max<=496);used++;return Response.json({request_id:used,items:body.items});}
@@ -212,7 +215,7 @@ test("semantic sweep is cached, comparison-only, private-context safe and pauses
     }
     throw Error("Unexpected "+url.pathname);
   };
-  const run=()=>handler(new Request("https://collector.example",{method:"POST",headers:{"x-collector-secret":secret}}));
+  const run=()=>handler(new Request("https://collector.example",{method:"POST",headers:{"x-collector-secret":secret},body:JSON.stringify({mode:"evaluation"})}));
   try {
     await run();assert.equal(calls,1);assert.equal(writes[0].score,undefined);assert.equal(row.score,70);
     assert.equal(row.reference_meta.evaluation.ai_score,undefined);assert.equal(row.reference_meta.evaluation.score,90);
@@ -249,6 +252,9 @@ test("multi-link batches save independent valid reviews and withhold an invalid 
     if(u.pathname.endsWith("ss_enqueue_sources")) return Response.json(null);
     if(u.pathname.endsWith("ss_claim_jobs")) return Response.json([]);
     if(u.pathname.endsWith("ss_feedback_weights")) return Response.json({});
+    if(u.pathname.endsWith("ss_finish_evaluation_request")) return Response.json(null);
+    if(u.pathname.endsWith("ss_evaluation_pipeline")) return Response.json({});
+    if(u.pathname.endsWith("ss_review_coverage")) return Response.json({});
     if(u.pathname.endsWith("ss_evaluation_candidates")) return Response.json(rows.filter((r:any)=>!r.reference_meta.evaluation&&!r.reference_meta.evaluation_failed_at));
     if(u.pathname.endsWith("ss_evaluation_usage")) return Response.json({used_24h:reservations,used_provider_day:reservations,used_month:reservations});
     if(u.pathname.endsWith("ss_reserve_evaluation_batch")) {reservations++;return Response.json({request_id:reservations,items:body.items});}
@@ -267,7 +273,7 @@ test("multi-link batches save independent valid reviews and withhold an invalid 
     throw Error("Unexpected "+u.pathname);
   };
   try {
-    await handler(new Request("https://collector.example",{method:"POST",headers:{"x-collector-secret":secret}}));
+    await handler(new Request("https://collector.example",{method:"POST",headers:{"x-collector-secret":secret},body:JSON.stringify({mode:"evaluation"})}));
     assert.equal(calls,1);assert.equal(reservations,1);
     assert.equal((rows[0].reference_meta as any).evaluation.score,85);
     assert.equal((rows[1].reference_meta as any).evaluation.score,85,"followed releases are independently reviewed");
@@ -312,4 +318,53 @@ test("official OpenShift detail payloads allow bounded large changelogs and stil
     assert.equal(writes.filter(x=>x.path.endsWith('ss_queue_items')).length,1,'oversized official payloads never create partial fabricated releases');
     assert.equal(writes.filter(x=>x.path.endsWith('ss_sources')).at(-1).body.last_error,'Source exceeds size limit');
   } finally {globalThis.fetch=originalFetch;}
+});
+
+test("independent evaluator recovers twelve-link provider failures without abandoning inputs or spending from collection",async()=>{
+  const previous=globalThis.fetch;environment.GEMINI_API_KEY="test-recovery-key";
+  const excerpt="A reproducible inference benchmark configures KV cache offloading under controlled concurrency.";
+  const rows=Array.from({length:12},(_,i)=>({id:String(i),url:"https://kubernetes.io/recovery-"+i,score:75,kind:"Article",discovered_at:"2026-10-10T00:00:00Z",content_hash:String(i),reference_meta:{public_evaluation_input:{title:"Public benchmark",text:excerpt,scope:"publisher_excerpt"},evaluation_failures:8} as any}));
+  let health:any={},calls=0,used=0,provider="503";
+  const finishes:any[]=[];
+  globalThis.fetch=async(input,init)=>{
+    const u=new URL(String(input)),body=init?.body?JSON.parse(String(init.body)):undefined;
+    if(u.hostname==="generativelanguage.googleapis.com") {
+      calls++;const sources=JSON.parse(body.contents[0].parts[0].text).public_sources;
+      if(provider==="503") {assert.equal(sources.length,12);return new Response("",{status:503,headers:{"retry-after":"600"}});}
+      if(provider==="timeout") throw new DOMException("Signal timed out.","TimeoutError");
+      assert.equal(sources.length,6);
+      return Response.json({candidates:[{finishReason:"STOP",content:{parts:[{text:JSON.stringify({results:sources.map((x:any)=>({id:x.id,assessment:{topic:"Inference",score:90,confidence:"high",depth:"advanced",decision:"useful",summary:"Controlled cache benchmark.",reason:"Relevant cache engineering.",action:"Compare concurrency settings.",evidence:"configures KV cache offloading"}}))})}]}}]});
+    }
+    if(u.pathname.endsWith("ss_settings")) {
+      if(body) {if(body.key==="evaluation_health") health=body.value;return Response.json([body]);}
+      return Response.json([{value:u.searchParams.get("key")==="eq.profile" ? {gemini_mode:"rerank",gemini_daily_limit:16,gemini_monthly_limit:496,repo_discovery:false} : health}]);
+    }
+    if(u.pathname.endsWith("ss_evaluation_usage")) return Response.json({used_month:used,used_24h:used,used_provider_day:used});
+    if(u.pathname.endsWith("ss_evaluation_candidates")) return Response.json(rows.filter(r=>!r.reference_meta.evaluation));
+    if(u.pathname.endsWith("ss_reserve_evaluation_batch")) return Response.json({request_id:++used,items:body.items});
+    if(u.pathname.endsWith("ss_finish_evaluation_request")) {finishes.push(body);return Response.json(null);}
+    if(u.pathname.endsWith("ss_articles")) {
+      if(u.searchParams.get("reference_meta->>public_evaluation_input")==="is.null") return Response.json([]);
+      const row=rows.find(r=>r.id===u.searchParams.get("id")?.replace("eq.",""));
+      if(row) {if(body) Object.assign(row,body);return Response.json([row]);}
+      return Response.json([]);
+    }
+    if(u.pathname.endsWith("ss_take_budget")) return Response.json(false);
+    if(u.pathname.endsWith("ss_claim_jobs")) return Response.json([]);
+    if(u.pathname.endsWith("ss_feedback_weights")||u.pathname.endsWith("ss_review_coverage")||u.pathname.endsWith("ss_evaluation_pipeline")) return Response.json({});
+    if(u.pathname.endsWith("ss_enqueue_sources")) return Response.json(null);
+    throw Error("Unexpected "+u.pathname);
+  };
+  const run=(mode:string)=>handler(new Request("https://collector.example",{method:"POST",headers:{"x-collector-secret":secret},body:JSON.stringify({mode})}));
+  try {
+    assert.equal((await run("collection")).status,200);assert.equal(calls,0);assert.equal(used,0);
+    assert.equal((await run("evaluation")).status,200);assert.equal(calls,1);
+    assert(rows.every(r=>r.reference_meta.evaluation_failures===9 && r.reference_meta.evaluation_retry_at && r.reference_meta.evaluation_error_kind==="transient"));
+    await run("evaluation");assert.equal(calls,1,"persisted cooldown prevents an immediate retry");
+    health.cooldown_until=null;provider="timeout";await run("evaluation");assert.equal(health.target_batch_size,6);assert.equal(finishes[1].outcome,"transient");
+    assert(rows.every(r=>r.reference_meta.evaluation_retry_at),"ten outages never exhaust per-link retries");
+    health.cooldown_until=null;provider="ok";await run("evaluation");
+    assert.equal(finishes[2].reviewed,6);assert.equal(finishes[2].outcome,"success");assert.equal(health.target_batch_size,9);
+    assert.equal(rows.filter(r=>r.reference_meta.evaluation).length,6);assert.equal(used,3,"failed calls stay in request accounting");
+  } finally {globalThis.fetch=previous;delete environment.GEMINI_API_KEY;}
 });

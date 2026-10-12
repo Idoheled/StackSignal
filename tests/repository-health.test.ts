@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {repositoryHealth,repositoryAdmitted,repositoryName,trendingProjects} from "../supabase/functions/_shared/repository-health.ts";
+import {repositoryHealth,repositoryAdmitted,repositoryName,trendingProjects,articleRepositoryAdmitted} from "../supabase/functions/_shared/repository-health.ts";
 import {openshiftTags,openshiftItem,openshiftWatchURL} from "../supabase/functions/_shared/openshift.ts";
 test("repository admission distinguishes watchers from stars and fails closed on weak maintenance",()=>{
   const now=Date.now(),date=new Date(now-86400000).toISOString();
@@ -28,4 +28,13 @@ test("OpenShift streams require explicit prerelease opt-in and never invent date
  assert.equal(openshiftItem({...detail,changeLog:btoa("No creation date")},source,detail.name).published_at,null);
  assert.throws(()=>openshiftItem({...detail,phase:"Rejected"},source,detail.name));
  assert.equal(openshiftWatchURL(source.url),source.url);assert.throws(()=>openshiftWatchURL("https://evil.example/api/v1/releasestream/5-stable/tags"));
+});
+
+test("only the three requested official watched operators bypass popularity, while active/licensed health remains required",()=>{
+ const now=Date.now(),h={active:true,checked_at:new Date(now).toISOString(),license:"Apache-2.0",stars:23};
+ const meta={origin:"source_watch",source_id:"source",repo_health:h};
+ assert(articleRepositoryAdmitted("https://github.com/Mellanox/nic-configuration-operator/releases/tag/v2",meta,{},now));
+ assert(!articleRepositoryAdmitted("https://github.com/random/small/releases/tag/v2",meta,{},now));
+ assert(!articleRepositoryAdmitted("https://github.com/Mellanox/nic-configuration-operator/releases/tag/v2",{...meta,source_id:null},{},now));
+ assert(!articleRepositoryAdmitted("https://github.com/Mellanox/nic-configuration-operator/releases/tag/v2",{...meta,repo_health:{...h,active:false}},{},now));
 });

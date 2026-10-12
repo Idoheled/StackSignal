@@ -197,6 +197,7 @@ test("web discovery health is read only after the administrator RPC authorizes a
       if(body.action==="me") return Response.json({id:"owner",role});
       return role==="admin" ? Response.json({profile:{}}) : Response.json({code:"42501"},{status:403});
     }
+    if(url.pathname.endsWith("ss_evaluation_pipeline")) { assert.equal(role,"admin"); return Response.json({}); }
     if(url.pathname.endsWith("ss_review_coverage")) { assert.equal(role,"admin"); return Response.json({approved:7,pending:0}); }
     if(url.pathname.endsWith("ss_settings")) {
       healthReads++;

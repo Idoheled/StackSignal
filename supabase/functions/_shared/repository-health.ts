@@ -1,6 +1,16 @@
 import { dateISO } from "./content.ts";
 
 export const REPO_POLICY = { repo_min_stars:100, repo_min_watchers:5, repo_min_releases:2, repo_active_days:90, repo_release_days:180, trending_discovery:true };
+// Explicitly requested first-party operator watches are evaluated on changes, not popularity.
+export const OFFICIAL_OPERATOR_REPOS = ["mellanox/nic-configuration-operator","mellanox/network-operator","mellanox/maintenance-operator"];
+export function watchedOperator(url:string,meta:any) {
+  return meta?.origin === "source_watch" && !!meta.source_id && OFFICIAL_OPERATOR_REPOS.includes((repositoryName(url)||"").toLowerCase());
+}
+export function articleRepositoryAdmitted(url:string,meta:any,profile:any={},now=Date.now()) {
+  const h=meta?.repo_health;
+  if(watchedOperator(url,meta)) return !!h && h.active===true && Date.parse(h.checked_at)<=now && Date.parse(h.checked_at)>=now-7*86400000 && !["Unspecified","NOASSERTION","NONE"].includes(h.license);
+  return !repositoryName(url) || repositoryAdmitted(h,profile,now);
+}
 export function repositoryName(input:string) {
   const u=new URL(input);
   const m=u.hostname==="github.com" ? u.pathname.match(/^\/([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+)(?:\/|$)/) : null;

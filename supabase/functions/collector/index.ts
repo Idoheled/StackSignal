@@ -14,8 +14,8 @@ import { githubItems, githubAPIForLink, isPrerelease } from "../_shared/github.t
 import { repositorySearchURL, DEFAULT_REPO_QUERIES } from "../../../lib/source-config.ts";
 import { relevance } from "../_shared/relevance.ts";
 import { webCandidate, webSearchRequest, lowValueDiscovery } from "../_shared/web-discovery.ts";
-import { EVALUATOR_VERSION, EVALUATION_MODEL, publicInput, publicTeam, evaluationRequest, parseEvaluation, effectiveScore, evaluationCandidates, candidateLane, nextEvaluationAt, samePublicInput, batchEvaluationRequest, parseBatchEvaluation, MAX_BATCH_SIZE, DAILY_REQUEST_CAP, MONTHLY_REQUEST_CAP } from "../_shared/evaluation.ts";
-import { repositoryHealth, repositoryAdmitted, repositoryName, trendingProjects } from "../_shared/repository-health.ts";
+import { EVALUATOR_VERSION, EVALUATION_MODEL, publicInput, publicTeam, evaluationRequest, parseEvaluation, effectiveScore, evaluationCandidates, candidateLane, nextEvaluationAt, samePublicInput, batchEvaluationRequest, parseBatchEvaluation, MAX_BATCH_SIZE, DAILY_REQUEST_CAP, MONTHLY_REQUEST_CAP, EVALUATION_TIMEOUT_MS, evaluationFailure, evaluationBatchSize } from "../_shared/evaluation.ts";
+import { repositoryHealth, repositoryAdmitted, articleRepositoryAdmitted, repositoryName, trendingProjects } from "../_shared/repository-health.ts";
 import { openshiftWatchURL, openshiftTags, openshiftItem } from "../_shared/openshift.ts";
 class Deferred extends Error { retryAt: number; constructor(message: string, retryAt = Date.now() + 3600000) { super(message); this.retryAt = retryAt; } }
 class SourceTooLarge extends Error { constructor() { super("Source exceeds size limit"); } }
@@ -206,11 +206,15 @@ async function articleCount(filter: string) {
 async function evaluationCoverage() {
   return await rpc("ss_review_coverage");
 }
-async function failedEvaluation(row: any, delay=86400000, reason="Evaluation validation failed") {
+async function failedEvaluation(row: any, reason="Evaluation validation failed", status=0, retryAfter: string | null=null) {
   const failures=Number(row.reference_meta?.evaluation_failures||0)+1;
+  const validationFailures=Number(row.reference_meta?.evaluation_validation_failures||0)+1;
+  const failure=evaluationFailure(reason,status ? failures : /timeout|timed out|network|fetch failed|connection/i.test(reason) ? failures : validationFailures,status,retryAfter);
   await db("ss_articles?id=eq."+row.id+"&content_hash=eq."+encodeURIComponent(row.content_hash)+"&deleted_at=is.null", "PATCH",
     {reference_meta:{...row.reference_meta,evaluation_failed_at:new Date().toISOString(),evaluation_failures:failures,
-      evaluation_error:reason.slice(0,200),evaluation_retry_at:failures<3 ? new Date(Date.now()+delay).toISOString() : null}});
+      evaluation_validation_failures:failure.kind==="validation" ? validationFailures : Number(row.reference_meta?.evaluation_validation_failures||0),
+      evaluation_error:reason.slice(0,200),evaluation_error_kind:failure.kind,evaluation_retry_at:failure.retryAt ? new Date(failure.retryAt).toISOString() : null}});
+  return failure;
 }
 async function queueMissingPublicInputs() {
   const rows=await db("ss_articles?deleted_at=is.null&reference_meta->>public_evaluation_input=is.null&reference_meta->>public_extraction_requested=is.null&reference_meta->>assistant_reviewed_at=is.null&select=id,url,kind,topic,content_hash,reference_meta&order=discovered_at.asc,id.asc&limit=8");
@@ -228,7 +232,7 @@ async function evaluateSweep(profile: any) {
   const old = await db("ss_settings?key=eq.evaluation_health&select=value");
   const health = old[0]?.value || {};
   if (configured) {
-    try { await evaluationHealth({coverage:await evaluationCoverage()}); } catch { /* Counts never spend quota. */ }
+    try { await evaluationHealth({coverage:await evaluationCoverage(),pipeline:await rpc("ss_evaluation_pipeline")}); } catch { /* Counts never spend quota. */ }
   }
   if (!configured || mode === "off" || !limit || !monthly) {
     await evaluationHealth({ configured, state: configured ? "paused" : "missing_key", mode,
@@ -250,39 +254,49 @@ async function evaluateSweep(profile: any) {
   const team=publicTeam(profile), candidates=[];
   // Oldest queue window plus rotating lane preference balances useful known material and unfamiliar ideas.
   for(const row of evaluationCandidates(rows,Number(usage.used_month)||0)) {
-    if(repositoryName(row.url) && !repositoryAdmitted(row.reference_meta.repo_health,profile)) continue;
+    if(!articleRepositoryAdmitted(row.url,row.reference_meta,profile)) continue;
     const input=row.reference_meta.public_evaluation_input;
     const cache_key=await digest(JSON.stringify({version:EVALUATOR_VERSION,model:EVALUATION_MODEL,input,team}));
     candidates.push({...row,cache_key}); if(candidates.length===50) break;
   }
   if(!candidates.length) { await evaluationHealth({state:"ready",usage,next_attempt_at:null}); return; }
-  const reservation=await rpc("ss_reserve_evaluation_batch",{items:candidates.map(r=>({id:r.id,cache_key:r.cache_key,content_hash:r.content_hash})),daily_max:limit,monthly_max:monthly});
+  const targetSize=evaluationBatchSize(health);
+  // Fill requests during fresh discovery bursts; aged links and watched releases never wait for a full batch.
+  if(candidates.length<targetSize && !candidates.some(r=>r.reference_meta.alert_kind || Date.parse(r.discovered_at)<Date.now()-3600000)) {
+    await evaluationHealth({state:"batching_wait",next_attempt_at:new Date(Date.now()+300000).toISOString(),target_batch_size:targetSize}); return;
+  }
+  const reservation=await rpc("ss_reserve_evaluation_batch",{items:candidates.slice(0,targetSize).map(r=>({id:r.id,cache_key:r.cache_key,content_hash:r.content_hash})),daily_max:limit,monthly_max:monthly});
   if(!reservation?.request_id) { await evaluationHealth({state:"reservation_wait",usage:await rpc("ss_evaluation_usage")}); return; }
   const batch=candidates.filter(r=>reservation.items.some((i:any)=>i.id===r.id));
   const inputs=batch.map(r=>({id:r.id,input:r.reference_meta.public_evaluation_input}));
-  let out:any, parsed:ReturnType<typeof parseBatchEvaluation>;
+  let out:any, parsed:ReturnType<typeof parseBatchEvaluation>, phase="transport";
   try {
     const response=await fetch("https://generativelanguage.googleapis.com/v1beta/models/"+EVALUATION_MODEL+":generateContent",{
-      method:"POST",redirect:"error",signal:AbortSignal.timeout(30000),headers:{"Content-Type":"application/json","x-goog-api-key":env("GEMINI_API_KEY")},body:JSON.stringify(batchEvaluationRequest(inputs,team)),
+      method:"POST",redirect:"error",signal:AbortSignal.timeout(EVALUATION_TIMEOUT_MS),headers:{"Content-Type":"application/json","x-goog-api-key":env("GEMINI_API_KEY")},body:JSON.stringify(batchEvaluationRequest(inputs,team)),
     });
     if(!response.ok) {
       await response.body?.cancel();
-      const temporary=response.status>=500;
-      const cooldown=temporary ? 900000 : 86400000;
-      for(const row of batch) await failedEvaluation(row,temporary ? 21600000 : 86400000,"Gemini HTTP "+response.status);
-      await evaluationHealth({state:"cooldown",next_attempt_at:null,last_error:"Gemini HTTP "+response.status+"; pending links withheld",usage:await rpc("ss_evaluation_usage"),cooldown_until:new Date(Date.now()+cooldown).toISOString()}); return;
+      const reason="Gemini HTTP "+response.status;
+      const failures=await Promise.all(batch.map(row=>failedEvaluation(row,reason,response.status,response.headers.get("retry-after"))));
+      const retryAt=Math.max(...failures.map(f=>f.retryAt || Date.now()+3600000));
+      await rpc("ss_finish_evaluation_request",{request:reservation.request_id,outcome:failures[0].kind,reviewed:0,error:reason});
+      await evaluationHealth({state:failures[0].kind==="configuration" ? "configuration_error" : "cooldown",next_attempt_at:new Date(retryAt).toISOString(),last_error:reason+"; queued links retained for retry",usage:await rpc("ss_evaluation_usage"),cooldown_until:new Date(retryAt).toISOString()}); return;
     }
-    out=JSON.parse(await bodyText(response));parsed=parseBatchEvaluation(out,inputs);
+    const responseText=await bodyText(response); phase="validation";
+    out=JSON.parse(responseText);parsed=parseBatchEvaluation(out,inputs);
   } catch (error) {
-    for(const row of batch) await failedEvaluation(row,21600000,(error as Error).message);
-    await evaluationHealth({state:"cooldown",next_attempt_at:null,last_error:"Incomplete or invalid batch; pending links withheld",usage:await rpc("ss_evaluation_usage"),cooldown_until:new Date(Date.now()+3600000).toISOString()}); return;
+    const reason=(error as Error).message;
+    const failures=await Promise.all(batch.map(row=>failedEvaluation(row,reason,phase==="transport" ? 503 : 0)));
+    const retryAt=Math.max(...failures.map(f=>f.retryAt || Date.now()+3600000));
+    await rpc("ss_finish_evaluation_request",{request:reservation.request_id,outcome:failures[0].kind,reviewed:0,error:reason});
+    await evaluationHealth({state:"cooldown",next_attempt_at:new Date(retryAt).toISOString(),last_error:reason+"; queued links retained",target_batch_size:Math.max(1,Math.floor(targetSize/2)),usage:await rpc("ss_evaluation_usage"),cooldown_until:new Date(retryAt).toISOString()}); return;
   }
   const resolved_model=typeof out.modelVersion==="string" ? out.modelVersion.slice(0,120) : null;
   const tokens={input_tokens:Number(out.usageMetadata?.promptTokenCount)||0,output_tokens:Number(out.usageMetadata?.candidatesTokenCount)||0,thinking_tokens:Number(out.usageMetadata?.thoughtsTokenCount)||0};
   const comparisons=[];
   for(const row of batch) {
     const result=parsed.valid.get(row.id);
-    if(!result) { await failedEvaluation(row,21600000,parsed.errors[row.id]); continue; }
+    if(!result) { await failedEvaluation(row,parsed.errors[row.id]); continue; }
     const current=(await db("ss_articles?id=eq."+row.id+"&select=score,reference_meta,content_hash,deleted_at"))[0];
     const input=row.reference_meta.public_evaluation_input;
     if(!current || current.deleted_at || current.content_hash!==row.content_hash || !samePublicInput(current.reference_meta?.public_evaluation_input,input)) continue;
@@ -290,7 +304,7 @@ async function evaluateSweep(profile: any) {
     const score=effectiveScore(rules,result,mode,!!current.reference_meta.alert_kind);
     const evaluated_at=new Date().toISOString();
     const evaluation={...result,rules_score:rules,applied_score:score,mode,model:EVALUATION_MODEL,resolved_model,scope:input.scope,evaluator:"gemini",version:EVALUATOR_VERSION,cache_key:row.cache_key,evaluated_at,request_id:reservation.request_id};
-    const patch:any={reference_meta:{...current.reference_meta,evaluation,evaluation_failed_at:null,evaluation_retry_at:null,evaluation_failures:0,evaluation_error:null,review_commit:row.cache_key}};
+    const patch:any={reference_meta:{...current.reference_meta,evaluation,evaluation_failed_at:null,evaluation_retry_at:null,evaluation_failures:0,evaluation_validation_failures:0,evaluation_error_kind:null,evaluation_error:null,review_commit:row.cache_key}};
     if(mode==="rerank" && result.confidence==="high" && result.decision!=="insufficient_evidence") Object.assign(patch,{score,analysis_status:"ai",summary:result.summary,reason:result.reason,evidence:result.evidence});
     await db("ss_articles?id=eq."+row.id+"&content_hash=eq."+encodeURIComponent(row.content_hash)+"&deleted_at=is.null","PATCH",patch);
     comparisons.push({article_id:row.id,title:input.title,lane:candidateLane(row),rules_score:rules,ai_score:result.score,applied_score:score,...result,model:EVALUATION_MODEL,resolved_model,scope:input.scope,evaluated_at});
@@ -300,10 +314,11 @@ async function evaluateSweep(profile: any) {
       await db("ss_articles?id=eq."+row.id+"&content_hash=eq."+encodeURIComponent(row.content_hash),"PATCH",{reference_meta:{...patch.reference_meta,evaluation_enrichment_requested:true}});
     }
   }
+  await rpc("ss_finish_evaluation_request",{request:reservation.request_id,outcome:parsed.invalid.length ? "partial" : "success",reviewed:comparisons.length,error:parsed.invalid.length ? "Evidence validation failed for some sources" : null});
   const previous=await db("ss_settings?key=eq.evaluation_health&select=value");
   await evaluationHealth({configured:true,mode,model:EVALUATION_MODEL,resolved_model,state:parsed.invalid.length ? "partial_batch" : "active",next_attempt_at:null,last_success:new Date().toISOString(),last_error:parsed.invalid.length ? "Some batch results failed evidence validation; those links withheld" : null,cooldown_until:null,
-    daily_ceiling:limit,monthly_ceiling:monthly,batch_size:batch.length,last_batch_reviewed:comparisons.length,last_request_tokens:tokens,usage:await rpc("ss_evaluation_usage"),comparisons:[...comparisons,...(previous[0]?.value?.comparisons||[])].slice(0,12)});
-  try { await evaluationHealth({coverage:await evaluationCoverage()}); } catch { /* Non-critical health snapshot. */ }
+    daily_ceiling:limit,monthly_ceiling:monthly,target_batch_size:parsed.invalid.length ? Math.max(1,Math.floor(targetSize/2)) : Math.min(MAX_BATCH_SIZE,targetSize+3),batch_size:batch.length,last_batch_reviewed:comparisons.length,last_request_tokens:tokens,usage:await rpc("ss_evaluation_usage"),comparisons:[...comparisons,...(previous[0]?.value?.comparisons||[])].slice(0,12)});
+  try { await evaluationHealth({coverage:await evaluationCoverage(),pipeline:await rpc("ss_evaluation_pipeline")}); } catch { /* Non-critical health snapshot. */ }
 }
 async function ingest(item: any, profile: any) {
   let url: string;
@@ -361,7 +376,7 @@ async function ingest(item: any, profile: any) {
     reference_meta: {
       ...old[0]?.reference_meta, ...item.reference_meta, signals,
       public_evaluation_input: captured,
-      ...(changedInput ? {evaluation:null,evaluation_failed_at:null,evaluation_retry_at:null,evaluation_failures:0} : {}),
+      ...(changedInput ? {evaluation:null,evaluation_failed_at:null,evaluation_retry_at:null,evaluation_failures:0,evaluation_validation_failures:0,evaluation_error_kind:null,evaluation_error:null} : {}),
       link_status: old[0]?.reference_meta?.link_status === "title-match" ? "title-match" : item.reference_meta?.link_status === "search_result" ? "search_result" : "checked",
       ...(item.reference_meta?.link_status === "search_result" ? {} : { checked_at: new Date().toISOString() }),
     },
@@ -374,6 +389,15 @@ async function ingest(item: any, profile: any) {
   }
   if (old[0]) await db("ss_articles?id=eq." + old[0].id, "PATCH", record);
   else await db("ss_articles?on_conflict=url", "POST", record, "resolution=merge-duplicates,return=representation");
+}
+async function queueSourceItems(items: any[]) {
+  const captured=[];
+  for(const item of items) {
+    // Stable publisher identity excludes changing health/check clocks and watch revisions.
+    const source_fingerprint=await digest(JSON.stringify({url:item.url,title:item.title,public_title:item.public_title,summary:item.summary,text:item.text,published_at:item.published_at,updated_at:item.updated_at,prerelease:item.reference_meta?.prerelease}));
+    captured.push({...item,reference_meta:{...item.reference_meta,source_fingerprint}});
+  }
+  await rpc("ss_queue_items",{job_kind:"analyze",items:captured});
 }
 async function sourceJob(job: any, profile: any) {
   const p = job.payload;
@@ -422,12 +446,12 @@ async function sourceJob(job: any, profile: any) {
           const detail=JSON.parse((await fetchPublic(link,undefined,8_000_000)).text);
           entries.push(openshiftItem(detail,source,tag.name));
         }
-        await rpc("ss_queue_items",{job_kind:"analyze",items:entries});
+        await queueSourceItems(entries);
         await db("ss_sources?id=eq."+source.id+"&revision=eq."+source.revision,"PATCH",{last_item_count:entries.length});
       } else if (source.type === "github") {
         const health=await repoHealth(requestURL.pathname.split("/").slice(2,4).join("/"),releaseList ? JSON.parse(res.text) : undefined,"source");
         const entries = githubItems(JSON.parse(res.text), source);
-        await rpc("ss_queue_items", { job_kind: "analyze", items: entries.map(payload => ({ ...payload, reference_meta: { ...payload.reference_meta, ...meta, repo_health:health } })) });
+        await queueSourceItems(entries.map(payload => ({ ...payload, reference_meta: { ...payload.reference_meta, ...meta, repo_health:health } })));
         await db("ss_sources?id=eq." + source.id + "&revision=eq." + source.revision, "PATCH", { last_item_count: entries.length });
       } else if (source.type === "rss") {
         if (!/<(?:rss|feed|rdf:RDF)\b/i.test(res.text)) throw new Error("The URL did not return an RSS or Atom feed");
@@ -438,10 +462,10 @@ async function sourceJob(job: any, profile: any) {
               !item.published_at ||
               Date.parse(item.published_at) >= Date.now() - 90 * 86400000,
           );
-        await rpc("ss_queue_items", { job_kind: "analyze", items: entries.map(item => ({
+        await queueSourceItems(entries.map(item => ({
           ...item, source: source.name, kind: source.url.includes("arxiv.org") ? "Paper" : "Article", priority: source.priority,
           reference_meta: { ...meta, discovery_lane: "publication_feed" },
-        })) });
+        })));
         await db("ss_sources?id=eq." + source.id + "&revision=eq." + source.revision, "PATCH", { last_item_count: entries.length });
       } else {
         const m = htmlMeta(res.text);
@@ -660,6 +684,12 @@ Deno.serve(async (request) => {
     return new Response('{"error":"Unauthorized"}', { status: 401, headers });
   let count = 0;
   try {
+    const body = await request.json().catch(()=>({}));
+    if(body.mode === "evaluation") {
+      const settings=await db("ss_settings?key=eq.profile&select=value");
+      await evaluateSweep(settings[0].value);
+      return new Response(JSON.stringify({ok:true,mode:"evaluation"}),{headers});
+    }
     const day = new Date().toISOString().slice(0, 10);
     if (await budget("maintenance:" + day, 1, 86400))
       await rpc("ss_maintenance");
@@ -723,8 +753,7 @@ Deno.serve(async (request) => {
         });
       }
     }
-    // AI failures cannot fail collection or trigger queue retries.
-    try { await evaluateSweep(profile); } catch (error) { await evaluationHealth({state:"error",last_error:"Evaluation sweep: "+(error as Error).message.slice(0,160)}).catch(()=>{}); }
+    // A separate authenticated cron invocation evaluates; collection never waits on Google.
     return new Response(JSON.stringify({ ok: true, processed: count }), {
       headers,
     });

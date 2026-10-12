@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-10-12
+
+- Skip unchanged watched publisher content and prioritize new core releases within the ingestion lane.
+- Run semantic evaluation independently of source collection every five minutes.
+- Increase bounded synchronous batches to twelve while preserving the 16/day and 496/month request ceilings and historical reviews.
+- Keep transport failures retryable with exponential backoff, jitter, Retry-After and a 90-second timeout; adapt batch size after timeouts/invalid output.
+- Apply explicit first-party watch exceptions and hourly checks for the three NVIDIA network operators; keep normal discovery popularity thresholds.
+- Show measured arrivals, evaluations, retry backlog, policy exclusions and oldest queued link in administrator Health.
+
+
 ## 2026-10-11 — One current release per project
 
 - Show only the latest approved, channel-eligible release of each project across discovery and hidden views; retain older saved releases in the shared library.

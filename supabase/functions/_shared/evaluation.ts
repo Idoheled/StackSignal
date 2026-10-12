@@ -1,9 +1,10 @@
 import { TEAM_PROFILE, TEAM_STACK } from "../../../lib/coverage.ts";
 import { TOPIC_TERMS } from "../../../lib/domain.ts";
 
-export const EVALUATOR_VERSION = "semantic-batch-v3";
+export const EVALUATOR_VERSION = "semantic-batch-v4";
 export const EVALUATION_MODEL = "gemini-flash-latest";
-export const MAX_BATCH_SIZE = 5;
+export const MAX_BATCH_SIZE = 12;
+export const EVALUATION_TIMEOUT_MS = 90000;
 export const DAILY_REQUEST_CAP = 16;
 export const MONTHLY_REQUEST_CAP = 496;
 export const MAX_INPUT_BYTES = 6000;
@@ -63,7 +64,7 @@ export function batchEvaluationRequest(inputs: BatchInput[], team: ReturnType<ty
   const request = evaluationRequest(inputs[0].input,team);
   request.systemInstruction.parts[0].text += " Evaluate EACH public source independently, including followed releases. Return one result per supplied id. Never transfer evidence or conclusions between sources. A release is useful only when its actual changes apply to the team; a version number alone is insufficient evidence.";
   request.contents[0].parts[0].text = JSON.stringify({public_team:team,public_sources:inputs.map(i=>({id:i.id,public_source:i.input}))});
-  return {...request,generationConfig:{...request.generationConfig,maxOutputTokens:Math.min(4500,900*inputs.length),
+  return {...request,generationConfig:{...request.generationConfig,maxOutputTokens:900*inputs.length,
     responseFormat:{text:{mimeType:"APPLICATION_JSON",schema:{type:"object",additionalProperties:false,required:["results"],properties:{results:{type:"array",minItems:inputs.length,maxItems:inputs.length,
       items:{type:"object",additionalProperties:false,required:["id","assessment"],properties:{id:{type:"string",enum:inputs.map(i=>i.id)},assessment:schema}}}}}}}}};
 }
@@ -89,11 +90,29 @@ export function candidateLane(row: any) {
   if (row.score < 55 || row.reference_meta?.search_window === "explore") return "explore";
   return row.score < 75 ? "borderline" : "strong";
 }
-export function evaluationCandidates(rows: any[], attempt: number) {
+export function evaluationCandidates(rows: any[], attempt: number, now = Date.now()) {
   const lane = ["strong","borderline","explore","strong"][attempt%4];
   return rows.filter(r=>r.reference_meta?.public_evaluation_input)
-    .sort((a,b)=>Number(candidateLane(b)===lane)-Number(candidateLane(a)===lane) ||
+    .sort((a,b)=>Number(Date.parse(b.discovered_at)<now-86400000)-Number(Date.parse(a.discovered_at)<now-86400000) ||
+      Number(!!b.reference_meta.alert_kind)-Number(!!a.reference_meta.alert_kind) ||
+      (a.discovered_at && b.discovered_at ? String(a.discovered_at).localeCompare(String(b.discovered_at)) : 0) ||
+      Number(candidateLane(b)===lane)-Number(candidateLane(a)===lane) ||
       (lane==="strong" ? b.score-a.score : a.score-b.score) || String(b.discovered_at).localeCompare(String(a.discovered_at)));
+}
+
+/** Durable retry scheduling: every network attempt still consumes a reserved request. */
+export function evaluationFailure(reason: string, failures: number, status = 0, retryAfter: string | null = null, now = Date.now(), random = Math.random()) {
+  const transport = status === 408 || status === 429 || status >= 500 || /timeout|timed out|network|fetch failed|connection/i.test(reason);
+  const configuration = status >= 400 && !transport;
+  const kind = configuration ? "configuration" : transport ? "transient" : "validation";
+  const base = configuration ? 86400000 : kind === "validation" ? 3600000 : Math.min(7200000,300000 * 2 ** Math.min(5,failures-1));
+  const headerDelay = retryAfter && /^\d+(\.\d+)?$/.test(retryAfter) ? Number(retryAfter)*1000 : Math.max(0,Date.parse(retryAfter || "")-now) || 0;
+  const delay = Math.max(Math.min(86400000,base + Math.floor(base*.2*random)),headerDelay);
+  return {kind, retryAt:kind === "validation" && failures>=3 ? null : now+delay, delay};
+}
+
+export function evaluationBatchSize(health: any) {
+  return Math.max(1,Math.min(MAX_BATCH_SIZE,Number(health.target_batch_size)||MAX_BATCH_SIZE));
 }
 
 /** On-demand queue; atomic database ceilings enforce the day/month budget. No automatic reset on deployment. */

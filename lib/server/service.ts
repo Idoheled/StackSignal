@@ -582,6 +582,7 @@ export function createService(c: Config, network: typeof fetch = fetch) {
         const evaluation = await sb("/rest/v1/ss_settings?key=eq.evaluation_health&select=value", "GET", undefined, undefined, true);
         out.evaluation_health = evaluation[0]?.value || {};
         out.review_coverage = await rpc("ss_review_coverage", {}, undefined, true);
+        out.evaluation_pipeline = await rpc("ss_evaluation_pipeline", {}, undefined, true);
       }
       return respond(out);
     } catch (e) {

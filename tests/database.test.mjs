@@ -392,7 +392,7 @@ test("PostgreSQL access, isolation, invitation and concurrency invariants", asyn
       assert((await reserve("a",16,496)).request_id);
     }
     await db.exec("update ss_private.evaluation_claims set attempted_at=now()-interval '7 hours';update ss_private.evaluation_requests set attempted_at=now()-interval '6 minutes'");
-    assert.equal((await reserve("a",16,496)).request_id,undefined,"at most three attempts per unchanged input");
+    assert((await reserve("a",16,496)).request_id,"transport failures are recoverable beyond three attempts without resetting request accounting");
     assert.equal((await db.query("select ss_reserve_evaluation($1,$2,4,100) ok",[article,"f".repeat(64)])).rows[0].ok,false,"retired collector cannot bypass batch ledger");
     await db.exec("delete from ss_private.evaluation_claims;delete from ss_private.evaluation_requests");
     await as(owner);
@@ -556,6 +556,45 @@ test("PostgreSQL access, isolation, invitation and concurrency invariants", asyn
       const first=await action("feed",{mode:"archive",q:"Dated regression",limit:1});
       assert.equal(first.total,1);assert.equal(first.items[0].id,[newest,tied].sort()[0],"publisher/discovery ties have a deterministic ID winner");
       assert.equal((await action("feed",{mode:"archive",q:"Dated regression",limit:1,offset:1})).items.length,0);
+    });
+
+    await t.test("twelve-link reservation, transient lease recovery and official watched policy",async()=>{
+      await db.exec("reset role;delete from ss_private.evaluation_claims;delete from ss_private.evaluation_requests");
+      const all=[];
+      for(let i=0;i<13;i++) all.push((await db.query("insert into ss_articles(url,title,content_hash,reference_meta) values($1,'Capacity regression',$2,$3) returning id",["https://kubernetes.io/capacity-"+i,"a".repeat(64),JSON.stringify({public_evaluation_input:{title:"Public engineering",text:"A reproducible guide to controlled cache offloading",scope:"publisher_excerpt"}})])).rows[0].id);
+      const items=all.map(id=>({id,cache_key:"e".repeat(64),content_hash:"a".repeat(64)}));
+      const first=(await db.query("select ss_reserve_evaluation_batch($1,16,496) x",[JSON.stringify(items)])).rows[0].x;
+      assert.equal(first.items.length,12);assert.equal((await db.query("select ss_evaluation_usage() x")).rows[0].x.used_24h,1);
+      await db.query("select ss_finish_evaluation_request($1,'transient',0,'Gemini HTTP 503')",[first.request_id]);
+      assert.equal((await db.query("select outcome from ss_private.evaluation_requests where id=$1",[first.request_id])).rows[0].outcome,"transient");
+      await db.query("select ss_finish_evaluation_request($1,'success',12,null)",[first.request_id]);
+      assert.equal((await db.query("select outcome from ss_private.evaluation_requests where id=$1",[first.request_id])).rows[0].outcome,"transient","completion is idempotent");
+      await db.query("update ss_articles set reference_meta=reference_meta||$2 where id=any($1::uuid[])",[all,JSON.stringify({evaluation_failed_at:new Date().toISOString(),evaluation_error_kind:"transient",evaluation_failures:8,evaluation_retry_at:new Date(Date.now()-60000).toISOString()})]);
+      await db.exec("update ss_private.evaluation_claims set attempted_at=now()-interval '6 minutes';update ss_private.evaluation_requests set attempted_at=now()-interval '6 minutes'");
+      assert.equal((await db.query("select ss_reserve_evaluation_batch($1,16,496) x",[JSON.stringify(items)])).rows[0].x.items.length,12);
+      const source=(await db.query("insert into ss_sources(name,url,type,topic) values('Official NIC','https://api.github.com/repos/Mellanox/nic-configuration-operator/releases','github','Networking') returning id")).rows[0].id;
+      const meta={origin:"source_watch",source_id:source,repo_health:{active:true,stars:23,license:"Apache-2.0",checked_at:new Date().toISOString()}};
+      const admit=async m=>(await db.query("select ss_private.repo_admitted('https://github.com/Mellanox/nic-configuration-operator/releases/tag/v2',$1,'{}') x",[JSON.stringify(m)])).rows[0].x;
+      assert(await admit(meta));assert(!await admit({...meta,source_id:owner}),"a forged/nonmatching source cannot bypass policy");
+      await db.query("update ss_sources set active=false where id=$1",[source]);assert(!await admit(meta));
+      await as(reader);await fails(()=>db.query("select ss_evaluation_pipeline()"),"permission denied");await fails(()=>db.query("select ss_finish_evaluation_request(1,'success',1,null)"),"permission denied");
+    });
+
+    await t.test("watch fingerprints skip unchanged bodies while core releases retain a fast ingestion lane",async()=>{
+      await db.exec("reset role");
+      const source=(await db.query("insert into ss_sources(name,url,type,topic,priority) values('Core maintenance','https://api.github.com/repos/Mellanox/maintenance-operator/releases','github','Networking','core') returning id")).rows[0].id;
+      const url="https://github.com/Mellanox/maintenance-operator/releases/tag/regression-v9";
+      const meta={source_id:source,source_revision:1,source_fingerprint:"f".repeat(64),alert_kind:"release"};
+      const article=(await db.query("insert into ss_articles(url,title,reference_meta) values($1,'Incremental watch',$2) returning id",[url,JSON.stringify(meta)])).rows[0].id;
+      const payload={url,title:"Incremental watch",published_at:new Date().toISOString(),reference_meta:{...meta,repo_health:{checked_at:new Date().toISOString()}}};
+      await db.query("select ss_queue_items('analyze',$1)",[JSON.stringify([payload])]);
+      assert.equal((await db.query("select count(*) n from ss_jobs where payload->>'url'=$1",[url])).rows[0].n,0,"unchanged text does not enter ingestion again");
+      assert((await db.query("select reference_meta->'repo_health' h from ss_articles where id=$1",[article])).rows[0].h.checked_at,"health clocks refresh without an ingestion job");
+      const changed={...payload,reference_meta:{...payload.reference_meta,source_fingerprint:"e".repeat(64)}};
+      await db.query("select ss_queue_items('analyze',$1)",[JSON.stringify([changed,changed])]);
+      assert.equal((await db.query("select count(*) n from ss_jobs where payload->>'url'=$1",[url])).rows[0].n,1,"changed content queues exactly once");
+      const claimed=(await db.query("select * from ss_claim_jobs(8)")).rows;
+      assert(claimed.some(j=>j.payload.url===url),"core release is claimed before ordinary analyze backlog");
     });
 
     console.log(

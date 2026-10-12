@@ -29,28 +29,28 @@ Apply mode uses the existing 70% AI / 30% rules blend for high-confidence Gemini
 | Control | Enforcement |
 | --- | --- |
 | Model | `gemini-flash-latest`; last resolved model recorded in Health |
-| Batch size | Up to five links in one synchronous `generateContent` request |
+| Batch size | Up to twelve links in one synchronous `generateContent` request |
 | Daily requests | At most 16 in a rolling 24 hours **and** the Pacific calendar day |
 | Monthly requests | At most 496 per UTC calendar month; administrator may lower it |
-| Spacing | At least five minutes globally, one request per collector tick |
+| Spacing | At least five minutes globally, one request per independent evaluation tick |
 | Public source input | At most 6,000 UTF-8 bytes of text and 500 bytes of title per link |
-| Output | 900 generation tokens per link, at most 4,500 per request; LOW thinking |
-| Timeout | 30 seconds; no immediate provider retries |
-| Input retries | At most three reservations for an unchanged article/context/input; six-hour lease |
-| Provider errors | HTTP 5xx: 15-minute global cooldown; quota/auth/other HTTP errors: 24 hours; failures consume slots |
-| Malformed batch | One-hour global cooldown; affected inputs wait at least six hours |
+| Output | 900 generation tokens per link, at most 10,800 per request; LOW thinking |
+| Timeout | 90 seconds; no immediate provider retries |
+| Input retries | Five-minute in-flight lease; transient/configuration failures keep a durable retry time; three invalid-output failures require review |
+| Provider errors | HTTP 408/429/5xx/network failures: exponential backoff with jitter (5 minutes to 2 hours), honoring Retry-After; auth/configuration: 24 hours; failures consume slots |
+| Malformed batch | One-hour cooldown; smaller subsequent batches isolate invalid output |
 
 The owner's October 11, 2026 AI Studio screenshots show **5 RPM, 250,000 input TPM and 20 RPD** for Gemini 3.8 Flash on a Free-tier project. Sixteen daily requests leave four requests of daily headroom. These quotas are shared by every client in the Google project and can change when the latest alias changes. Keep the project dedicated to StackSignal and on the Free tier. Application ceilings cannot prove or control the project's billing tier. There is no paid fallback or alternate-model retry.
 
-**Sixteen requests × five links gives an upper bound of 80 link assessments/day, not a throughput guarantee.** Small/failed batches, insufficient excerpts, unavailable sources and arrivals above capacity can cause delays. A monthly request ceiling is an application safeguard, not a Google monthly free allowance. Do not claim exhaustive discovery or instant review regardless of volume.
+**Sixteen requests × twelve links gives an upper bound of 192 link assessments/day, not a throughput guarantee.** Small/failed batches, insufficient excerpts, unavailable sources and arrivals above capacity can cause delays. A monthly request ceiling is an application safeguard, not a Google monthly free allowance. Do not claim exhaustive discovery or instant review regardless of volume.
 
 ## Durable queue and extraction
 
-The sweep loads the oldest 50 eligible new-link public inputs **after excluding the frozen cohort and filtering GitHub repository health**, rotates preference among strong/borderline/exploration lanes and submits up to five atomically reserved inputs. Already leased inputs are skipped within the window, so an interrupted request does not unnecessarily block all other work. There is no seven-day queue expiry.
+The sweep loads the oldest/priority window of 200 eligible new-link public inputs **after excluding the frozen cohort and filtering GitHub repository health**, rotates preference among strong/borderline/exploration lanes and submits up to twelve atomically reserved inputs. Already leased inputs are skipped within the window, so an interrupted request does not unnecessarily block all other work. There is no seven-day queue expiry.
 
 New references without public text enter a separate bounded extraction queue: up to eight records per tick, once per record, only for approved public hosts. Completed assistant reviews skip this bootstrap extraction. PDFs and unsupported hosts remain visible in administrator new-link coverage as missing public input. Public GitHub repository extraction uses API metadata and a bounded public README when available. Imported chat text, private notes and arbitrary user titles are never evaluation inputs.
 
-A new-link insufficient-evidence search snippet may request one richer approved-host fetch. Completed decisions are retained when captured public text changes, with a content-change marker and the original reviewed snapshot. Metadata-only changes also preserve the assessment without another Gemini call. Failed unchanged inputs receive bounded delayed retries; after three reservations they remain withheld for inspection. No model-selected URL expands the fetch allowlist.
+A new-link insufficient-evidence search snippet may request one richer approved-host fetch. Completed decisions are retained when captured public text changes, with a content-change marker and the original reviewed snapshot. Metadata-only changes also preserve the assessment without another Gemini call. Transport failures remain queued beyond three attempts. Three invalid-output failures require inspection. No model-selected URL expands the fetch allowlist.
 
 ## Validation and concurrency
 
@@ -90,3 +90,15 @@ flowchart TD
 ```
 
 References: [Google rate limits](https://ai.google.dev/gemini-api/docs/rate-limits), [structured output](https://ai.google.dev/gemini-api/docs/structured-output), [billing](https://ai.google.dev/gemini-api/docs/billing), [architecture](ARCHITECTURE.md), [operations](OPERATIONS.md).
+
+## Recovery and capacity (October 12, 2026)
+
+The authenticated collector accepts `{ "mode": "evaluation" }` for a dedicated invocation. Apply `supabase/hosted/20261012215125_independent_evaluation.sql` after deploying the collector. Collection no longer waits on Gemini; both schedules run every five minutes with the existing Vault secret. Request accounting remains atomic, includes unsuccessful calls, and preserves all historical requests and reviews. No paid fallback, extra key, alternate model, or automatic quota increase is introduced.
+
+Fresh small queues wait up to an hour to fill a request; aged links and watched releases can proceed immediately. Links older than 24 hours precede releases, then FIFO ordering prevents starvation. Timeouts or malformed responses halve the target batch size; fully valid responses grow it by three up to twelve. Actual capacity may be below arrivals during an outage or reduced batches. The admin view reports arrivals, reviews, eligible backlog, scheduled retries, validation failures requiring attention, policy exclusions, and oldest pending discovery. Excluded repositories have an eligibility decision and do not occupy model slots; this is distinct from a semantic content review.
+
+The three explicit Mellanox NVIDIA operator watches (Network, NIC Configuration, Maintenance) run hourly, include release candidates, and bypass popularity/release-count thresholds. They still require current active/licensed repository metadata, an active matching watch in the database, a grounded semantic assessment, and the normal feed relevance requirements. Ordinary discovered repositories retain the configured admission thresholds. Existing rejected reviews are preserved.
+
+A permanent provider outage or sustained arrivals above successful capacity cannot be solved by retries. Monitor observed queue growth and oldest age; the maximum batch arithmetic is not an availability guarantee or an ETA.
+
+Publisher fingerprints skip unchanged watched content before ingestion, refreshing repository health without another job. Core release jobs are prioritized within the existing job-kind rotation; jobs older than 24 hours retain an age priority. This removes a separate ingestion bottleneck without dropping new source content.

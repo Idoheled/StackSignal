@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { publicTeam, publicInput, evaluationRequest, parseEvaluation, effectiveScore, evaluationCandidates, MAX_INPUT_BYTES, nextEvaluationAt, samePublicInput, batchEvaluationRequest, parseBatchEvaluation } from "../supabase/functions/_shared/evaluation.ts";
+import { publicTeam, publicInput, evaluationRequest, parseEvaluation, effectiveScore, evaluationCandidates, MAX_INPUT_BYTES, nextEvaluationAt, samePublicInput, batchEvaluationRequest, parseBatchEvaluation, MAX_BATCH_SIZE, evaluationFailure, evaluationBatchSize } from "../supabase/functions/_shared/evaluation.ts";
 const text = "This reproducible guide configures KV cache offloading and compares latency under controlled request concurrency. ";
 const input = publicInput({title:"Cache engineering",kind:"Discovery",reference_meta:{link_status:"search_result"}},text)!;
 const result = {topic:"Inference",score:90,confidence:"high",depth:"advanced",decision:"useful",summary:"Cache offloading guidance.",reason:"Relevant cache engineering.",action:"Review the concurrency comparison.",evidence:"configures KV cache offloading"};
@@ -34,9 +34,11 @@ test("evaluation rejects invented evidence, incomplete or malformed output; acce
 test("sampling reserves attention for low keyword exploration while reviewing followed releases too",()=>{
   const row=(id:string,score:number,meta={})=>({id,score,reference_meta:{public_evaluation_input:input,...meta}});
   const rows=[row("strong",95),row("borderline",60),row("unfamiliar",20),row("release",88,{alert_kind:"release"}),{id:"private",score:90}];
-  assert.equal(evaluationCandidates(rows,0)[0].id,"strong");
-  assert.equal(evaluationCandidates(rows,1)[0].id,"borderline");
-  assert.equal(evaluationCandidates(rows,2)[0].id,"unfamiliar");
+  assert.equal(evaluationCandidates(rows,0)[0].id,"release");
+  const discovery=rows.filter(r=>r.id!=="release");
+  assert.equal(evaluationCandidates(discovery,0)[0].id,"strong");
+  assert.equal(evaluationCandidates(discovery,1)[0].id,"borderline");
+  assert.equal(evaluationCandidates(discovery,2)[0].id,"unfamiliar");
   assert.equal(evaluationCandidates(rows,0).length,4);
 });
 
@@ -54,7 +56,26 @@ test("batch judgments stay bound to their own source and fail closed on identiti
   for(const ids of [["one","one"],["one","unknown"]]) assert.throws(()=>parseBatchEvaluation(output({results:ids.map(id=>({id,assessment:result}))}),sources));
   assert.throws(()=>parseBatchEvaluation(output({results:[]},"MAX_TOKENS"),sources));
   assert.deepEqual(parseBatchEvaluation(output({results:[]}),sources).invalid,["one","two"]);
-  assert.throws(()=>batchEvaluationRequest(Array.from({length:6},(_,i)=>({id:String(i),input})),publicTeam({})));
+  assert.throws(()=>batchEvaluationRequest(Array.from({length:MAX_BATCH_SIZE+1},(_,i)=>({id:String(i),input})),publicTeam({})));
+  const full=batchEvaluationRequest(Array.from({length:MAX_BATCH_SIZE},(_,i)=>({id:String(i),input})),publicTeam({}));
+  assert.equal(full.generationConfig.maxOutputTokens,10800);
+});
+test("transient outages stay retryable beyond three failures, honor Retry-After and keep validation distinct",()=>{
+  const now=Date.parse("2026-10-12T12:00:00Z");
+  for(const status of [408,429,500,503,504]) assert(evaluationFailure("HTTP "+status,8,status,null,now,0).retryAt!>now);
+  assert.equal(evaluationFailure("Signal timed out.",8,0,null,now,0).kind,"transient");
+  assert.equal(evaluationFailure("HTTP 503",1,503,"900",now,0).retryAt,now+900000);
+  assert.equal(evaluationFailure("HTTP 429",1,429,new Date(now+1200000).toUTCString(),now,0).retryAt,now+1200000);
+  assert.equal(evaluationFailure("Unsupported evidence",3,0,null,now,0).retryAt,null);
+  assert.equal(evaluationFailure("HTTP 403",1,403,null,now,0).kind,"configuration");
+  assert.equal(evaluationBatchSize({}),12);assert.equal(evaluationBatchSize({target_batch_size:99}),12);
+  assert.equal(evaluationBatchSize({target_batch_size:3}),3);
+});
+test("age prevents starvation and followed releases get attention before fresh generic discoveries",()=>{
+  const now=Date.parse("2026-10-12T12:00:00Z");
+  const row=(id:string,age:number,meta={})=>({id,score:90,discovered_at:new Date(now-age).toISOString(),reference_meta:{public_evaluation_input:input,...meta}});
+  const rows=[row("fresh",1000),row("release",2000,{alert_kind:"release"}),row("old",86400001)];
+  assert.deepEqual(evaluationCandidates(rows,0,now).map(r=>r.id),["old","release","fresh"]);
 });
 test("on-demand pacing reserves five-minute spacing and stops at configured budgets",()=>{
   const now=Date.parse("2026-10-11T11:00:00Z"),last="2026-10-11T10:59:00Z";
