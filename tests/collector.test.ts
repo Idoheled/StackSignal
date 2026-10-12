@@ -238,14 +238,14 @@ test("semantic sweep is cached, comparison-only, private-context safe and pauses
 test("multi-link batches save independent valid reviews and withhold an invalid neighbor",async()=>{
   const savedFetch=globalThis.fetch;environment.GEMINI_API_KEY="test-batch-key";
   const excerpt="A reproducible inference benchmark configures KV cache offloading and documents controlled concurrency.";
-  const rows=["one","two","three"].map(id=>({id,url:"https://github.com/a/"+id,score:70,kind:id==="two" ? "Release" : "Article",content_hash:id,reference_meta:{repo_health:healthFixture,public_evaluation_input:{title:id,text:excerpt,scope:"publisher_excerpt"},...(id==="two"?{alert_kind:"release"}:{})}}));
+  const rows=["one","two","three","rejected"].map(id=>({id,url:"https://github.com/a/"+id,score:70,kind:id==="two" ? "Release" : "Article",content_hash:id,reference_meta:{repo_health:healthFixture,public_evaluation_input:{title:id,text:excerpt,scope:"publisher_excerpt"},...(id==="two"?{alert_kind:"release"}:{})}}));
   let health:any={},calls=0,reservations=0;
   globalThis.fetch=async(input,init)=>{
     const u=new URL(String(input)),body=init?.body?JSON.parse(String(init.body)):undefined;
     if(u.hostname==="generativelanguage.googleapis.com") {
       calls++;const inputs=JSON.parse(body.contents[0].parts[0].text).public_sources;
-      assert.equal(inputs.length,3);assert.equal(body.generationConfig.maxOutputTokens,2700);
-      const results=inputs.map((i:any)=>({id:i.id,assessment:{topic:"Inference",score:85,confidence:"high",depth:"advanced",decision:"useful",summary:"Controlled cache benchmark.",reason:"Useful infrastructure experiment.",action:"Compare concurrency conditions.",evidence:i.id==="three" ? "Fabricated unrelated evidence" : "configures KV cache offloading"}}));
+      assert.equal(inputs.length,4);assert.equal(body.generationConfig.maxOutputTokens,3600);
+      const results=inputs.map((i:any)=>({id:i.id,assessment:{topic:"Inference",score:85,confidence:"high",depth:"advanced",decision:i.id==="rejected" ? "tangential" : "useful",summary:"Controlled cache benchmark.",reason:"Useful infrastructure experiment.",action:"Compare concurrency conditions.",evidence:i.id==="three" ? "Fabricated unrelated evidence" : "configures KV cache offloading"}}));
       return Response.json({candidates:[{finishReason:"STOP",content:{parts:[{text:JSON.stringify({results:results.reverse()})}]}}]});
     }
     if(u.pathname.endsWith("ss_take_budget")) return Response.json(false);
@@ -280,7 +280,9 @@ test("multi-link batches save independent valid reviews and withhold an invalid 
     assert.equal((rows[2].reference_meta as any).evaluation,undefined);
     assert((rows[2].reference_meta as any).evaluation_failed_at);
     assert((rows[2].reference_meta as any).evaluation_retry_at);
-    assert.equal(health.state,"partial_batch");assert.equal(health.last_batch_reviewed,2);
+    assert.equal(health.state,"partial_batch");assert.equal(health.last_batch_reviewed,3,"valid non-selected decisions still count as completed work");
+    assert.equal(health.comparisons.length,2);
+    assert(!JSON.stringify(health.comparisons).includes('"rejected"'),"a completed rejected decision must not be re-saved in health comparisons");
   } finally {globalThis.fetch=savedFetch;delete environment.GEMINI_API_KEY;}
 });
 
@@ -380,6 +382,7 @@ test("24-hour local failover is independent of Gemini configuration and commits 
   const u=new URL(String(input)),body=init?.body?JSON.parse(String(init.body)):undefined;
   assert.equal(u.hostname,"database.example","local failover must never contact Google or any external model");
   if(u.pathname.endsWith("ss_settings")){if(body){health.push(body);return Response.json([body]);}return Response.json([{value:u.searchParams.get("key")==="eq.profile" ? {gemini_mode:"off",gemini_daily_limit:0} : {}}]);}
+  if(u.pathname.endsWith("ss_promote_overdue_link_jobs")){assert.equal(body.batch_size,500);return Response.json({promoted:0,cleared:0});}
   if(u.pathname.endsWith("ss_internal_review_candidates")) {assert.equal(body.batch_size,500);return Response.json(rows);}
   if(u.pathname.endsWith("ss_commit_internal_reviews")){batches.push(body.items);assert(body.items.every((x:any)=>x.evaluator==="policy"&&x.completion_path==="sla_failover"));return Response.json({committed:body.items.length,skipped:0});}
   if(u.pathname.endsWith("ss_evaluation_pipeline")||u.pathname.endsWith("ss_review_coverage"))return Response.json({});

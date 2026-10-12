@@ -226,6 +226,7 @@ async function queueMissingPublicInputs() {
   }
 }
 async function internalSweep(profile:any) {
+  const collection=await rpc("ss_promote_overdue_link_jobs",{batch_size:500});
   const rows=await rpc("ss_internal_review_candidates",{batch_size:500});
   const items=[];
   for(const row of rows) {
@@ -238,7 +239,7 @@ async function internalSweep(profile:any) {
   }
   const result={committed:0,skipped:0};
   for(let i=0;i<items.length;i+=200) { const out=await rpc("ss_commit_internal_reviews",{items:items.slice(i,i+200)});result.committed+=out.committed;result.skipped+=out.skipped; }
-  await evaluationHealth({internal_review:{...result,version:"dry-evidence-v1",after_hours:24,last_run:new Date().toISOString()},pipeline:await rpc("ss_evaluation_pipeline"),coverage:await evaluationCoverage()});
+  await evaluationHealth({internal_review:{...result,promoted:collection.promoted,cleared_jobs:collection.cleared,version:"dry-evidence-v1",after_hours:24,last_run:new Date().toISOString()},pipeline:await rpc("ss_evaluation_pipeline"),coverage:await evaluationCoverage()});
   return result;
 }
 async function evaluateSweep(profile: any) {
@@ -311,6 +312,7 @@ async function evaluateSweep(profile: any) {
   const resolved_model=typeof out.modelVersion==="string" ? out.modelVersion.slice(0,120) : null;
   const tokens={input_tokens:Number(out.usageMetadata?.promptTokenCount)||0,output_tokens:Number(out.usageMetadata?.candidatesTokenCount)||0,thinking_tokens:Number(out.usageMetadata?.thoughtsTokenCount)||0};
   const comparisons=[];
+  let reviewed=0;
   for(const row of batch) {
     const result=parsed.valid.get(row.id);
     if(!result) { await failedEvaluation(row,parsed.errors[row.id]); continue; }
@@ -325,17 +327,16 @@ async function evaluateSweep(profile: any) {
     if(mode==="rerank" && result.confidence==="high" && result.decision!=="insufficient_evidence") Object.assign(patch,{score,analysis_status:"ai",summary:result.summary,reason:result.reason,evidence:result.evidence});
     const updated=await db("ss_articles?id=eq."+row.id+"&content_hash=eq."+encodeURIComponent(row.content_hash)+"&deleted_at=is.null&reference_meta->>evaluation=is.null","PATCH",patch);
     if(!updated?.length)continue;
-    comparisons.push({article_id:row.id,title:input.title,lane:candidateLane(row),rules_score:rules,ai_score:result.score,applied_score:score,...result,model:EVALUATION_MODEL,resolved_model,scope:input.scope,evaluated_at});
-    // One approved-host enrichment attempt for insufficient snippets. No model-selected URL or broader fetch allowlist.
-    if(result.decision==="insufficient_evidence" && input.scope==="search_snippet" && !current.reference_meta.evaluation_enrichment_requested && row.url && safeURL(row.url,hosts)) {
-      await rpc("ss_queue_item",{job_kind:"article",item:{url:row.url,kind:row.kind}});
-      await db("ss_articles?id=eq."+row.id+"&content_hash=eq."+encodeURIComponent(row.content_hash),"PATCH",{reference_meta:{...patch.reference_meta,evaluation_enrichment_requested:true}});
-    }
+    reviewed++;
+    // Non-selected terminal decisions are physically deleted by the database.
+    // Never recreate their payload in comparison history or an enrichment job.
+    if(result.decision==="useful" && result.score>=Number(profile.min_score ?? 55) && ["medium","high"].includes(result.confidence) && ["practical","advanced"].includes(result.depth))
+      comparisons.push({article_id:row.id,title:input.title,lane:candidateLane(row),rules_score:rules,ai_score:result.score,applied_score:score,...result,model:EVALUATION_MODEL,resolved_model,scope:input.scope,evaluated_at});
   }
-  await rpc("ss_finish_evaluation_request",{request:reservation.request_id,outcome:parsed.invalid.length ? "partial" : "success",reviewed:comparisons.length,error:parsed.invalid.length ? "Evidence validation failed for some sources" : null});
+  await rpc("ss_finish_evaluation_request",{request:reservation.request_id,outcome:parsed.invalid.length ? "partial" : "success",reviewed,error:parsed.invalid.length ? "Evidence validation failed for some sources" : null});
   const previous=await db("ss_settings?key=eq.evaluation_health&select=value");
   await evaluationHealth({configured:true,mode,model:EVALUATION_MODEL,resolved_model,state:parsed.invalid.length ? "partial_batch" : "active",next_attempt_at:null,last_success:new Date().toISOString(),last_error:parsed.invalid.length ? "Some batch results failed evidence validation; those links withheld" : null,cooldown_until:null,
-    daily_ceiling:limit,monthly_ceiling:monthly,target_batch_size:parsed.invalid.length ? Math.max(1,Math.floor(targetSize/2)) : Math.min(MAX_BATCH_SIZE,targetSize+3),batch_size:batch.length,last_batch_reviewed:comparisons.length,last_request_tokens:tokens,usage:await rpc("ss_evaluation_usage"),comparisons:[...comparisons,...(previous[0]?.value?.comparisons||[])].slice(0,12)});
+    daily_ceiling:limit,monthly_ceiling:monthly,target_batch_size:parsed.invalid.length ? Math.max(1,Math.floor(targetSize/2)) : Math.min(MAX_BATCH_SIZE,targetSize+3),batch_size:batch.length,last_batch_reviewed:reviewed,last_request_tokens:tokens,usage:await rpc("ss_evaluation_usage"),comparisons:[...comparisons,...(previous[0]?.value?.comparisons||[])].slice(0,12)});
   try { await evaluationHealth({coverage:await evaluationCoverage(),pipeline:await rpc("ss_evaluation_pipeline")}); } catch { /* Non-critical health snapshot. */ }
 }
 async function ingest(item: any, profile: any) {
@@ -394,7 +395,6 @@ async function ingest(item: any, profile: any) {
     reference_meta: {
       ...old[0]?.reference_meta, ...item.reference_meta, signals,
       public_evaluation_input: captured,
-      ...(changedInput && old[0]?.reference_meta?.evaluation?.evaluator==="policy" && old[0]?.reference_meta?.evaluation?.decision==="insufficient_evidence" ? {review_commit:hash} : {}),
       ...(changedInput ? {evaluation:null,evaluation_failed_at:null,evaluation_retry_at:null,evaluation_failures:0,evaluation_validation_failures:0,evaluation_error_kind:null,evaluation_error:null} : {}),
       link_status: old[0]?.reference_meta?.link_status === "title-match" ? "title-match" : item.reference_meta?.link_status === "search_result" ? "search_result" : "checked",
       ...(item.reference_meta?.link_status === "search_result" ? {} : { checked_at: new Date().toISOString() }),
@@ -755,10 +755,8 @@ Deno.serve(async (request) => {
           await (job.payload.lane === "trending" ? trendingDiscovery(job.payload.window,profile) : job.payload.lane === "repository" ? repoDiscovery(job.payload.query, profile) : discovery({ ...profile, queries: [job.payload.query], _allowedQueries: profile.queries, _searchLane: job.payload.window }));
         else if (job.kind === "analyze") await ingest(job.payload, profile);
         else await articleJob(job, profile);
-        await db("ss_jobs?id=eq." + job.id, "PATCH", {
-          status: "done",
-          last_error: null,
-        });
+        // Completed work needs no durable copy of source text or rejected URLs.
+        await db("ss_jobs?id=eq." + job.id, "DELETE");
         count++;
       } catch (e) {
         if (job.kind === "discovery" && !(["repository","trending"].includes(job.payload.lane)))

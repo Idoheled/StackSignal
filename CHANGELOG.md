@@ -3,7 +3,10 @@
 ## 2026-10-13
 
 - Add a model-free, evidence-bound review path for unresolved links after 24 hours and qualifying fresh direct-source material.
-- Record service-only assistant backlog decisions with content/input guards and immutable history.
+- Record service-only assistant backlog decisions with content/input guards and approved review history.
+- Persist database-managed link states and permanently delete non-selected decisions with history, claims, jobs, bookmarks, notes, feedback and comparison data; keep aggregate discard counts only.
+- Delete completed job payloads and preserve request-level quota accounting after article deletion.
+- Move overdue collection failures into the local review path without restarting their original discovery clock.
 - Capture full arXiv abstracts and enrich new paper announcements.
 - Label local reviews explicitly and preserve their ranking after metadata refreshes.
 - Prevent a racing Gemini response from replacing a completed review.

@@ -24,6 +24,7 @@ export type Article = {
   reason: string;
   evidence?: string;
   analysis_status?: string;
+  review_state?: "awaiting_input" | "awaiting_evaluation" | "retry_wait" | "needs_attention" | "approved" | "archived";
   score: number;
   reference_meta?: {
     origin?: string;

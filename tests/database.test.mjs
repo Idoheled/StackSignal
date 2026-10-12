@@ -14,12 +14,33 @@ test("PostgreSQL access, isolation, invitation and concurrency invariants", asyn
     for (const name of (await readdir(migrations))
       .filter((n) => n.endsWith(".sql"))
       .sort()) {
-      let legacySource, legacyArticle;
+      let legacySource, legacyArticle, rejectedMigrationRows;
+      if (name.endsWith("_hard_delete_unselected_link_state.sql")) {
+        rejectedMigrationRows=[];
+        const request=(await db.query("insert into ss_private.evaluation_requests default values returning id")).rows[0].id;
+        for(const decision of ["tangential","insufficient_evidence"]) {
+          const url=`https://kubernetes.io/migration-${decision}`;
+          const meta={evaluation:{decision,score:0,confidence:"low",depth:"unknown",evidence:"",cache_key:decision},review_commit:decision};
+          const id=(await db.query("insert into ss_articles(url,title,reference_meta) values($1,'Migration purge regression',$2) returning id",[url,JSON.stringify(meta)])).rows[0].id;
+          rejectedMigrationRows.push(id);
+          await db.query("insert into ss_private.review_cohort(url) values($1)",[url]);
+          await db.query("insert into ss_private.evaluation_claims(article_id,cache_key,request_id) values($1,$2,$3)",[id,"e".repeat(64),request]);
+          await db.query("insert into ss_private.evaluation_attempts(article_id,cache_key) values($1,$2)",[id,"e".repeat(64)]);
+          await db.query("insert into ss_jobs(kind,payload) values('analyze',$1)",[JSON.stringify({url,title:"Migration purge regression"})]);
+        }
+      }
       if (name.endsWith("_source_watch_compatibility.sql")) {
         legacySource = (await db.query("insert into ss_sources(name,url,type,topic) values('Legacy NCCL','https://api.github.com/repos/NVIDIA/nccl/releases?per_page=10','github','Networking') returning id")).rows[0];
         legacyArticle = (await db.query("insert into ss_articles(url,title,kind,published_at,score) values('https://github.com/nvidia/NCCL/releases/tag/v2.0.0rc1','NCCL candidate','Release',now(),40) returning id,published_at")).rows[0];
       }
       await db.exec(await readFile(new URL(name, migrations), "utf8"));
+      if(rejectedMigrationRows) {
+        for(const table of ["ss_articles","ss_private.article_reviews","ss_private.evaluation_claims","ss_private.evaluation_attempts"])
+          assert.equal((await db.query(`select count(*)::int n from ${table} where ${table==="ss_articles"?"id":"article_id"}=any($1::uuid[])`,[rejectedMigrationRows])).rows[0].n,0,"migration purges existing rejected links and private copies");
+        assert.equal((await db.query("select count(*)::int n from ss_jobs where payload->>'url' like 'https://kubernetes.io/migration-%'")).rows[0].n,0);
+        assert.equal((await db.query("select count(*)::int n from ss_private.evaluation_requests")).rows[0].n,1,"purging source data preserves the request quota ledger");
+        await db.exec("delete from ss_private.evaluation_requests");
+      }
       if (legacyArticle) {
         const repaired = (await db.query("select * from ss_articles where id=$1", [legacyArticle.id])).rows[0];
         assert.equal(repaired.reference_meta.prerelease, true);
@@ -333,12 +354,12 @@ test("PostgreSQL access, isolation, invitation and concurrency invariants", asyn
     await fails(()=>action("profile_save",{repo_min_watchers:0}),"Invalid");
     await fails(()=>db.query("select ss_evaluation_candidates()"),"permission denied");
     await db.exec("reset role");
-    const gh=(await db.query("insert into ss_articles(url,title,content_hash,reference_meta) values('https://github.com/example/maintained','GitHub candidate',$1,$2) returning id",["e".repeat(64),JSON.stringify({public_evaluation_input:{text:"Public engineering excerpt"},evaluation:review})])).rows[0].id;
-    await as(owner);assert.equal((await action("feed",{mode:"archive",q:"GitHub candidate"})).total,0,"AI review alone cannot bypass repository health");
-    await action("save",{article_id:gh});assert.equal((await action("library",{q:"GitHub candidate"})).total,1,"weak/unknown repositories remain accessible when saved");
+    const gh=(await db.query("insert into ss_articles(url,title,content_hash,reference_meta) values('https://github.com/example/maintained','GitHub candidate',$1,$2) returning id",["e".repeat(64),JSON.stringify({public_evaluation_input:{text:"Public engineering excerpt"}})])).rows[0].id;
+    await as(owner);assert.equal((await action("feed",{mode:"archive",q:"GitHub candidate"})).total,0,"unresolved repository work cannot bypass the review gate");
+    await action("save",{article_id:gh});assert.equal((await action("library",{q:"GitHub candidate"})).total,1,"an unresolved saved reference remains accessible until its terminal review");
     await db.exec("reset role");
     const repoHealth={checked_at:new Date().toISOString(),stars:400,watchers:10,recent_releases:3,pushed_at:new Date().toISOString(),latest_release:new Date().toISOString(),active:true,license:"Apache-2.0"};
-    await db.query("update ss_articles set reference_meta=reference_meta||$2::jsonb where id=$1",[gh,JSON.stringify({repo_health:repoHealth})]);
+    await db.query("update ss_articles set reference_meta=reference_meta||$2::jsonb where id=$1",[gh,JSON.stringify({repo_health:repoHealth,evaluation:review,review_commit:crypto.randomUUID()})]);
     await as(owner);assert.equal((await action("feed",{mode:"archive",q:"GitHub candidate"})).total,1);
     await action("profile_save",{repo_min_stars:500});assert.equal((await action("feed",{mode:"archive",q:"GitHub candidate"})).total,0,"new admin thresholds apply immediately without another model call");
     await action("profile_save",{repo_min_stars:100});
@@ -400,7 +421,9 @@ test("PostgreSQL access, isolation, invitation and concurrency invariants", asyn
     await fails(()=>db.query("select ss_reserve_evaluation_batch('[]',16,496)"),"permission denied");
     await fails(()=>db.query("select * from ss_private.evaluation_requests"),"permission denied");
     await db.exec("reset role");
-    await db.query("update ss_articles set reference_meta=reference_meta||$2::jsonb where id=$1",[article,JSON.stringify({review_commit:"explicit-uncertainty-review",evaluation:{...review,decision:"insufficient_evidence",confidence:"low",depth:"unknown",evidence:""}})]);
+    const uncertain=(await db.query("insert into ss_articles(url,title) values('https://kubernetes.io/uncertain-regression','Uncertain regression') returning id")).rows[0].id;
+    await db.query("update ss_articles set reference_meta=reference_meta||$2::jsonb where id=$1",[uncertain,JSON.stringify({review_commit:"explicit-uncertainty-review",evaluation:{...review,decision:"insufficient_evidence",confidence:"low",depth:"unknown",evidence:""}})]);
+    assert.equal((await db.query("select count(*)::int n from ss_articles where id=$1",[uncertain])).rows[0].n,0,"uncertain terminal decisions are permanently deleted");
     await as(owner);assert.equal((await action("feed",{mode:"archive"})).total,0,"uncertain assessments stay withheld");
     await db.exec("reset role");
     await db.query("update ss_articles set reference_meta=reference_meta||$2::jsonb where id=$1",[article,JSON.stringify({review_commit:crypto.randomUUID(),evaluation:review})]);
@@ -615,9 +638,90 @@ test("PostgreSQL access, isolation, invitation and concurrency invariants", asyn
       await db.exec("reset role");
       const missing=(await db.query("insert into ss_articles(url,title,discovered_at) values('https://kubernetes.io/missing-internal','No public input',now()-interval '25 hours') returning id")).rows[0].id;
       assert.equal((await commit({id:missing,content_hash:null,captured_input:null,input:null,assessment:{...assessment,decision:"insufficient_evidence",score:0,confidence:"low",depth:"unknown",evidence:""},evaluator:"policy"})).committed,1,"missing public inputs receive an explicit insufficient-evidence outcome");
+      assert.equal((await db.query("select count(*)::int n from ss_articles where id=$1",[missing])).rows[0].n,0);
+      assert.equal((await db.query("select count(*)::int n from ss_private.article_reviews where article_id=$1",[missing])).rows[0].n,0,"the local fallback does not retain a rejected audit snapshot");
       const fresh=(await db.query("insert into ss_articles(url,title,content_hash,reference_meta) values('https://example.com/fresh-internal','Fresh',$1,$2) returning id",["c".repeat(64),JSON.stringify({public_evaluation_input:{...input,scope:"search_snippet"}})])).rows[0].id;
       await fails(()=>commit({...item,id:fresh,input:{...input,scope:"search_snippet"},captured_input:{...input,scope:"search_snippet"}}),"not due");
       assert.equal((await commit({...item,id:fresh,input:{...input,scope:"search_snippet"},captured_input:{...input,scope:"search_snippet"},evaluator:"assistant"})).committed,1,"explicit personal backlog review may complete a fresh link");
+    });
+
+    await t.test("terminal rejection removes every dependent record and stale health writes cannot resurrect its data",async()=>{
+      await db.exec("reset role");
+      const url="https://github.com/purgetest/runtime";
+      const accepted={...review,evaluator:"assistant",cache_key:"accepted-purge-fixture"};
+      const id=(await db.query("insert into ss_articles(url,title,reference_meta) values($1,'Purge regression',$2) returning id",[url,JSON.stringify({repo_health:repoHealth,review_commit:"accepted-purge-fixture",evaluation:accepted})])).rows[0].id;
+      assert.equal((await db.query("select review_state from ss_articles where id=$1",[id])).rows[0].review_state,"approved");
+      await db.query("insert into ss_private.review_cohort(url) values($1)",[url]);
+      const folder=(await db.query("insert into ss_folders(name,created_by) values('Purge regression folder',$1) returning id",[owner])).rows[0].id;
+      await db.query("insert into ss_bookmarks(article_id,folder_id,created_by) values($1,$2,$3)",[id,folder,owner]);
+      await db.query("insert into ss_feedback(article_id,user_id,liked) values($1,$2,true)",[id,owner]);
+      const note=(await db.query("insert into ss_notes(article_id,user_id,body,visibility) values($1,$2,'Dependent note','team') returning id",[id,owner])).rows[0].id;
+      await db.query("insert into ss_notes(article_id,user_id,body,visibility,parent_id) values($1,$2,'Dependent reply','team',$3)",[id,owner,note]);
+      await db.query("insert into ss_audit(action,object_id) values('note_save',$1),('save',$2)",[note,id]);
+      const request=(await db.query("insert into ss_private.evaluation_requests default values returning id")).rows[0].id;
+      await db.query("insert into ss_private.evaluation_claims(article_id,cache_key,request_id) values($1,$2,$3)",[id,"f".repeat(64),request]);
+      await db.query("insert into ss_private.evaluation_attempts(article_id,cache_key) values($1,$2)",[id,"f".repeat(64)]);
+      for(const status of ["pending","running","done","failed"])
+        await db.query("insert into ss_jobs(kind,status,payload) values('analyze',$1,$2)",[status,JSON.stringify({url,article_id:id,text:"Rejected source body"})]);
+      const stale={comparisons:[{article_id:id,title:"Rejected source body",decision:"useful"}]};
+      await db.query("insert into ss_settings(key,value) values('evaluation_health',$1),('repo_metadata:purgetest/runtime',$2),('repo_health:purgetest/runtime',$2) on conflict(key) do update set value=excluded.value",[JSON.stringify(stale),JSON.stringify({url,text:"Rejected source body"})]);
+      const usage=(await db.query("select ss_evaluation_usage() x")).rows[0].x;
+      await db.query("update ss_articles set reference_meta=reference_meta||$2 where id=$1",[id,JSON.stringify({review_commit:"rejected-purge-fixture",evaluation:{...accepted,cache_key:"rejected-purge-fixture",decision:"tangential"}})]);
+      for(const table of ["ss_articles","ss_bookmarks","ss_notes","ss_feedback","ss_private.article_reviews","ss_private.evaluation_claims","ss_private.evaluation_attempts"])
+        assert.equal((await db.query(`select count(*)::int n from ${table} where ${table==="ss_articles"?"id":"article_id"}=$1`,[id])).rows[0].n,0,`${table} contains no rejected-link record`);
+      assert.equal((await db.query("select count(*)::int n from ss_jobs where payload->>'url'=$1",[url])).rows[0].n,0);
+      assert.equal((await db.query("select count(*)::int n from ss_private.review_cohort where url=$1",[url])).rows[0].n,0);
+      assert.equal((await db.query("select count(*)::int n from ss_audit where object_id in($1,$2)",[id,note])).rows[0].n,0);
+      assert.equal((await db.query("select count(*)::int n from ss_settings where key like '%purgetest/runtime'")).rows[0].n,0);
+      await db.query("update ss_settings set value=$1 where key='evaluation_health'",[JSON.stringify(stale)]);
+      assert.deepEqual((await db.query("select value->'comparisons' x from ss_settings where key='evaluation_health'")).rows[0].x,[],"a stale evaluator snapshot cannot re-save the deleted title or assessment");
+      assert.deepEqual((await db.query("select ss_evaluation_usage() x")).rows[0].x,usage,"deletion must not refund Google request quota");
+      assert.equal((await db.query("select count(*)::int n from ss_private.evaluation_requests where id=$1",[request])).rows[0].n,1);
+      await as(reader);await fails(()=>db.query("select ss_private.remove_article_dependents()"),"permission denied");
+    });
+
+    await t.test("stored link states follow source, retry, failure and review metadata without caller overrides",async()=>{
+      await db.exec("reset role");
+      const id=(await db.query("insert into ss_articles(url,title) values('https://kubernetes.io/state-regression','State regression') returning id")).rows[0].id;
+      const state=async()=>(await db.query("select review_state from ss_articles where id=$1",[id])).rows[0]?.review_state;
+      assert.equal(await state(),"awaiting_input");
+      await db.query("update ss_articles set reference_meta='{\"public_evaluation_input\":{\"text\":\"Source body\"}}' where id=$1",[id]);assert.equal(await state(),"awaiting_evaluation");
+      await db.query("update ss_articles set reference_meta=reference_meta||jsonb_build_object('evaluation_failed_at',now(),'evaluation_retry_at',now()+interval '5 minutes') where id=$1",[id]);assert.equal(await state(),"retry_wait");
+      await db.query("update ss_articles set reference_meta=reference_meta-'evaluation_retry_at' where id=$1",[id]);assert.equal(await state(),"needs_attention");
+      await db.query("update ss_articles set reference_meta=jsonb_build_object('evaluation',$2::jsonb) where id=$1",[id,JSON.stringify({...review,cache_key:"state-regression"})]);assert.equal(await state(),"approved");
+      await fails(()=>db.query("update ss_articles set review_state='retry_wait' where id=$1",[id]),"can only be updated to DEFAULT");
+      await db.query("update ss_articles set deleted_at=now() where id=$1",[id]);assert.equal(await state(),"archived");
+      for(const assessment of [{...review,score:40},{...review,confidence:"low"},{...review,depth:"introductory"},{...review,evidence:""}]) {
+        await db.query("insert into ss_articles(url,title,reference_meta) values('https://kubernetes.io/below-policy-regression','Below policy',$1)",[JSON.stringify({evaluation:assessment})]);
+        assert.equal((await db.query("select count(*)::int n from ss_articles where url='https://kubernetes.io/below-policy-regression'")).rows[0].n,0,"useful labels do not bypass score, confidence, depth or evidence policy");
+      }
+      await db.query("insert into ss_articles(url,title,reference_meta) values('https://github.com/purgetest/unknown-health','Unknown health',$1)",[JSON.stringify({evaluation:review})]);
+      assert.equal((await db.query("select count(*)::int n from ss_articles where url='https://github.com/purgetest/unknown-health'")).rows[0].n,0,"a useful label cannot bypass repository policy");
+      const invalid=(await db.query("insert into ss_articles(url,title) values('https://kubernetes.io/invalid-terminal','Invalid terminal') returning id")).rows[0].id;
+      await db.query("update ss_articles set reference_meta='{\"evaluation\":{}}' where id=$1",[invalid]);
+      assert.equal((await db.query("select count(*)::int n from ss_articles where id=$1",[invalid])).rows[0].n,0,"a malformed terminal object cannot remain stored without making the cut");
+    });
+
+    await t.test("failed collection jobs keep their discovery clock and receive a model-free terminal review",async()=>{
+      await db.exec("reset role");
+      const body="The implementation configures KV cache offloading over NIXL with measured TTFT and throughput under concurrent GPU traffic.";
+      const url="https://kubernetes.io/overdue-job-regression";
+      const jobs=[{url,title:"Overdue captured source",text:body,kind:"Documentation"},{url:"https://kubernetes.io/overdue-empty-job",title:"Unavailable source"}];
+      for(const payload of jobs)await db.query("insert into ss_jobs(kind,status,attempts,created_at,payload) values('article','failed',4,now()-interval '25 hours',$1)",[JSON.stringify(payload)]);
+      await db.query("insert into ss_jobs(kind,status,locked_at,created_at,payload) values('article','running',now(),now()-interval '25 hours','{\"url\":\"https://kubernetes.io/inflight-regression\"}')");
+      await db.query("insert into ss_jobs(kind,payload) values('article','{\"url\":\"https://kubernetes.io/fresh-job-regression\"}')");
+      const result=(await db.query("select ss_promote_overdue_link_jobs(500) x")).rows[0].x;
+      assert.equal(result.promoted,2);assert.equal(result.cleared,2);
+      const rows=(await db.query("select * from ss_articles where url in($1,$2)",[jobs[0].url,jobs[1].url])).rows;
+      assert.equal(rows.length,2);assert(rows.every(a=>Date.now()-Date.parse(a.discovered_at)>=24*3600000),"promotion cannot restart a failed link's 24-hour clock");
+      assert.equal(rows.find(a=>a.url===url).reference_meta.public_evaluation_input.text,body);
+      assert.equal((await db.query("select count(*)::int n from ss_jobs where payload->>'url' in($1,$2)",[jobs[0].url,jobs[1].url])).rows[0].n,0,"the failed payload is moved, not duplicated");
+      const items=rows.map(a=>({id:a.id,content_hash:a.content_hash,captured_input:a.reference_meta.public_evaluation_input,input:a.reference_meta.public_evaluation_input,evaluator:"policy",assessment:a.url===url ? {topic:"Inference",decision:"useful",score:80,confidence:"medium",depth:"practical",summary:"Concrete cache operation.",reason:"Public implementation and measurements.",action:"Review configuration prerequisites.",evidence:"configures KV cache offloading over NIXL"} : {topic:"Inference",decision:"insufficient_evidence",score:0,confidence:"low",depth:"unknown",summary:"",reason:"Public source unavailable.",action:"",evidence:""}}));
+      assert.equal((await db.query("select ss_commit_internal_reviews($1) x",[JSON.stringify(items)])).rows[0].x.committed,2);
+      assert.equal((await db.query("select count(*)::int n from ss_articles where url=$1",[jobs[1].url])).rows[0].n,0);
+      assert.equal((await db.query("select review_state from ss_articles where url=$1",[url])).rows[0].review_state,"approved");
+      assert.equal((await db.query("select count(*)::int n from ss_jobs where payload->>'url' in('https://kubernetes.io/fresh-job-regression','https://kubernetes.io/inflight-regression')")).rows[0].n,2,"fresh and actively leased jobs are not stolen");
+      await as(reader);await fails(()=>db.query("select ss_promote_overdue_link_jobs(500)"),"permission denied");
     });
 
     console.log(
