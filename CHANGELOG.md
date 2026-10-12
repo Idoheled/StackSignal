@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-10-13
+
+- Add a model-free, evidence-bound review path for unresolved links after 24 hours and qualifying fresh direct-source material.
+- Record service-only assistant backlog decisions with content/input guards and immutable history.
+- Capture full arXiv abstracts and enrich new paper announcements.
+- Label local reviews explicitly and preserve their ranking after metadata refreshes.
+- Prevent a racing Gemini response from replacing a completed review.
+
+
 ## 2026-10-12
 
 - Skip unchanged watched publisher content and prioritize new core releases within the ingestion lane.

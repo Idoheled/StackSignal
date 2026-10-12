@@ -597,6 +597,29 @@ test("PostgreSQL access, isolation, invitation and concurrency invariants", asyn
       assert(claimed.some(j=>j.payload.url===url),"core release is claimed before ordinary analyze backlog");
     });
 
+    await t.test("internal review commits bind source identity, enforce due time, preserve history and deny client access",async()=>{
+      await db.exec("reset role");
+      const input={title:"Internal regression",scope:"publisher_excerpt",text:"The implementation configures KV cache offloading over NIXL with measured TTFT and throughput under concurrent GPU traffic."};
+      const id=(await db.query("insert into ss_articles(url,title,content_hash,discovered_at,reference_meta) values('https://kubernetes.io/internal-regression','Internal regression',$1,now()-interval '25 hours',$2) returning id",["c".repeat(64),JSON.stringify({public_evaluation_input:input})])).rows[0].id;
+      const assessment={topic:"Inference",decision:"useful",score:80,depth:"practical",confidence:"medium",summary:"Concrete cache configuration.",reason:"Concrete NIXL configuration and latency measurement.",action:"Review configuration assumptions.",evidence:"configures KV cache offloading over NIXL"};
+      const item={id,content_hash:"c".repeat(64),captured_input:input,input,assessment,evaluator:"policy",completion_path:"sla_failover",facts:{first_party:true}};
+      const commit=async x=>(await db.query("select ss_commit_internal_reviews($1) x",[JSON.stringify([x])])).rows[0].x;
+      assert.equal((await commit({...item,content_hash:"d".repeat(64)})).skipped,1);
+      assert.equal((await commit({...item,captured_input:{...input,text:"changed"}})).skipped,1);
+      await fails(()=>commit({...item,assessment:{...assessment,evidence:"Invented source quote"}}),"grounded");
+      assert.equal((await commit(item)).committed,1);assert.equal((await commit(item)).skipped,1,"completed review cannot be overwritten");
+      assert.equal((await db.query("select count(*) n from ss_private.article_reviews where article_id=$1",[id])).rows[0].n,1);
+      await db.query("update ss_articles set score=1 where id=$1",[id]);await as(owner);
+      const feed=await action("feed",{mode:"archive",q:"Internal regression"});assert.equal(feed.items[0].score,80,"local score survives metadata/rules refresh");
+      await fails(()=>commit(item),"permission denied");await fails(()=>db.query("select ss_internal_review_candidates(200)"),"permission denied");
+      await db.exec("reset role");
+      const missing=(await db.query("insert into ss_articles(url,title,discovered_at) values('https://kubernetes.io/missing-internal','No public input',now()-interval '25 hours') returning id")).rows[0].id;
+      assert.equal((await commit({id:missing,content_hash:null,captured_input:null,input:null,assessment:{...assessment,decision:"insufficient_evidence",score:0,confidence:"low",depth:"unknown",evidence:""},evaluator:"policy"})).committed,1,"missing public inputs receive an explicit insufficient-evidence outcome");
+      const fresh=(await db.query("insert into ss_articles(url,title,content_hash,reference_meta) values('https://example.com/fresh-internal','Fresh',$1,$2) returning id",["c".repeat(64),JSON.stringify({public_evaluation_input:{...input,scope:"search_snippet"}})])).rows[0].id;
+      await fails(()=>commit({...item,id:fresh,input:{...input,scope:"search_snippet"},captured_input:{...input,scope:"search_snippet"}}),"not due");
+      assert.equal((await commit({...item,id:fresh,input:{...input,scope:"search_snippet"},captured_input:{...input,scope:"search_snippet"},evaluator:"assistant"})).committed,1,"explicit personal backlog review may complete a fresh link");
+    });
+
     console.log(
       "Verified: RLS, MFA gate, read-only restrictions, private notes, recursive title search, cycle prevention, trash/restore, confirmation, single-use invites, immediate revocation, bounded quotas, job leases.",
     );

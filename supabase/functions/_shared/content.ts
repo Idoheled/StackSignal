@@ -152,7 +152,8 @@ export function htmlMeta(html: string) {
       html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] ||
       "",
   ).slice(0, 500);
-  const text = textOnly(html).slice(0, 50000);
+  const abstract=html.match(/<blockquote\b[^>]*class=["\'][^"\']*\babstract\b[^"\']*["\'][^>]*>([\s\S]*?)<\/blockquote>/i)?.[1];
+  const text = textOnly(abstract || html).slice(0, 50000);
   return {
     title,
     author:

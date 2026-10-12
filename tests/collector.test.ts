@@ -368,3 +368,26 @@ test("independent evaluator recovers twelve-link provider failures without aband
     assert.equal(rows.filter(r=>r.reference_meta.evaluation).length,6);assert.equal(used,3,"failed calls stay in request accounting");
   } finally {globalThis.fetch=previous;delete environment.GEMINI_API_KEY;}
 });
+
+test("24-hour local failover is independent of Gemini configuration and commits bounded batches",async()=>{
+ const previous=globalThis.fetch;environment.GEMINI_API_KEY="must-not-be-used";
+ const text="The implementation configures KV cache offloading over NIXL to NVMe. The benchmark measures TTFT and throughput under concurrent long-context requests. The kernel reuses cached blocks and isolates memory for multiple tenants. This documentation specifies configuration prerequisites and tests recovery behavior.";
+ const old=new Date(Date.now()-25*3600000).toISOString(),fresh=new Date().toISOString();
+ const rows=Array.from({length:201},(_,i)=>({id:String(i),url:"https://kubernetes.io/local-"+i,topic:"Inference",discovered_at:old,content_hash:String(i),reference_meta:{public_evaluation_input:{title:"Public cache implementation",scope:"publisher_excerpt",text}}}));
+ rows.push({id:"fresh",url:"https://unknown.example/fresh",topic:"Inference",discovered_at:fresh,content_hash:"fresh",reference_meta:{public_evaluation_input:{title:"Ambiguous fresh snippet",scope:"search_snippet",text}}});
+ const batches:any[]=[],health:any[]=[];
+ globalThis.fetch=async(input,init)=>{
+  const u=new URL(String(input)),body=init?.body?JSON.parse(String(init.body)):undefined;
+  assert.equal(u.hostname,"database.example","local failover must never contact Google or any external model");
+  if(u.pathname.endsWith("ss_settings")){if(body){health.push(body);return Response.json([body]);}return Response.json([{value:u.searchParams.get("key")==="eq.profile" ? {gemini_mode:"off",gemini_daily_limit:0} : {}}]);}
+  if(u.pathname.endsWith("ss_internal_review_candidates")) {assert.equal(body.batch_size,500);return Response.json(rows);}
+  if(u.pathname.endsWith("ss_commit_internal_reviews")){batches.push(body.items);assert(body.items.every((x:any)=>x.evaluator==="policy"&&x.completion_path==="sla_failover"));return Response.json({committed:body.items.length,skipped:0});}
+  if(u.pathname.endsWith("ss_evaluation_pipeline")||u.pathname.endsWith("ss_review_coverage"))return Response.json({});
+  throw Error("Unexpected "+u.pathname);
+ };
+ try {
+  const response=await handler(new Request("https://collector.example",{method:"POST",headers:{"x-collector-secret":secret},body:JSON.stringify({mode:"internal_review"})}));
+  assert.equal(response.status,200);assert.equal((await response.json()).committed,201);assert.deepEqual(batches.map(x=>x.length),[200,1]);
+  assert(!batches.flat().some((x:any)=>x.id==="fresh"));assert(health.some(x=>x.value.internal_review?.after_hours===24));
+ } finally {globalThis.fetch=previous;delete environment.GEMINI_API_KEY;}
+});

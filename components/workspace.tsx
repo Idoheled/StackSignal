@@ -649,7 +649,7 @@ function Hub({
               : "Recover your work.";
   const description =
     view === "feed"
-      ? "AI-reviewed releases, research and ideas worth your attention."
+      ? "Evidence-reviewed releases, research and ideas worth your attention."
       : view === "library"
         ? "Collect what matters. Make it useful together."
         : view === "sources"
@@ -989,7 +989,7 @@ function Hub({
                   </button>
                 ))}
               </div>
-              {view === "feed" && !preview && <p className="subtle" role="status">Only useful AI-reviewed links appear here.{stats.review_pending > 0 && <> {stats.review_pending} public links are awaiting review. Your saved library remains available.</>}</p>}
+              {view === "feed" && !preview && <p className="subtle" role="status">Only useful evidence-reviewed links appear here.{stats.review_pending > 0 && <> {stats.review_pending} public links are awaiting review. Your saved library remains available.</>}</p>}
               <div className="feed-layout">
                 <section className="signal-list">
                   <div className="results-row">
@@ -1013,7 +1013,7 @@ function Hub({
                             : mode === "releases"
                               ? "followed releases published in the past 7 days"
                             : mode === "radar"
-                              ? "AI-reviewed in the past 7 days · sources may be older"
+                              ? "Evaluated in the past 7 days · sources may be older"
                             : mode === "updates"
                               ? "changed in the past 7 days"
                               : "including undated references"}

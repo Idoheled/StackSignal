@@ -13,5 +13,5 @@ export function reviewLabel(article: Article) {
   if (review.decision === "insufficient_evidence") return "Withheld · insufficient evidence";
   if (review.decision !== "useful") return "Evaluated · not selected";
   if (!["medium", "high"].includes(review.confidence || "") || !["practical", "advanced"].includes(review.depth || "") || (review.score ?? 0) < 55 || (review.evidence?.length ?? 0) < 10) return "Evaluated · below filter";
-  return review.evaluator === "assistant" ? "Passed · assistant reviewed" : "Passed · Gemini reviewed";
+  return review.evaluator === "policy" ? "Passed · local evidence rules" : review.evaluator === "assistant" ? "Passed · assistant reviewed" : "Passed · Gemini reviewed";
 }

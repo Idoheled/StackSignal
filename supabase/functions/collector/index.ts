@@ -17,6 +17,7 @@ import { webCandidate, webSearchRequest, lowValueDiscovery } from "../_shared/we
 import { EVALUATOR_VERSION, EVALUATION_MODEL, publicInput, publicTeam, evaluationRequest, parseEvaluation, effectiveScore, evaluationCandidates, candidateLane, nextEvaluationAt, samePublicInput, batchEvaluationRequest, parseBatchEvaluation, MAX_BATCH_SIZE, DAILY_REQUEST_CAP, MONTHLY_REQUEST_CAP, EVALUATION_TIMEOUT_MS, evaluationFailure, evaluationBatchSize } from "../_shared/evaluation.ts";
 import { repositoryHealth, repositoryAdmitted, articleRepositoryAdmitted, repositoryName, trendingProjects } from "../_shared/repository-health.ts";
 import { openshiftWatchURL, openshiftTags, openshiftItem } from "../_shared/openshift.ts";
+import { internalReview, immediateInternalReview, INTERNAL_REVIEW_DELAY_MS } from "../_shared/internal-review.ts";
 class Deferred extends Error { retryAt: number; constructor(message: string, retryAt = Date.now() + 3600000) { super(message); this.retryAt = retryAt; } }
 class SourceTooLarge extends Error { constructor() { super("Source exceeds size limit"); } }
 const env = (k: string) => Deno.env.get(k) || "";
@@ -217,12 +218,28 @@ async function failedEvaluation(row: any, reason="Evaluation validation failed",
   return failure;
 }
 async function queueMissingPublicInputs() {
-  const rows=await db("ss_articles?deleted_at=is.null&reference_meta->>public_evaluation_input=is.null&reference_meta->>public_extraction_requested=is.null&reference_meta->>assistant_reviewed_at=is.null&select=id,url,kind,topic,content_hash,reference_meta&order=discovered_at.asc,id.asc&limit=8");
+  const rows=await db("ss_articles?deleted_at=is.null&reference_meta->>evaluation=is.null&reference_meta->>public_evaluation_input=is.null&reference_meta->>public_extraction_requested=is.null&reference_meta->>assistant_reviewed_at=is.null&select=id,url,kind,topic,content_hash,reference_meta&order=discovered_at.asc,id.asc&limit=8");
   for(const row of rows) {
     let approved=false; try { approved=!!safeURL(row.url,hosts) && !new URL(row.url).pathname.toLowerCase().endsWith(".pdf"); } catch { /* Unapproved references stay private and unfetched. */ }
     if(approved) await rpc("ss_queue_item",{job_kind:"article",item:{url:row.url,kind:row.kind,topic:row.topic}});
     await db("ss_articles?id=eq."+row.id+(row.content_hash ? "&content_hash=eq."+encodeURIComponent(row.content_hash) : "&content_hash=is.null"),"PATCH",{reference_meta:{...row.reference_meta,public_extraction_requested:approved ? "queued" : "unsupported"}});
   }
+}
+async function internalSweep(profile:any) {
+  const rows=await rpc("ss_internal_review_candidates",{batch_size:500});
+  const items=[];
+  for(const row of rows) {
+    const reviewed=internalReview(row,profile);
+    const overdue=Date.parse(row.discovered_at)<=Date.now()-INTERNAL_REVIEW_DELAY_MS;
+    const fresh=immediateInternalReview(row,reviewed);
+    if(!overdue&&!fresh)continue;
+    items.push({id:row.id,content_hash:row.content_hash,captured_input:row.reference_meta.public_evaluation_input||null,input:row.reference_meta.public_evaluation_input||null,
+      ...reviewed,evaluator:"policy",completion_path:overdue ? "sla_failover" : "priority_fresh"});
+  }
+  const result={committed:0,skipped:0};
+  for(let i=0;i<items.length;i+=200) { const out=await rpc("ss_commit_internal_reviews",{items:items.slice(i,i+200)});result.committed+=out.committed;result.skipped+=out.skipped; }
+  await evaluationHealth({internal_review:{...result,version:"dry-evidence-v1",after_hours:24,last_run:new Date().toISOString()},pipeline:await rpc("ss_evaluation_pipeline"),coverage:await evaluationCoverage()});
+  return result;
 }
 async function evaluateSweep(profile: any) {
   const configured = !!env("GEMINI_API_KEY");
@@ -299,14 +316,15 @@ async function evaluateSweep(profile: any) {
     if(!result) { await failedEvaluation(row,parsed.errors[row.id]); continue; }
     const current=(await db("ss_articles?id=eq."+row.id+"&select=score,reference_meta,content_hash,deleted_at"))[0];
     const input=row.reference_meta.public_evaluation_input;
-    if(!current || current.deleted_at || current.content_hash!==row.content_hash || !samePublicInput(current.reference_meta?.public_evaluation_input,input)) continue;
+    if(!current || current.deleted_at || current.reference_meta?.evaluation || current.content_hash!==row.content_hash || !samePublicInput(current.reference_meta?.public_evaluation_input,input)) continue;
     const rules=current.reference_meta?.evaluation?.rules_score ?? current.score;
     const score=effectiveScore(rules,result,mode,!!current.reference_meta.alert_kind);
     const evaluated_at=new Date().toISOString();
     const evaluation={...result,rules_score:rules,applied_score:score,mode,model:EVALUATION_MODEL,resolved_model,scope:input.scope,evaluator:"gemini",version:EVALUATOR_VERSION,cache_key:row.cache_key,evaluated_at,request_id:reservation.request_id};
     const patch:any={reference_meta:{...current.reference_meta,evaluation,evaluation_failed_at:null,evaluation_retry_at:null,evaluation_failures:0,evaluation_validation_failures:0,evaluation_error_kind:null,evaluation_error:null,review_commit:row.cache_key}};
     if(mode==="rerank" && result.confidence==="high" && result.decision!=="insufficient_evidence") Object.assign(patch,{score,analysis_status:"ai",summary:result.summary,reason:result.reason,evidence:result.evidence});
-    await db("ss_articles?id=eq."+row.id+"&content_hash=eq."+encodeURIComponent(row.content_hash)+"&deleted_at=is.null","PATCH",patch);
+    const updated=await db("ss_articles?id=eq."+row.id+"&content_hash=eq."+encodeURIComponent(row.content_hash)+"&deleted_at=is.null&reference_meta->>evaluation=is.null","PATCH",patch);
+    if(!updated?.length)continue;
     comparisons.push({article_id:row.id,title:input.title,lane:candidateLane(row),rules_score:rules,ai_score:result.score,applied_score:score,...result,model:EVALUATION_MODEL,resolved_model,scope:input.scope,evaluated_at});
     // One approved-host enrichment attempt for insufficient snippets. No model-selected URL or broader fetch allowlist.
     if(result.decision==="insufficient_evidence" && input.scope==="search_snippet" && !current.reference_meta.evaluation_enrichment_requested && row.url && safeURL(row.url,hosts)) {
@@ -376,6 +394,7 @@ async function ingest(item: any, profile: any) {
     reference_meta: {
       ...old[0]?.reference_meta, ...item.reference_meta, signals,
       public_evaluation_input: captured,
+      ...(changedInput && old[0]?.reference_meta?.evaluation?.evaluator==="policy" && old[0]?.reference_meta?.evaluation?.decision==="insufficient_evidence" ? {review_commit:hash} : {}),
       ...(changedInput ? {evaluation:null,evaluation_failed_at:null,evaluation_retry_at:null,evaluation_failures:0,evaluation_validation_failures:0,evaluation_error_kind:null,evaluation_error:null} : {}),
       link_status: old[0]?.reference_meta?.link_status === "title-match" ? "title-match" : item.reference_meta?.link_status === "search_result" ? "search_result" : "checked",
       ...(item.reference_meta?.link_status === "search_result" ? {} : { checked_at: new Date().toISOString() }),
@@ -389,6 +408,7 @@ async function ingest(item: any, profile: any) {
   }
   if (old[0]) await db("ss_articles?id=eq." + old[0].id, "PATCH", record);
   else await db("ss_articles?on_conflict=url", "POST", record, "resolution=merge-duplicates,return=representation");
+  if(!old[0] && item.kind==="Paper" && /^https:\/\/arxiv\.org\/abs\//.test(url)) await rpc("ss_queue_item",{job_kind:"article",item:{url,kind:"Paper",topic:record.topic}});
 }
 async function queueSourceItems(items: any[]) {
   const captured=[];
@@ -685,6 +705,11 @@ Deno.serve(async (request) => {
   let count = 0;
   try {
     const body = await request.json().catch(()=>({}));
+    if(body.mode === "internal_review") {
+      const settings=await db("ss_settings?key=eq.profile&select=value");
+      const result=await internalSweep(settings[0].value);
+      return new Response(JSON.stringify({ok:true,mode:"internal_review",...result}),{headers});
+    }
     if(body.mode === "evaluation") {
       const settings=await db("ss_settings?key=eq.profile&select=value");
       await evaluateSweep(settings[0].value);

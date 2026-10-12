@@ -14,7 +14,7 @@ Service-only `ss_apply_assistant_reviews` validates explicit decisions, exact so
 
 GitHub links must first pass the [current repository maintenance policy](REPOSITORY_DISCOVERY.md). The same gate is enforced at candidate selection, atomic reservation and feed read. This does not certify code security or peer review.
 
-Every suggested-feed mode, including releases and All reviewed, admits only completed, useful assessments with medium/high confidence, practical/advanced depth, an exact source quote and an AI score meeting the administrator's minimum score. Pending links, low-confidence judgments, introductory/tangential results, insufficient evidence and errors stay out of suggestions. Saved library links remain accessible, including references members saved before this policy. Library titles and notes are not submitted to Google.
+Every suggested-feed mode, including releases and All reviewed, admits only completed, useful evidence assessments with medium/high confidence, practical/advanced depth, an exact source quote and a review score meeting the administrator's minimum score. Pending links, low-confidence judgments, introductory/tangential results, insufficient evidence and errors stay out of suggestions. Saved library links remain accessible, including references members saved before this policy. Library titles and notes are not submitted to Google.
 
 This week retains the publisher's seven-day date window. New to radar uses the assessment date, so a backlogged or undated reference can surface when its review completes without inventing a publication date. All reviewed has no age cutoff. Followed-release alerts and unread counts require review too, and respect prerelease settings.
 
@@ -79,7 +79,7 @@ flowchart TD
   Existing -->|Yes| Retain["Retain assistant decision"]
   Existing -->|No| Queue["New-link review queue"]
   Queue --> Reserve["Atomic request budget and claims"]
-  Reserve --> Batch["Flash Latest: up to five links"]
+  Reserve --> Batch["Flash Latest: up to twelve links"]
   Batch --> Validate["Per-link identity and evidence"]
   Validate --> Admission{"Useful and supported?"}
   Admission -->|Yes| Feed["Reviewed suggestions"]
@@ -102,3 +102,15 @@ The three explicit Mellanox NVIDIA operator watches (Network, NIC Configuration,
 A permanent provider outage or sustained arrivals above successful capacity cannot be solved by retries. Monitor observed queue growth and oldest age; the maximum batch arithmetic is not an availability guarantee or an ETA.
 
 Publisher fingerprints skip unchanged watched content before ingestion, refreshing repository health without another job. Core release jobs are prioritized within the existing job-kind rotation; jobs older than 24 hours retain an age priority. This removes a separate ingestion bottleneck without dropping new source content.
+
+## Local evidence review (October 13, Israel time)
+
+`internal_review` runs independently every five minutes without Gemini, an API key, or a model request. It gives every unresolved source a decision after 24 hours from discovery, including provider failures, repository exclusions and missing public inputs. At normal volume the terminal-decision deadline is 24 hours plus one five-minute scheduler interval, subject to service availability. The sweep considers up to 500 records, prioritizes overdue links and followed releases, and commits batches of at most 200. Qualifying direct-source articles and followed releases may receive immediate local decisions. Fresh ambiguous references remain eligible for Gemini within the existing request ceilings.
+
+The dry policy requires a contiguous public-source quote, multiple infrastructure/serving concepts, an explicit action or mechanism, and an implementation or measurement signal. It uses captured public text and repository health, excludes clear hiring/social-collection/navigation and unrelated application-domain material, and distinguishes insufficient evidence from rejection. Useful local decisions have medium confidence, a bounded 55–85 score, facts, policy version and completion path. They do not establish semantic equivalence to an expert/LLM review, independently verify publisher claims, or certify benchmarks. Facts and source excerpts are visible; output is labeled “local evidence rules.” Keywords alone are not enough.
+
+Each commit is service-only and checks article identity, deletion, unchanged source hash, captured input, existing review, enums, score ranges, exact evidence and the same feed/repository gates. A racing Gemini result cannot overwrite a completed local review. Previously completed reviews remain immutable in history. A later richer input may reconsider an insufficient-evidence local result while retaining its prior history. Missing public text receives an explicit insufficient-evidence outcome and remains outside suggestions, rather than disappearing from the audit.
+
+arXiv extraction captures the full abstract instead of navigation. Newly ingested paper announcements enqueue one approved-host enrichment job. The personal backlog review retrieved full abstracts where available and is recorded in `docs/reviews/2026-10-13-backlog-decisions.json`: 123 initial decisions, 74 useful, 42 rejected, 7 insufficient; ten subsequent personal reviews brought the checkpoint to 133 decisions, 83 useful, 43 rejected, 7 insufficient. Subsequent arrivals are separately reviewed and never silently described as part of that snapshot. Rejected and insufficient results leave the active review queue and suggestions; source/audit records and saved items remain available. Zero backlog is a dated state, not a claim that new links cannot arrive.
+
+Apply the internal-review migration, deploy the collector, then apply `supabase/hosted/20261012221955_internal_review_schedule.sql`. It reuses the existing Vault secret and preserves the collector's active/paused state. The local scheduler is independent of Gemini budget, provider cooldown and API failures. No API requests or external model calls are made by the dry reviewer.
