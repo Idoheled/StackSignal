@@ -34,15 +34,14 @@ create trigger clean_retained_settings before insert or update on public.ss_sett
 
 -- Cleanup runs for every physical article deletion, including policy decisions,
 -- maintenance and future writers. FK cascades handle bookmarks/feedback/notes.
-create function ss_private.remove_article_dependents() returns trigger
-language plpgsql security definer set search_path='' as $$
-declare repo text; minimum int; decision text;
+create function ss_private.record_link_discard(meta jsonb,link text) returns void language plpgsql set search_path='' as $$
+declare minimum int; decision text;
 begin
  select coalesce((value->>'min_score')::int,55) into minimum from public.ss_settings where key='profile';
- decision:=old.reference_meta->'evaluation'->>'decision';
- if jsonb_typeof(old.reference_meta->'evaluation')='object' and (
-    not ss_private.reviewed_article(old.reference_meta,coalesce(minimum,55))
-    or not ss_private.repo_admitted(old.url,old.reference_meta,coalesce((select value from public.ss_settings where key='profile'),'{}'::jsonb))) then
+ decision:=meta->'evaluation'->>'decision';
+ if jsonb_typeof(meta->'evaluation')='object' and (
+    not ss_private.reviewed_article(meta,coalesce(minimum,55))
+    or not ss_private.repo_admitted(link,meta,coalesce((select value from public.ss_settings where key='profile'),'{}'::jsonb))) then
   insert into public.ss_settings(key,value) values('link_retention',jsonb_build_object(
    'policy','hard_delete','discarded',1,'tangential',case when decision='tangential' then 1 else 0 end,
    'insufficient_evidence',case when decision='insufficient_evidence' then 1 else 0 end,
@@ -53,31 +52,49 @@ begin
    'insufficient_evidence',coalesce((ss_settings.value->>'insufficient_evidence')::bigint,0)+case when decision='insufficient_evidence' then 1 else 0 end,
    'below_policy',coalesce((ss_settings.value->>'below_policy')::bigint,0)+case when decision not in('tangential','insufficient_evidence') then 1 else 0 end,'last_discarded_at',now());
  end if;
- delete from ss_private.article_reviews where article_id=old.id or ss_private.review_identity(url)=ss_private.review_identity(old.url);
- delete from ss_private.review_cohort where ss_private.review_identity(url)=ss_private.review_identity(old.url);
- delete from ss_private.evaluation_claims where article_id=old.id;
- delete from ss_private.evaluation_attempts where article_id=old.id;
- delete from public.ss_jobs where payload->>'article_id'=old.id::text or payload->>'id'=old.id::text
-  or ss_private.review_identity(payload->>'url')=ss_private.review_identity(old.url)
-  or payload->>'url' in(select jsonb_array_elements_text(case when jsonb_typeof(old.reference_meta->'original_urls')='array' then old.reference_meta->'original_urls' else '[]'::jsonb end));
- delete from public.ss_audit where object_id in(old.id::text,old.url)
-  or object_id in(select id::text from public.ss_notes where article_id=old.id);
+end;$$;
+revoke all on function ss_private.record_link_discard(jsonb,text) from public,anon,authenticated,service_role;
+
+create function ss_private.purge_link_records(article uuid,link text,meta jsonb) returns void language plpgsql set search_path='' as $$begin
+ delete from ss_private.article_reviews where article_id=article or ss_private.review_identity(url)=ss_private.review_identity(link);
+ delete from ss_private.review_cohort where ss_private.review_identity(url)=ss_private.review_identity(link);
+ delete from ss_private.evaluation_claims where article_id=article;
+ delete from ss_private.evaluation_attempts where article_id=article;
+ delete from public.ss_jobs where payload->>'article_id'=article::text or payload->>'id'=article::text
+  or ss_private.review_identity(payload->>'url')=ss_private.review_identity(link)
+  or payload->>'url' in(select jsonb_array_elements_text(case when jsonb_typeof(meta->'original_urls')='array' then meta->'original_urls' else '[]'::jsonb end));
+ delete from public.ss_audit where object_id in(article::text,link)
+  or object_id in(select id::text from public.ss_notes where article_id=article);
+end;$$;
+revoke all on function ss_private.purge_link_records(uuid,text,jsonb) from public,anon,authenticated,service_role;
+
+create function ss_private.purge_link_caches(article uuid,link text) returns void language plpgsql set search_path='' as $$declare repo text;begin
  update public.ss_settings set value=jsonb_set(value,'{comparisons}',coalesce((
-  select jsonb_agg(c) from jsonb_array_elements(value->'comparisons') c where c->>'article_id' is distinct from old.id::text
+  select jsonb_agg(c) from jsonb_array_elements(value->'comparisons') c where c->>'article_id' is distinct from article::text
  ),'[]'::jsonb)),updated_at=now() where key='evaluation_health' and jsonb_typeof(value->'comparisons')='array'
-  and exists(select 1 from jsonb_array_elements(value->'comparisons') c where c->>'article_id'=old.id::text);
- if old.url ~ '^https://github\.com/[^/]+/[^/]+' then
-  repo:=lower(split_part(old.url,'/',4)||'/'||split_part(old.url,'/',5));
-  if not exists(select 1 from public.ss_articles a where a.id<>old.id and lower(split_part(a.url,'/',4)||'/'||split_part(a.url,'/',5))=repo and a.url like 'https://github.com/%')
+  and exists(select 1 from jsonb_array_elements(value->'comparisons') c where c->>'article_id'=article::text);
+ if link ~ '^https://github\.com/[^/]+/[^/]+' then
+  repo:=lower(split_part(link,'/',4)||'/'||split_part(link,'/',5));
+  if not exists(select 1 from public.ss_articles a where a.id<>article and lower(split_part(a.url,'/',4)||'/'||split_part(a.url,'/',5))=repo and a.url like 'https://github.com/%')
    and not exists(select 1 from public.ss_sources s where s.active and s.type='github' and lower(split_part(s.url,'/',5)||'/'||split_part(s.url,'/',6))=repo) then
    delete from public.ss_settings where key in('repo_metadata:'||repo,'repo_health:'||repo);
   end if;
  end if;
+end;$$;
+revoke all on function ss_private.purge_link_caches(uuid,text) from public,anon,authenticated,service_role;
+
+create function ss_private.purge_link_claims(article uuid) returns void language plpgsql set search_path='' as $$begin delete from ss_private.evaluation_claims where article_id=article; delete from ss_private.evaluation_attempts where article_id=article; end;$$;
+revoke all on function ss_private.purge_link_claims(uuid) from public,anon,authenticated,service_role;
+
+create function ss_private.remove_article_dependents() returns trigger language plpgsql security definer set search_path='' as $$begin
+ perform ss_private.record_link_discard(old.reference_meta,old.url);
+ perform ss_private.purge_link_records(old.id,old.url,old.reference_meta);
+ perform ss_private.purge_link_claims(old.id);
+ perform ss_private.purge_link_caches(old.id,old.url);
  return old;
 end;$$;
 revoke all on function ss_private.remove_article_dependents() from public,anon,authenticated,service_role;
-create trigger remove_article_dependents before delete on public.ss_articles
- for each row execute function ss_private.remove_article_dependents();
+create trigger remove_article_dependents before delete on public.ss_articles for each row execute function ss_private.remove_article_dependents();
 
 -- Preserve accepted history only. Terminal non-selected decisions are removed
 -- in the same transaction as their insert/update, regardless of evaluator.
@@ -147,9 +164,26 @@ grant execute on function public.ss_internal_review_candidates(int) to service_r
 
 -- Failed/pre-ingestion link jobs must obey the same 24-hour deadline. Preserve
 -- their original discovery clock and captured public payload; never fetch here.
+create function ss_private.capture_overdue_link(payload jsonb,discovered timestamptz) returns int language plpgsql set search_path='' as $$
+declare input jsonb;meta jsonb;body text;added int;
+begin
+  meta:=case when jsonb_typeof(payload->'reference_meta')='object' then (payload->'reference_meta')-'evaluation'-'review_commit' else '{}'::jsonb end;
+  body:=left(coalesce(nullif(payload->>'text',''),payload->>'summary',''),6000);
+  input:=case when jsonb_typeof(meta->'public_evaluation_input')='object' then meta->'public_evaluation_input'
+   when length(body)>=80 then jsonb_build_object('title',left(coalesce(nullif(payload->>'title',''),payload->>'url'),500),'text',body,
+    'scope',case when meta->>'link_status'='search_result' then 'search_snippet' when payload->>'kind'='Repository' then 'repository_metadata' else 'publisher_excerpt' end)
+   else null end;
+  insert into public.ss_articles(url,title,kind,topic,discovered_at,content_hash,reference_meta)
+   values(payload->>'url',left(coalesce(nullif(payload->>'title',''),payload->>'url'),500),coalesce(payload->>'kind','Article'),coalesce(payload->>'topic','Models & research'),discovered,
+    encode(extensions.digest(payload::text,'sha256'),'hex'),meta||jsonb_build_object('public_evaluation_input',input,'evaluation_failed_at',now(),'evaluation_error_kind','collection','evaluation_error','Public source collection did not complete within 24 hours'))
+   on conflict(url) do nothing;
+ get diagnostics added=row_count;return added;
+end;$$;
+revoke all on function ss_private.capture_overdue_link(jsonb,timestamptz) from public,anon,authenticated,service_role;
+
 create function public.ss_promote_overdue_link_jobs(batch_size int default 200) returns jsonb
 language plpgsql security definer set search_path='' as $$
-declare j public.ss_jobs; input jsonb; meta jsonb; body text; added int; promoted int:=0; cleared int:=0;
+declare j public.ss_jobs; added int; promoted int:=0; cleared int:=0;
 begin
  for j in select * from public.ss_jobs where kind in('analyze','article') and status in('pending','failed','running')
   and created_at<=now()-interval '24 hours' and (status<>'running' or locked_at is null or locked_at<now()-interval '5 minutes')
@@ -162,17 +196,8 @@ begin
     and s.revision::text=j.payload->'reference_meta'->>'source_revision'
     and (coalesce(j.payload->'reference_meta'->>'prerelease','false')<>'true' or s.include_prereleases)
   ) then delete from public.ss_jobs where id=j.id;cleared:=cleared+1;continue;end if;
-  meta:=case when jsonb_typeof(j.payload->'reference_meta')='object' then (j.payload->'reference_meta')-'evaluation'-'review_commit' else '{}'::jsonb end;
-  body:=left(coalesce(nullif(j.payload->>'text',''),j.payload->>'summary',''),6000);
-  input:=case when jsonb_typeof(meta->'public_evaluation_input')='object' then meta->'public_evaluation_input'
-   when length(body)>=80 then jsonb_build_object('title',left(coalesce(nullif(j.payload->>'title',''),j.payload->>'url'),500),'text',body,
-    'scope',case when meta->>'link_status'='search_result' then 'search_snippet' when j.payload->>'kind'='Repository' then 'repository_metadata' else 'publisher_excerpt' end)
-   else null end;
-  insert into public.ss_articles(url,title,kind,topic,discovered_at,content_hash,reference_meta)
-   values(j.payload->>'url',left(coalesce(nullif(j.payload->>'title',''),j.payload->>'url'),500),coalesce(j.payload->>'kind','Article'),coalesce(j.payload->>'topic','Models & research'),j.created_at,
-    encode(extensions.digest(j.payload::text,'sha256'),'hex'),meta||jsonb_build_object('public_evaluation_input',input,'evaluation_failed_at',now(),'evaluation_error_kind','collection','evaluation_error','Public source collection did not complete within 24 hours'))
-   on conflict(url) do nothing;
-  get diagnostics added=row_count;promoted:=promoted+added;
+  added:=ss_private.capture_overdue_link(j.payload,j.created_at);
+  promoted:=promoted+added;
   -- The canonical article now owns the evidence; no duplicate failed payload.
   delete from public.ss_jobs where id=j.id;cleared:=cleared+1;
  end loop;
