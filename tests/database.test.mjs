@@ -489,9 +489,10 @@ test("PostgreSQL access, isolation, invitation and concurrency invariants", asyn
     await db.query("select ss_apply_assistant_reviews($1)",[JSON.stringify([assistantItem])]);
     const originalReview=(await db.query("select reference_meta->'evaluation' x from ss_articles where id=$1",[frozen])).rows[0].x;
     await db.query("insert into ss_feedback(user_id,article_id,read) values($1,$2,true)",[owner,frozen]);
-    await db.query("update ss_articles set title='Changed title',summary='Changed source',content_hash=$2,reference_meta=reference_meta||$3 where id=$1",[frozen,"8".repeat(64),JSON.stringify({evaluation:null,public_evaluation_input:{title:"Changed title",text:"New text"}})]);
+    await db.query("update ss_articles set score=1,title='Changed title',summary='Changed source',content_hash=$2,reference_meta=reference_meta||$3 where id=$1",[frozen,"8".repeat(64),JSON.stringify({evaluation:null,public_evaluation_input:{title:"Changed title",text:"New text"}})]);
     const retained=(await db.query("select reference_meta from ss_articles where id=$1",[frozen])).rows[0].reference_meta;
     assert.deepEqual(retained.evaluation,originalReview,"collection never clears an existing review");
+    assert.equal((await db.query("select score from ss_articles where id=$1",[frozen])).rows[0].score,90,"publisher refresh cannot change the completed assistant rank");
     assert(retained.review_content_changed_at);assert.equal(retained.review_snapshot.title,"Original title");
     assert.equal((await db.query("select count(*)::int n from ss_private.article_reviews where article_id=$1",[frozen])).rows[0].n,1,"refresh does not duplicate review history");
     await as(owner);const reviewedFeed=await action("feed",{mode:"archive"});const frozenCard=reviewedFeed.items.find(x=>x.id===frozen);

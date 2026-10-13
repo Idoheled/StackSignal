@@ -489,11 +489,15 @@ async function sourceJob(job: any, profile: any) {
               !item.published_at ||
               Date.parse(item.published_at) >= Date.now() - 90 * 86400000,
           );
-        await queueSourceItems(entries.map(item => ({
+        const items=entries.map(item => ({
           ...item, source: source.name, kind: source.url.includes("arxiv.org") ? "Paper" : "Article", priority: source.priority,
           reference_meta: { ...meta, discovery_lane: "publication_feed" },
-        })));
-        await db("ss_sources?id=eq." + source.id + "&revision=eq." + source.revision, "PATCH", { last_item_count: entries.length });
+        }));
+        // A source-wide digest avoids replaying unchanged feeds after rejected rows are deleted.
+        // No per-link rejected identity or payload is retained.
+        const feedHash=await digest(JSON.stringify(items));
+        if(feedHash!==source.content_hash)await queueSourceItems(items);
+        await db("ss_sources?id=eq." + source.id + "&revision=eq." + source.revision, "PATCH", { last_item_count: entries.length,content_hash:feedHash });
       } else {
         const m = htmlMeta(res.text);
         const changed =

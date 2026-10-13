@@ -11,6 +11,32 @@ const environment: Record<string,string> = {SUPABASE_URL:"https://database.examp
 };
 await import("../supabase/functions/collector/index.ts");
 
+test("unchanged RSS feeds do not replay deleted links and changed feeds still queue",async()=>{
+ const previous=globalThis.fetch;let source:any={id:"feed",url:"https://developer.nvidia.com/blog/feed/",active:true,type:"rss",revision:1,name:"NVIDIA",priority:1};
+ let title="GPU infrastructure",batches=0;
+ globalThis.fetch=async(input,init)=>{
+  const url=new URL(String(input)),body=init?.body?JSON.parse(String(init.body)):undefined;
+  if(url.hostname==="developer.nvidia.com")return new Response(`<rss><channel><item><title>${title}</title><link>https://developer.nvidia.com/blog/gpu-example/</link><description>GPU deployment details.</description></item></channel></rss>`);
+  assert.equal(url.hostname,"database.example");
+  if(url.pathname.endsWith("ss_take_budget"))return Response.json(false);
+  if(url.pathname.endsWith("ss_claim_jobs"))return Response.json([{id:"job",kind:"source",attempts:1,payload:{source_id:"feed"}}]);
+  if(url.pathname.endsWith("ss_feedback_weights"))return Response.json({});
+  if(url.pathname.endsWith("ss_enqueue_sources"))return Response.json(null);
+  if(url.pathname.endsWith("ss_queue_items")){batches++;return Response.json(body.items.length);}
+  if(url.pathname.endsWith("ss_articles"))return Response.json([]);
+  if(url.pathname.endsWith("ss_settings"))return Response.json(body?[body]:[{value:{repo_discovery:false,search_monthly_limit:0}}]);
+  if(url.pathname.endsWith("ss_sources")){if(body)source={...source,...body};return Response.json([source]);}
+  if(url.pathname.endsWith("ss_jobs"))return Response.json(body?[body]:[]);
+  throw Error("Unexpected "+url.pathname);
+ };
+ const run=()=>handler(new Request("https://collector.example",{method:"POST",headers:{"x-collector-secret":secret}}));
+ try{
+  assert.equal((await run()).status,200);assert.equal(batches,1);assert.match(source.content_hash,/^[a-f0-9]{64}$/);
+  assert.equal((await run()).status,200);assert.equal(batches,1,"a deleted article does not force an unchanged feed replay");
+  title="Changed GPU infrastructure";assert.equal((await run()).status,200);assert.equal(batches,2,"changed source content remains discoverable");
+ }finally{globalThis.fetch=previous;}
+});
+
 test("collection enriches short public excerpts while Gemini is paused",async()=>{
  const previous=globalThis.fetch, queued:any[]=[],patched:any[]=[];
  globalThis.fetch=async(input,init)=>{

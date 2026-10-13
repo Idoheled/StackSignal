@@ -9,6 +9,8 @@
 - Move overdue collection failures into the local review path without restarting their original discovery clock.
 - Exclude publisher AI summaries from mechanism evidence, keep raw model responses out of error ledgers, and expose recorded primary-source corroboration.
 - Enrich short public RSS/search excerpts during collection independently of Gemini availability; match legacy URL aliases without losing retained review history.
+- Preserve completed internal review scores in the database when publisher metadata changes, and repair previously drifted stored scores.
+- Compare source-wide RSS fingerprints to avoid replaying unchanged feeds after rejected links are deleted, without retaining per-link tombstones.
 - Capture full arXiv abstracts and enrich new paper announcements.
 - Label local reviews explicitly and preserve their ranking after metadata refreshes.
 - Prevent a racing Gemini response from replacing a completed review.
