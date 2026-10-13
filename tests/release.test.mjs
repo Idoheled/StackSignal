@@ -52,6 +52,10 @@ test("preparation freezes Unreleased changes and preserves old history", () => {
   assert.ok(next.changelog.endsWith(changelog.slice(changelog.indexOf("## [0.1.0]"))));
   assert.throws(() => prepareRelease({ version: "0.1.0" }, changelog, "0.1.0"), /must increase/);
   assert.throws(() => prepareRelease({ version: "0.1.0" }, changelog.replace("- Retry provider failures.", ""), "0.1.1"), /Unreleased/);
+  const grouped = changelog.replace("- Retry provider failures.", "### Added\n\n- First improvement.\n- Second improvement.\n\n### Fixed\n\n- A regression.");
+  const groupedNext = prepareRelease({ version: "0.1.0" }, grouped, "0.1.1", "2026-10-14");
+  assert.equal(releaseNotes("0.1.1", groupedNext.changelog), "### Added\n\n- First improvement.\n- Second improvement.\n\n### Fixed\n\n- A regression.");
+  assert.ok(groupedNext.changelog.endsWith(changelog.slice(changelog.indexOf("## [0.1.0]"))));
 });
 
 test("untrusted contexts or failed validation never reach GitHub", async () => {

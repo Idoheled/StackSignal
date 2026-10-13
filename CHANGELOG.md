@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-10-13
+
 ### Release management
 
 - Prepare stable semantic versions and freeze Unreleased notes with `pnpm release:prepare`; validate matching version/changelog entries in CI.

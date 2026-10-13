@@ -32,7 +32,7 @@ export function prepareRelease(pkg, changelog, version, date = new Date().toISOS
   if (compareVersions(version, pkg.version) <= 0) throw new Error("The new version must increase.");
   releaseNotes(pkg.version, changelog);
   if (changelog.includes(`## [${version}]`)) throw new Error("That version already has release notes.");
-  const match = /^## \[Unreleased\]\s*\n([\s\S]*?)(?=\n## |$)/m.exec(changelog);
+  const match = /^## \[Unreleased\][ \t]*\r?\n([\s\S]*?)(?=\n## |(?![\s\S]))/m.exec(changelog);
   if (!match || !/^[-*] \S/m.test(match[1])) throw new Error("Add concrete changes under [Unreleased] first.");
   const replacement = `## [Unreleased]\n\n## [${version}] - ${date}\n\n${match[1].trim()}\n`;
   const nextChangelog = changelog.slice(0, match.index) + replacement + changelog.slice(match.index + match[0].length);
