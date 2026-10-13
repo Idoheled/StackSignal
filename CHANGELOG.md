@@ -2,9 +2,17 @@
 
 ## [Unreleased]
 
+### Release management
+
+- Prepare stable semantic versions and freeze Unreleased notes with `pnpm release:prepare`; validate matching version/changelog entries in CI.
+- Publish GitHub releases automatically only after Quality, verified production deployment and live smoke checks succeed.
+- Tag the exact tested commit, preserve existing tags and published releases, reject version regressions and conflicting tags, and recover matching tags/drafts after publication failures.
+- Record the source commit, validation run and deployment/rollback links in each release; isolate write permission to the release job using its ephemeral GitHub token.
+- Document preparation, rollout scope and recovery; add eight release regressions, bringing the automated suite to 67 tests.
+
 ## [0.1.0] - 2026-10-13
 
-First versioned release of StackSignal, including the production improvements recorded below.
+First versioned release of StackSignal, cut from `e2a75f03730eda44f41a605c688b1e7ac995659b`, including the production improvements recorded below.
 
 ### Discovery and review
 
@@ -20,7 +28,6 @@ First versioned release of StackSignal, including the production improvements re
 - Provide a shared reference library with folders, notes, feedback, personal reading state and administrator coverage controls.
 - Protect username/password/MFA access and private data; preserve saved settings and review history across deployments.
 - Validate application and collector types, policy/database tests, client boundaries and responsive browsers before deploying the verified Cloudflare build and running production smoke checks.
-- Add semantic version preparation, matching changelog checks and automatic GitHub publication after successful production deployment. Release tags identify the tested commit; reruns preserve published releases.
 
 ### Rollout scope
 
