@@ -508,6 +508,21 @@ test("PostgreSQL access, isolation, invitation and concurrency invariants", asyn
         url,title,kind,new Date(Date.now()-hours*3600000).toISOString(),JSON.stringify({repo_health:repoHealth,evaluation:review,...meta})
       ])).rows[0].id;
     }
+    await t.test("followed NIC release remains recognizable and searchable after a tag-only review snapshot",async()=>{
+      await db.exec('reset role');
+      const source=(await db.query("insert into ss_sources(name,url,type,topic,include_prereleases,priority) values('NIC Configuration Operator releases','https://api.github.com/repos/Mellanox/nic-configuration-operator/releases','github','Networking',true,'core') returning id")).rows[0].id;
+      const url='https://github.com/Mellanox/nic-configuration-operator/releases/tag/network-operator-v26.7.1-rc.2';
+      const id=(await db.query("insert into ss_articles(url,title,source,kind,published_at,reference_meta) values($1,'NIC Configuration Operator release','NIC Configuration Operator','Release',now()-interval '1 day',$2) returning id",[url,JSON.stringify({origin:'source_watch',source_id:source,alert_kind:'release',prerelease:true,repo_health:{...repoHealth,stars:23},evaluation:{...review,evaluator:'assistant',score:96},review_snapshot:{title:'network-operator-v26.7.1-rc.2'}})])).rows[0].id;
+      await as(owner);
+      for(const mode of ['week','releases','archive']){
+        const feed=await action('feed',{mode,q:'NIC Configuration Operator'});
+        assert.equal(feed.total,1);assert.equal(feed.items[0].id,id);assert.equal(feed.items[0].url,url);
+        assert.equal(feed.items[0].title,'NIC Configuration Operator · network-operator-v26.7.1-rc.2');
+      }
+      await db.exec('reset role');
+      assert.equal((await db.query("select reference_meta->'review_snapshot'->>'title' title from ss_articles where id=$1",[id])).rows[0].title,'network-operator-v26.7.1-rc.2','display repair does not rewrite the reviewed snapshot');
+      await db.query('delete from ss_articles where id=$1',[id]);await db.query('delete from ss_sources where id=$1',[source]);
+    });
     await t.test("one current release is selected globally before filters, ranking and pagination; saved history survives",async()=>{
       await as(owner);const before=await action("stats");
       const old=await releaseFixture("https://github.com/ReleaseTest/Runtime/releases/tag/v0.9.9","Release regression v0.9.9",1,{alert_kind:"release",evaluation:{...review,score:99}});

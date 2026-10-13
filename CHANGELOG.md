@@ -2,6 +2,8 @@
 
 ## 2026-10-13
 
+- Preserve the GitHub project name in release titles and search, including legacy reviewed snapshots containing only a version tag.
+
 - Add a model-free, evidence-bound review path for unresolved links after 24 hours and qualifying fresh direct-source material.
 - Record service-only assistant backlog decisions with content/input guards and approved review history.
 - Persist database-managed link states and permanently delete non-selected decisions with history, claims, jobs, bookmarks, notes, feedback and comparison data; keep aggregate discard counts only.

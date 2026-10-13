@@ -212,6 +212,7 @@ test("project URLs normalize safely and prereleases require explicit opt-in", as
   assert.equal(out.reference_meta.prerelease,true);
   assert.equal(out.reference_meta.alert_kind,"release");
   assert.equal(out.reference_meta.repository,"kserve/kserve");
+  assert.equal(out.public_title,"KServe · v2-rc","captured release identity includes the followed project");
   assert.equal(githubItems([{...release,draft:true}],{...source,include_prereleases:true},now).length,0);
   assert.equal(githubItems([{...release,published_at:"2030-01-01"}],{...source,include_prereleases:true},now).length,0);
 });
