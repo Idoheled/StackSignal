@@ -9,6 +9,9 @@ const concepts=/\b(?:llms?|language models?|gpus?|nic|ofed|doca|crd|dscp|cnp|mtu
 const concrete=/\b(?:configur(?:e[sd]?|ing)|deploy(?:s|ed|ing)?|reus(?:e[sd]?|ing)|offload(?:s|ed|ing)?|allocat(?:e[sd]?|ing)|isolat(?:e[sd]?|ing)|schedul(?:e[sd]?|ing)|transfer(?:s|red)?|requires?|supports?|provides?|limits?|propos(?:e[sd]?|ing)|present(?:s|ed)?|introduc(?:e[sd]?|ing)|implement(?:s|ed|ing)?|fix(?:es|ed)?|updat(?:e[sd]?|ing)|measures?|reduces?|stores?|writes?|reads?|copies|combines?|separates?|add(?:s|ed)?|reset|kubectl|helm|apiVersion|--[a-z][a-z-]+)\b/i;
 const artifact=/\b(?:kubectl|helm|apiVersion|spec:|crd|benchmark|latency|throughput|ttft|tpot|slo|p99|p95|gb\/s|cuda|nixl|ucx|dscp|nvconfig|memory bandwidth|token ids|parallelism|algorithm|implementation|prerequisites|configuration|security|ofed|doca|crd|dscp|mtu|daemonset|cve-\d)\b/i;
 function meaningfulBody(text:string,title:string) {
+ // Publisher-generated AI summaries are not authored mechanism evidence.
+ const ai=text.indexOf("AI-Generated Summary");
+ if(ai>=0){const end=text.indexOf("Learn more",ai);text=text.slice(0,ai)+(end>=0 ? text.slice(end+10) : "");}
  const marker=text.lastIndexOf("Scroll to top");if(marker>=0)return text.slice(marker+13);
  const base=title.split(" | ")[0].replace(/ - (?:vLLM|NVIDIA Docs)$/i,"");
  const heading=text.indexOf(base+" ¶");if(heading>=0)return text.slice(heading);

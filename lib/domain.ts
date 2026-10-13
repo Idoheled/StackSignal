@@ -50,7 +50,7 @@ export type Article = {
     source_tier?: string;
     review_content_changed_at?: string;
     assistant_reviewed_at?: string;
-    evaluation?: { scope: string; confidence: string; depth: string; action?: string; score?: number; decision?: string; evaluated_at?: string; evaluator?: string; evidence?: string };
+    evaluation?: { scope: string; confidence: string; depth: string; action?: string; score?: number; decision?: string; evaluated_at?: string; evaluator?: string; evidence?: string; facts?: { primary_source?: string } };
   };
   liked?: boolean;
   hidden?: boolean;

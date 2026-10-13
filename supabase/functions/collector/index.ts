@@ -218,8 +218,9 @@ async function failedEvaluation(row: any, reason="Evaluation validation failed",
   return failure;
 }
 async function queueMissingPublicInputs() {
-  const rows=await db("ss_articles?deleted_at=is.null&reference_meta->>evaluation=is.null&reference_meta->>public_evaluation_input=is.null&reference_meta->>public_extraction_requested=is.null&reference_meta->>assistant_reviewed_at=is.null&select=id,url,kind,topic,content_hash,reference_meta&order=discovered_at.asc,id.asc&limit=8");
-  for(const row of rows) {
+  const rows=await db("ss_articles?deleted_at=is.null&reference_meta->>evaluation=is.null&reference_meta->>public_extraction_requested=is.null&reference_meta->>assistant_reviewed_at=is.null&select=id,url,kind,topic,content_hash,reference_meta&order=discovered_at.asc,id.asc&limit=500");
+  const incomplete=rows.filter((row:any)=>String(row.reference_meta?.public_evaluation_input?.text || "").length<1800).slice(0,8);
+  for(const row of incomplete) {
     let approved=false; try { approved=!!safeURL(row.url,hosts) && !new URL(row.url).pathname.toLowerCase().endsWith(".pdf"); } catch { /* Unapproved references stay private and unfetched. */ }
     if(approved) await rpc("ss_queue_item",{job_kind:"article",item:{url:row.url,kind:row.kind,topic:row.topic}});
     await db("ss_articles?id=eq."+row.id+(row.content_hash ? "&content_hash=eq."+encodeURIComponent(row.content_hash) : "&content_hash=is.null"),"PATCH",{reference_meta:{...row.reference_meta,public_extraction_requested:approved ? "queued" : "unsupported"}});
@@ -303,7 +304,8 @@ async function evaluateSweep(profile: any) {
     const responseText=await bodyText(response); phase="validation";
     out=JSON.parse(responseText);parsed=parseBatchEvaluation(out,inputs);
   } catch (error) {
-    const reason=(error as Error).message;
+    const timeout=(error as Error).name==="TimeoutError" || /timeout|timed out/i.test((error as Error).message);
+    const reason=phase==="validation" ? "Gemini response parsing failed" : timeout ? "Gemini request timed out" : "Gemini transport failed";
     const failures=await Promise.all(batch.map(row=>failedEvaluation(row,reason,phase==="transport" ? 503 : 0)));
     const retryAt=Math.max(...failures.map(f=>f.retryAt || Date.now()+3600000));
     await rpc("ss_finish_evaluation_request",{request:reservation.request_id,outcome:failures[0].kind,reviewed:0,error:reason});
@@ -358,11 +360,13 @@ async function ingest(item: any, profile: any) {
   }
   const repo=repositoryName(url);
   if(repo && !item.reference_meta?.repo_health) item.reference_meta={...item.reference_meta,repository:repo,repo_health:await repoHealth(repo)};
-  const old = await db(
+  let old = await db(
     "ss_articles?url=eq." +
       encodeURIComponent(url) +
-      "&select=id,title,kind,topic,content_hash,published_at,updated_at,reference_meta",
+      "&select=id,url,title,kind,topic,content_hash,published_at,updated_at,reference_meta",
   );
+  // Retained legacy URLs may precede trailing-slash canonicalization.
+  if(!old[0] && !u.search && !url.endsWith("/"))old=await db("ss_articles?url=eq."+encodeURIComponent(url+"/")+"&select=id,url,title,kind,topic,content_hash,published_at,updated_at,reference_meta");
   const hash = await digest(
     "radar-v2 " + JSON.stringify(item.reference_meta || {}) + item.title +
       " " +
@@ -372,7 +376,10 @@ async function ingest(item: any, profile: any) {
       " " +
       (item.updated_at || ""),
   );
-  if (old[0]?.content_hash === hash) return;
+  if (old[0]?.content_hash === hash) {
+    if(old[0].url!==url)await db("ss_articles?id=eq."+old[0].id,"PATCH",{url});
+    return;
+  }
   // Unknown publisher dates stay null. Discovery time never becomes publication time.
   const published = dateISO(item.published_at) || old[0]?.published_at || null;
   const full = textOnly(item.text || item.summary || "");
@@ -725,6 +732,7 @@ Deno.serve(async (request) => {
     await webHealth({ configured: !!env("TAVILY_API_KEY"), monthly_ceiling: Math.min(Number(profile.search_monthly_limit)||0,800),
       daily_ceiling: 24, ...(webEnabled ? {} : { state: env("TAVILY_API_KEY") ? "paused" : "missing_key" }) });
     try { await queueRepoHealthChecks(); } catch { /* Queue public health checks without interrupting collection. */ }
+    try { await queueMissingPublicInputs(); } catch { /* Public extraction progresses independently of Gemini capacity. */ }
     if(profile.repo_discovery!==false && profile.trending_discovery!==false && await budget("trending-discovery:"+day,1,86400))
       for(const window of ["daily","weekly"]) await rpc("ss_queue_item",{job_kind:"discovery",item:{lane:"trending",window,scheduled_day:day}});
     if (profile.repo_discovery !== false && await budget("repository-discovery:" + day, 1, 86400)) {

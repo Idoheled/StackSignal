@@ -10,6 +10,11 @@ test("local evidence rules require a source-bound mechanism and distinguish unkn
  assert.equal(internalReview(row("GPU LLM KV cache prefill decode networking performance benchmark ".repeat(10)),{},now).assessment.decision,"insufficient_evidence","keyword stuffing is not an action or a concrete result");
  assert.equal(internalReview(row("GPU LLM KV cache configuration deployment benchmark architecture ".repeat(10)),{},now).assessment.decision,"insufficient_evidence","configuration/deployment nouns alone are not implementation actions");
  assert.equal(internalReview(row("Tiny fragment"),{},now).assessment.decision,"insufficient_evidence");
+ const generated="AI-Generated Summary "+text+" Powered by NVIDIA Nemotron. Learn more The authored body provides no usable technical information.";
+ assert.notEqual(internalReview(row(generated),{},now).assessment.decision,"useful","a publisher AI summary cannot be the sole mechanism evidence");
+ const authored="AI-Generated Summary Generic promotional text. Powered by NVIDIA Nemotron. Learn more "+text;
+ assert.equal(internalReview(row(authored),{},now).assessment.decision,"useful");
+ assert(!internalReview(row(authored),{},now).assessment.evidence.includes("Generic promotional"));
  assert.equal(internalReview({...row(text),title:"Neonatal EEG detection",input:{...row(text).input,title:"Neonatal EEG detection"}}, {},now).assessment.decision,"tangential");
  assert.equal(internalReview(row(text,"https://example.com/jobs/network-engineer"),{},now).assessment.decision,"tangential");
  assert.equal(internalReview(row(text,"https://www.facebook.com/groups/a/posts/b"),{},now).assessment.decision,"tangential");

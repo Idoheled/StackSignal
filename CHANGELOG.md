@@ -7,6 +7,8 @@
 - Persist database-managed link states and permanently delete non-selected decisions with history, claims, jobs, bookmarks, notes, feedback and comparison data; keep aggregate discard counts only.
 - Delete completed job payloads and preserve request-level quota accounting after article deletion.
 - Move overdue collection failures into the local review path without restarting their original discovery clock.
+- Exclude publisher AI summaries from mechanism evidence, keep raw model responses out of error ledgers, and expose recorded primary-source corroboration.
+- Enrich short public RSS/search excerpts during collection independently of Gemini availability; match legacy URL aliases without losing retained review history.
 - Capture full arXiv abstracts and enrich new paper announcements.
 - Label local reviews explicitly and preserve their ranking after metadata refreshes.
 - Prevent a racing Gemini response from replacing a completed review.

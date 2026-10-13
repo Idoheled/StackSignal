@@ -11,6 +11,36 @@ const environment: Record<string,string> = {SUPABASE_URL:"https://database.examp
 };
 await import("../supabase/functions/collector/index.ts");
 
+test("collection enriches short public excerpts while Gemini is paused",async()=>{
+ const previous=globalThis.fetch, queued:any[]=[],patched:any[]=[];
+ globalThis.fetch=async(input,init)=>{
+  const url=new URL(String(input)),body=init?.body?JSON.parse(String(init.body)):undefined;
+  assert.equal(url.hostname,"database.example");
+  if(url.pathname.endsWith("ss_take_budget"))return Response.json(false);
+  if(url.pathname.endsWith("ss_claim_jobs"))return Response.json([]);
+  if(url.pathname.endsWith("ss_feedback_weights"))return Response.json({});
+  if(url.pathname.endsWith("ss_enqueue_sources"))return Response.json(null);
+  if(url.pathname.endsWith("ss_queue_item")){queued.push(body);return Response.json(null);}
+  if(url.pathname.endsWith("ss_settings"))return Response.json(body?[body]:[{value:{repo_discovery:false,search_monthly_limit:0,gemini_mode:"off"}}]);
+  if(url.pathname.endsWith("ss_articles")){
+   if(body){patched.push(body);return Response.json([body]);}
+   if(url.searchParams.get("select")==="url")return Response.json([]);
+   assert.equal(url.searchParams.has("reference_meta->>public_evaluation_input"),false);
+   return Response.json([
+    {id:"short",url:"https://developer.nvidia.com/blog/example/",reference_meta:{public_evaluation_input:{text:"Short RSS excerpt"}}},
+    {id:"full",url:"https://developer.nvidia.com/blog/full/",reference_meta:{public_evaluation_input:{text:"x".repeat(1800)}}},
+    {id:"unsafe",url:"https://127.0.0.1/private",reference_meta:{}}
+   ]);
+  }
+  throw Error("Unexpected "+url.pathname);
+ };
+ try{
+  const response=await handler(new Request("https://collector.example",{method:"POST",headers:{"x-collector-secret":secret}}));
+  assert.equal(response.status,200);assert.equal(queued.length,1);assert.equal(queued[0].item.url,"https://developer.nvidia.com/blog/example/");
+  assert.deepEqual(patched.map(row=>row.reference_meta.public_extraction_requested),["queued","unsupported"]);
+ }finally{globalThis.fetch=previous;}
+});
+
 test("collector authenticates, deduplicates releases, defers publisher limits, and keeps real discovery dates", async () => {
   const originalFetch = globalThis.fetch;
   let job: any, article: any, upstream = 200, active = true, oversized = false, oversizedAtPage = 1, allowEnrichment = true;
@@ -50,6 +80,7 @@ test("collector authenticates, deduplicates releases, defers publisher limits, a
     if (u.pathname.endsWith("ss_settings")) return Response.json([{value:{repo_discovery:true,repo_queries:[],gemini_daily_limit:0,search_monthly_limit:0}}]);
     if (u.pathname.endsWith("ss_sources")) return Response.json([{id:"source",url:"https://api.github.com/repos/a/b/releases?per_page=10",name:"a/b",type:"github",active,revision:1,include_prereleases:false}]);
     if (u.pathname.endsWith("ss_articles")) {
+      if (!body && u.searchParams.has("reference_meta->>public_extraction_requested")) return Response.json([]);
       if (!body) return Response.json(article ? [article] : []);
       article = {id:"article",...article,...body};return Response.json([article]);
     }
@@ -138,7 +169,7 @@ test("web discovery bounds requests, preserves snippet provenance, filters noise
     if (u.pathname.endsWith("ss_feedback_weights")) return Response.json({});
     if (u.pathname.endsWith("ss_enqueue_sources")) return Response.json(null);
     if (u.pathname.endsWith("ss_settings")) return Response.json(body ? [body] : u.searchParams.get("key")==="eq.profile" ? [{value:{queries:[query],search_monthly_limit:monthly,gemini_daily_limit:0,repo_discovery:false}}] : []);
-    if (u.pathname.endsWith("ss_articles")) return Response.json(body ? [body] : existing ? [{id:"existing"}] : []);
+    if (u.pathname.endsWith("ss_articles")) return Response.json(body ? [body] : u.searchParams.has("reference_meta->>public_extraction_requested") ? [] : existing ? [{id:"existing"}] : []);
     if (u.pathname.endsWith("ss_queue_item")) return Response.json(null);
     if (u.pathname.endsWith("ss_jobs")) return Response.json([body]);
     throw new Error("Unexpected request " + u.pathname);

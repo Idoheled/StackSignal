@@ -95,7 +95,7 @@ import {
   basicRelevance,
 } from "@/lib/domain";
 import { linkReviewLabel, canonicalLink } from "@/lib/links";
-import { sourceState, reviewLabel } from "@/lib/review-state";
+import { sourceState, reviewLabel, primaryReviewSource } from "@/lib/review-state";
 import { api, act, dateLabel } from "@/lib/client";
 import { Access, SecurityGate } from "./access";
 import AdminPanel from "./admin-panel";
@@ -1563,6 +1563,7 @@ function Hub({
                 {picked.evidence && <blockquote>{picked.evidence}</blockquote>}
                 {picked.reference_meta?.evaluation && <p className="subtle">{picked.reference_meta.evaluation.scope.replaceAll("_", " ")} · {picked.reference_meta.evaluation.confidence} confidence · {picked.reference_meta.evaluation.depth}{picked.reference_meta.evaluation.action && <> · Consider: {picked.reference_meta.evaluation.action}</>}</p>}
                 {picked.reference_meta?.evaluation && <p className="subtle">{reviewLabel(picked)} · {dateLabel(picked.reference_meta.evaluation.evaluated_at || null)}</p>}
+                {primaryReviewSource(picked) && <p className="subtle"><a href={primaryReviewSource(picked)!} target="_blank" rel="noopener noreferrer">Primary verification source <ExternalLink size={12} /></a></p>}
                 {picked.reference_meta?.review_content_changed_at && <p className="subtle">The source changed after evaluation. This card shows the retained reviewed snapshot. Open the original to inspect the current version.</p>}
                 <small>
                   {picked.reference_meta?.evaluation

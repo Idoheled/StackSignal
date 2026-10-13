@@ -724,6 +724,20 @@ test("PostgreSQL access, isolation, invitation and concurrency invariants", asyn
       await as(reader);await fails(()=>db.query("select ss_promote_overdue_link_jobs(500)"),"permission denied");
     });
 
+    await t.test("legacy slash aliases preserve another retained article's history and cohort on cleanup",async()=>{
+      await db.exec("reset role");
+      const base='https://kubernetes.io/alias-regression';
+      const first=(await db.query("insert into ss_articles(url,title,reference_meta) values($1,'Alias regression',$2) returning id",[base+'/',JSON.stringify({evaluation:{...review,cache_key:'alias-one'}})])).rows[0].id;
+      const keeper=(await db.query("insert into ss_articles(url,title,reference_meta) values($1,'Alias regression',$2) returning id",[base,JSON.stringify({evaluation:{...review,cache_key:'alias-two'}})])).rows[0].id;
+      await db.query("insert into ss_private.review_cohort(url) values($1)",[base+'/']);
+      assert.equal((await db.query("select ss_private.gemini_new_link($1) x",[base])).rows[0].x,false,"canonical variants share the retained frozen cohort");
+      await db.query("delete from ss_articles where id=$1",[first]);
+      assert.equal((await db.query("select count(*)::int n from ss_private.article_reviews where article_id=$1",[keeper])).rows[0].n,1,"deleting an alias cannot erase a retained row's history");
+      assert.equal((await db.query("select ss_private.gemini_new_link($1) x",[base])).rows[0].x,false);
+      await db.query("delete from ss_articles where id=$1",[keeper]);
+      assert.equal((await db.query("select ss_private.gemini_new_link($1) x",[base])).rows[0].x,true,"no identity remains when the last retained link is deleted");
+    });
+
     console.log(
       "Verified: RLS, MFA gate, read-only restrictions, private notes, recursive title search, cycle prevention, trash/restore, confirmation, single-use invites, immediate revocation, bounded quotas, job leases.",
     );

@@ -1,4 +1,11 @@
 import type { Article, Source } from "./domain.ts";
+import { canonicalLink } from "./links.ts";
+
+export function primaryReviewSource(article: Article) {
+  const source=article.reference_meta?.evaluation?.facts?.primary_source;
+  if(typeof source!=="string")return null;
+  try{return canonicalLink(source);}catch{return null;}
+}
 
 export function sourceState(source: Source, now = Date.now()) {
   if (!source.active) return "Paused";

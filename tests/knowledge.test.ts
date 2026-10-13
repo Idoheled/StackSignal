@@ -4,12 +4,19 @@ import { canonicalLink } from "../lib/links.ts";
 import { TEAM_ARTICLES, IMPORT_STATS } from "../lib/team-library.ts";
 import { TEAM_SOURCES, TEAM_PROFILE } from "../lib/coverage.ts";
 import { basicRelevance } from "../lib/domain.ts";
-import { sourceState, reviewLabel } from "../lib/review-state.ts";
+import { sourceState, reviewLabel, primaryReviewSource } from "../lib/review-state.ts";
 import {
   githubItems,
   githubAPIForLink,
 } from "../supabase/functions/_shared/github.ts";
 import { createService } from "../lib/server/service.ts";
+
+test("primary verification links reject private, credential-bearing and malformed values",()=>{
+ const article=(value:any)=>({reference_meta:{evaluation:{facts:{primary_source:value}}}} as any);
+ assert.equal(primaryReviewSource(article("https://nvd.nist.gov/vuln/detail/CVE-2026-105192")),"https://nvd.nist.gov/vuln/detail/CVE-2026-105192");
+ for(const value of [42,"javascript:alert(1)","http://nvd.nist.gov/","https://user:secret@example.com/","https://localhost/path"])
+  assert.equal(primaryReviewSource(article(value)),null);
+});
 
 test("source delays and completed reviews have distinct visible states", () => {
   const source:any={active:true,last_success_at:new Date().toISOString(),interval_minutes:120,last_error:"GitHub hourly budget reached; deferred"};
