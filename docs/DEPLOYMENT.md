@@ -48,6 +48,10 @@ Only the deployment step sees the Cloudflare token. `--keep-vars` preserves conf
 
 Smoke checks verify configured Auth, disabled preview, anonymous denial, same-origin mutations and security headers. Human login/MFA and physical-device checks remain separate. A failed smoke step does not automatically roll back the deployed Worker.
 
+## Versioned repository releases
+
+After Quality, Production and live smoke checks succeed, the GitHub Release job publishes an unpublished package version using its matching changelog entry and the exact tested commit. Existing versions are skipped; tags are never moved. See [Repository releases](RELEASES.md) for preparation, permissions, validation and recovery. This job does not apply database migrations or deploy the collector.
+
 ## Database and collector
 
 Frontend CI does not migrate/reset the database, bootstrap users or deploy Supabase functions. Review migration names against live history, back up data and apply only the new migration/function version. Prefer additive schema changes compatible with the previous frontend. Record outcomes in `OPERATIONS.md`.

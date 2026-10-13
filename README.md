@@ -169,7 +169,7 @@ flowchart TD
   Deploy --> Smoke["Live security smoke checks"]
 ```
 
-Every eligible push to `main` deploys automatically after checks pass. Production uses the verified artifact from that run and preserves runtime configuration. Pull requests do not receive deployment credentials. A failed post-deployment smoke check requires operator review; it does not automatically roll back.
+Every eligible push to `main` deploys automatically after checks pass. A new package version is published to [GitHub Releases](https://github.com/Idoheled/StackSignal/releases) after production smoke checks succeed; see [release management](docs/RELEASES.md). Production uses the verified artifact from that run and preserves runtime configuration. Pull requests do not receive deployment credentials. A failed post-deployment smoke check requires operator review; it does not automatically roll back.
 
 **Existing production is already configured. Do not bootstrap the administrator, reset the database or repeat the original import.** Frontend CI does not apply database migrations or deploy the collector. Follow [deployment/rollback](docs/DEPLOYMENT.md) for those separate changes.
 

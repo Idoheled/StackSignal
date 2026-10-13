@@ -1,5 +1,32 @@
 # Changelog
 
+## [Unreleased]
+
+## [0.1.0] - 2026-10-13
+
+First versioned release of StackSignal, including the production improvements recorded below.
+
+### Discovery and review
+
+- Follow the official GitHub repositories for NVIDIA NIC Configuration, Network and Maintenance Operators hourly, including administrator-enabled beta and RC releases.
+- Review discovered links through bounded Gemini batches and an evidence-bound local review path; tolerate provider 503 errors, timeouts and delayed extraction without losing queue state.
+- Persist link review states, preserve completed evidence and rankings, and permanently delete non-selected links and their dependent data. Keep aggregate discard counts only.
+- Enrich short public excerpts and full arXiv abstracts; avoid replaying unchanged feeds after rejected links are deleted.
+- Require repository maintenance signals and useful review for discovery; monitor GitHub Trending and official OpenShift release streams.
+- Show the latest approved release per project, preserving canonical project names in cards and search.
+
+### Workspace and operations
+
+- Provide a shared reference library with folders, notes, feedback, personal reading state and administrator coverage controls.
+- Protect username/password/MFA access and private data; preserve saved settings and review history across deployments.
+- Validate application and collector types, policy/database tests, client boundaries and responsive browsers before deploying the verified Cloudflare build and running production smoke checks.
+- Add semantic version preparation, matching changelog checks and automatic GitHub publication after successful production deployment. Release tags identify the tested commit; reruns preserve published releases.
+
+### Rollout scope
+
+- This tag records the current source baseline. Creating a GitHub release does not apply database migrations, deploy the collector, reimport references or reset existing data.
+- Frontend deployment and live smoke checks are recorded in the linked CI run; database and collector rollout history remains in [Operations](https://github.com/Idoheled/StackSignal/blob/main/docs/OPERATIONS.md).
+
 ## 2026-10-13
 
 - Preserve the GitHub project name in release titles and search, including legacy reviewed snapshots containing only a version tag.

@@ -28,6 +28,7 @@ Start with the purpose and your role, then follow the system into the source. Th
 | [Discovery and scoring](DISCOVERY.md) | Which engines find material? What chooses queries? How is the exact score calculated and personalized? |
 | [Gemini evaluation](GEMINI_EVALUATION.md) | How do sampling, comparison mode, semantic ranking, public inputs, caching and hard usage caps work? |
 | [Web discovery](WEB_DISCOVERY.md) | How do genuine internet searches, activation, query rotation, noise filtering, provenance and free usage limits work? |
+| [Repository releases](RELEASES.md) | How are versions prepared, validated, published and recovered? |
 | [Deployment](DEPLOYMENT.md) | What does CI deploy, what remains separate, and how do I roll back? |
 | [Operations](OPERATIONS.md) | What was configured and verified at each historical checkpoint? |
 | [Independent setup](SETUP.md) | How would an operator provision a separate installation? |
