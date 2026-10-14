@@ -1,2 +1,5 @@
 [functions.collector]
 verify_jwt = false
+
+[functions.whatsapp-dispatcher]
+verify_jwt = false
