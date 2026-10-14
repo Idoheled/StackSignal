@@ -12,6 +12,7 @@ import json
 import os
 from pathlib import Path
 import sys
+import time
 import uuid
 from datetime import datetime, timezone
 
@@ -71,6 +72,19 @@ def validate_launch(request, domains, subnet, public_key):
         or request.get("subnet_id") != subnet or request.get("ssh_public_key") != public_key
         or not str(request.get("image_id", "")).startswith("ocid1.image.oc1.il-jerusalem-1.")):
         raise HostError("Saved launch parameters do not match the reviewed free host.")
+
+
+def wait_available(value, read, ensure, sleep=time.sleep, clock=time.monotonic):
+    deadline = clock() + 120
+    while value.lifecycle_state != "AVAILABLE":
+        if clock() >= deadline:
+            raise HostError("Network resource is not yet available; resume the saved resource next run.")
+        if value.lifecycle_state not in ("PROVISIONING", "UPDATING"):
+            raise HostError("Saved network resource is in an unexpected state; reconcile manually.")
+        ensure()  # Revalidate the fence before the next API operation.
+        sleep(2)
+        value = read(value.id).data
+    return value
 
 
 def main(argv=None, on_manifest=None):
@@ -201,9 +215,10 @@ def main(argv=None, on_manifest=None):
         value = matches[0] if matches else create().data
         manifest[label] = value.id
         save()
-        if value.lifecycle_state != "AVAILABLE":
-            raise HostError(label + " is not yet available; rerun after it finishes provisioning.")
-        return value
+        getter = {"vcn": network.get_vcn, "gateway": network.get_internet_gateway,
+                  "route": network.get_route_table, "security": network.get_security_list,
+                  "subnet": network.get_subnet}[label]
+        return wait_available(value, getter, save)
 
     m = oci.core.models
     vcn = resource("vcn", all_items(network.list_vcns, compartment_id=tenancy), lambda: network.create_vcn(m.CreateVcnDetails(

@@ -1,6 +1,7 @@
 import importlib.util
 from pathlib import Path
 import unittest
+from types import SimpleNamespace
 
 spec = importlib.util.spec_from_file_location("host", Path(__file__).resolve().parents[1] / "scripts/oci-host.py")
 host = importlib.util.module_from_spec(spec)
@@ -43,6 +44,23 @@ class FreeHostPolicy(unittest.TestCase):
                         {"image_id":"ocid1.image.oc1.other.example"}):
             with self.assertRaises(host.HostError):
                 host.validate_launch({**request,**changed},["AD-1"],"subnet","dedicated")
+
+    def test_async_network_wait_is_bounded_and_stops_when_fence_is_lost(self):
+        events=[];clock=[0]
+        def sleep(seconds):clock[0]+=seconds
+        def read(identifier):
+            events.append("read:"+identifier)
+            return SimpleNamespace(data=SimpleNamespace(id=identifier,lifecycle_state="AVAILABLE"))
+        value=SimpleNamespace(id="saved",lifecycle_state="PROVISIONING")
+        ready=host.wait_available(value,read,lambda:events.append("fence"),sleep,lambda:clock[0])
+        self.assertEqual(ready.lifecycle_state,"AVAILABLE")
+        self.assertEqual(events,["fence","read:saved"])
+        def lost():raise host.HostError("Lease lost")
+        with self.assertRaisesRegex(host.HostError,"Lease lost"):
+            host.wait_available(value,lambda _:self.fail("Lost fence must prevent API calls"),lost,sleep,lambda:clock[0])
+        with self.assertRaisesRegex(host.HostError,"not yet available"):
+            host.wait_available(value,lambda _:SimpleNamespace(data=value),lambda:None,sleep,lambda:clock[0])
+        self.assertLessEqual(clock[0],122)
 
 
 if __name__ == "__main__":
