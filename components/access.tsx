@@ -83,6 +83,7 @@ export function Access({
     [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
     [notice, setNotice] = useState("");
+  const [whatsappOptIn, setWhatsappOptIn] = useState(false);
   useEffect(() => {
     const params = new URLSearchParams(location.hash.slice(1));
     for (const key of ["invite", "recover"])
@@ -103,16 +104,19 @@ export function Access({
         password: data.get("password"),
         captcha,
         token,
+        ...(mode === "register" ? { whatsapp_opt_in: whatsappOptIn } : {}),
       });
       if (mode === "login") onLogin();
       else {
         setNotice(
           mode === "register"
-            ? "Account created. Sign in with your new username and password."
+            ? "Account created. Sign in with your new username and password." +
+              (whatsappOptIn ? " Open WhatsApp alerts in your settings to join the group." : "")
             : "Password updated. You can sign in now.",
         );
         setMode("login");
         setToken("");
+        setWhatsappOptIn(false);
         e.currentTarget?.reset();
       }
     } catch (e) {
@@ -207,6 +211,13 @@ export function Access({
                 }
               />
             </label>
+            {mode === "register" && <>
+              <label className="whatsapp-opt-in">
+                <input type="checkbox" checked={whatsappOptIn} onChange={e => setWhatsappOptIn(e.target.checked)} />
+                <span>Notify me about top-tier drops via WhatsApp.</span>
+              </label>
+              {whatsappOptIn && <p className="whatsapp-signup-help">After signing in, open WhatsApp alerts to join the private group. Members may see your name and phone number. Leave the group to stop its messages.</p>}
+            </>}
             {status.configured && status.site_key && (
               <Captcha
                 siteKey={status.site_key}

@@ -99,6 +99,7 @@ import { sourceState, reviewLabel, primaryReviewSource } from "@/lib/review-stat
 import { api, act, dateLabel } from "@/lib/client";
 import { Access, SecurityGate } from "./access";
 import AdminPanel from "./admin-panel";
+import { WhatsAppPreferences } from "./whatsapp-preferences";
 type View = "feed" | "library" | "hidden" | "sources" | "admin" | "trash";
 type Confirm = { title: string; body: string; run: () => Promise<void> };
 const topicIcons: Record<string, typeof Cpu> = {
@@ -259,9 +260,20 @@ function Hub({
     [working, setWorking] = useState(false),
     [light, setLight] = useState(false);
   const detailOpener = useRef<HTMLElement | null>(null);
+  const [whatsappOpen, setWhatsappOpen] = useState(false);
   const canWrite = member.role !== "reader";
   const notify = (s: string) => setToast(s);
   const reload = () => setRefresh((x) => x + 1);
+  useEffect(() => {
+    if (preview) return;
+    const id = new URLSearchParams(location.search).get("article");
+    if (!id || !/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(id)) return;
+    let cancelled = false;
+    act("article", { id }).then(item => {
+      if (!cancelled && item) setSelected(item);
+    }).catch(e => { if (!cancelled) setError(e.message); });
+    return () => { cancelled = true; };
+  }, [preview]);
   useEffect(() => {
     const t = setTimeout(() => setDebounced(query), 220);
     return () => clearTimeout(t);
@@ -738,6 +750,9 @@ function Hub({
             )}
           </div>
           <div className="sidebar-bottom-links">
+            <button onClick={() => setWhatsappOpen(true)}>
+              <MessageSquare size={15} /> WhatsApp alerts
+            </button>
             <button
               onClick={() => navigate("hidden")}
               className={view === "hidden" ? "active" : ""}
@@ -1745,6 +1760,7 @@ function Hub({
           )}
         </SheetContent>
       </Sheet>
+      <WhatsAppPreferences open={whatsappOpen} onOpenChange={setWhatsappOpen} preview={preview} />
       <Dialog
         open={!!dialog}
         onOpenChange={(v) => {

@@ -4,6 +4,11 @@
 
 ### Notification preparation
 
+- Add invitation opt-in, per-user WhatsApp notification settings, protected group
+  handoff cards and authenticated article deep links on the feature branch.
+- Add a private reviewed-content outbox with duplicate protection, leased claims,
+  delivery receipts and reconciliation for uncertain sends. Delivery remains
+  disabled until Oracle/OpenClaw hosting and real group checks succeed.
 - Add a read-only Oracle Cloud Shell onboarding check and setup/progress guides
   for the planned OpenClaw/Ollama WhatsApp host. Notification delivery is not yet
   implemented or enabled.

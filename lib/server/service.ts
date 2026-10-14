@@ -346,7 +346,7 @@ export function createService(c: Config, network: typeof fetch = fetch) {
           );
           userId = created.id;
           await rpc(
-            "ss_finish_invite",
+            p.whatsapp_opt_in === true ? "ss_finish_invite_whatsapp" : "ss_finish_invite",
             {
               invite_id: invite.id,
               claim,
@@ -563,9 +563,26 @@ export function createService(c: Config, network: typeof fetch = fetch) {
         "rescan",
         "export",
         "recovery",
+        "whatsapp_preferences",
+        "whatsapp_preferences_save",
+        "article",
       ];
       if (!allowed.includes(action))
         throw new HttpError(400, "Unknown action.");
+      if (action === "whatsapp_preferences" || action === "whatsapp_preferences_save") {
+        if (action === "whatsapp_preferences_save" && typeof payload.opt_in !== "boolean")
+          throw new HttpError(400, "Choose whether to receive WhatsApp alerts.");
+        return respond(await rpc("ss_whatsapp_preferences", {
+          desired_opt_in: action === "whatsapp_preferences_save" ? payload.opt_in : null,
+        }, s.access_token));
+      }
+      if (action === "article") {
+        if (!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(String(payload.id || "")))
+          throw new HttpError(400, "Invalid article link.");
+        const article = await rpc("ss_whatsapp_article", { article_id: payload.id }, s.access_token);
+        if (!article) throw new HttpError(404, "This signal is no longer available.");
+        return respond(article);
+      }
       if (["submit", "source_save"].includes(action))
         payload.url = publicHttpsURL(String(payload.url || ""));
       if (action === "source_save") {
