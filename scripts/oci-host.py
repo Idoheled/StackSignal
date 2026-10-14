@@ -182,7 +182,8 @@ def main(argv=None, on_manifest=None):
         raise HostError("No compatible Ubuntu 24.04 ARM image found.")
     state_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
     manifest.update(tenancy=tenancy, region=config["region"])
-    tags = {"managed_by": "StackSignal", "deployment": manifest["deployment"]}
+    tags = {"managed_by": "StackSignal", "deployment": manifest["deployment"],
+            "deployment_id": "stacksignal-whatsapp-bot-il-jerusalem-1"}
 
     def save():
         temporary = manifest_path.with_suffix(".tmp")
@@ -193,7 +194,8 @@ def main(argv=None, on_manifest=None):
     save()  # Persist idempotency token before the first mutation.
 
     def resource(label, items, create):
-        matches = [i for i in items if getattr(i, "freeform_tags", {}) == tags and i.lifecycle_state != "TERMINATED"]
+        matches = [i for i in items if all((getattr(i, "freeform_tags", {}) or {}).get(k)==v for k,v in tags.items())
+                   and i.lifecycle_state != "TERMINATED"]
         if len(matches) > 1:
             raise HostError("Duplicate deployment resources; reconcile " + label + " before continuing.")
         value = matches[0] if matches else create().data
