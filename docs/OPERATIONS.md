@@ -1,5 +1,16 @@
 # StackSignal operations checkpoint — October 11, 2026
 
+## WhatsApp host preparation — October 14, 2026
+
+Preparation is isolated on `feat/whatsapp-notifications`, based on release
+`v0.1.1`. The owner has an OCI account and a WhatsApp group, and selected local
+Ollama to preserve Gemini evaluation quotas. A read-only Cloud Shell preflight
+and onboarding guide are prepared; no Oracle VM, production schema, message or
+main deployment was created. Six synthetic preflight checks, both TypeScript
+checks and all 67 existing automated tests passed locally. Live OCI checks and
+bot pairing remain pending. Follow [WhatsApp progress](WHATSAPP_PROGRESS.md) and
+[host onboarding](WHATSAPP_SETUP.md); do not treat this as an enabled feature.
+
 ## Preserve this deployment
 
 - Team website: https://stacksignal.stacksignal-idoheled.workers.dev — deployed on the owner's existing Cloudflare account `49c94d7ba2a9124b3e0ddea7a329ad05`, Worker `stacksignal`.

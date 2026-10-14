@@ -31,6 +31,8 @@ Start with the purpose and your role, then follow the system into the source. Th
 | [Repository releases](RELEASES.md) | How are versions prepared, validated, published and recovered? |
 | [Deployment](DEPLOYMENT.md) | What does CI deploy, what remains separate, and how do I roll back? |
 | [Operations](OPERATIONS.md) | What was configured and verified at each historical checkpoint? |
+| [WhatsApp host onboarding](WHATSAPP_SETUP.md) | How is the planned Oracle/OpenClaw/Ollama host checked without sharing credentials? |
+| [WhatsApp progress](WHATSAPP_PROGRESS.md) | What notification work is complete and what is still pending? |
 | [Independent setup](SETUP.md) | How would an operator provision a separate installation? |
 | [Security controls](SECURITY.md) | What protects access and collection, and what verification remains outstanding? |
 | [Security policy](../SECURITY.md) | How should vulnerabilities and credential exposures be reported? |

@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Notification preparation
+
+- Add a read-only Oracle Cloud Shell onboarding check and setup/progress guides
+  for the planned OpenClaw/Ollama WhatsApp host. Notification delivery is not yet
+  implemented or enabled.
+
 ## [0.1.1] - 2026-10-13
 
 ### Release management
