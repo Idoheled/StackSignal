@@ -177,9 +177,7 @@ def main():
         raise RunnerError("Run only the reviewed feature branch in GitHub Actions")
     required=("OCI_USER","OCI_TENANCY","OCI_FINGERPRINT","OCI_API_PRIVATE_KEY","SSH_ADMIN_PRIVATE_KEY",
               "SSH_ADMIN_PUBLIC_KEY","OCI_CRON_CONTROL_SECRET","OCI_CRON_CONTROL_WEBHOOK_URL","WHATSAPP_WEBHOOK_SECRET","WHATSAPP_APP_ORIGIN")
-    if any(not os.environ.get(name) for name in required):
-        raise RunnerError("A required encrypted Actions secret is missing")
-    control=Control(os.environ["OCI_CRON_CONTROL_SECRET"],os.environ["OCI_CRON_CONTROL_WEBHOOK_URL"])
+    control=Control(os.environ.get("OCI_CRON_CONTROL_SECRET",""),os.environ.get("OCI_CRON_CONTROL_WEBHOOK_URL",""))
     run_id=os.environ["GITHUB_RUN_ID"]+"."+os.environ.get("GITHUB_RUN_ATTEMPT","1")
     lease=control.call("lease",{"runner_id":run_id,"commit_sha":os.environ["GITHUB_SHA"]})
     if not lease["acquired"]:
@@ -189,6 +187,11 @@ def main():
     if state["deployment_id"]!=DEPLOYMENT:
         raise RunnerError("Unexpected deployment state")
     control.token=state["lease_id"]
+    missing=[name for name in required if not os.environ.get(name)]
+    if missing:
+        control.call("release",{"status":"PAUSED_ERROR","result":{"status":"missing_configuration","fields":missing}})
+        failure_notice("required encrypted runner configuration is missing; cron paused")
+        return 1
     heartbeat=Heartbeat(control);heartbeat.thread.start()
     manifest=dict(state["manifest"])
     spec=importlib.util.spec_from_file_location("oci_host",Path(__file__).with_name("oci-host.py"))
