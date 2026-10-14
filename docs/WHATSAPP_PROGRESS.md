@@ -1,5 +1,37 @@
 # WhatsApp notification implementation progress
 
+## 2026-10-14 19:00 UTC — Hourly capacity claimer active and timer-verified
+
+`stacksignal-oci-hourly-claim` is **active** on Supabase cron job 5 with
+`17 * * * *` UTC. An actual verification timer fired at 18:59:00 UTC, its
+`pg_net` dispatch returned HTTP 200, and
+[hosted run 38619792381](https://github.com/Idoheled/StackSignal/actions/runs/38619792381)
+completed successfully. The timer's temporary one-shot schedule was restored to
+the hourly cadence. The preceding
+[manual full-route check](https://github.com/Idoheled/StackSignal/actions/runs/38619594550)
+also completed successfully. This is a live external runner, independent of
+conversation storage or the Gemini scheduled task.
+
+The latest Oracle check at **18:59:43 UTC** returned `OUT_OF_HOST_CAPACITY` for
+2 OCPU/12 GB and 1 OCPU/8 GB in automatic placement and all three Jerusalem
+fault domains. State is `SEARCHING_CAPACITY`, provisioning enabled, lease
+released, no instance allocated. Four lease acquisitions include one control-only
+diagnostic, initial network setup and two actual capacity checks.
+
+Created only the dedicated free VCN, internet gateway, route table, security list
+and subnet; all five are AVAILABLE and carry the saved deployment identity.
+The prepared network is reused. Asynchronous resource startup now uses a fenced,
+bounded wait. No VM, boot disk, paid fallback, WhatsApp pairing or message has
+occurred. The dispatcher remains paused and notification configuration disabled.
+Existing collector, evaluator and internal-review schedules remain active.
+
+[CI run 38618933131](https://github.com/Idoheled/StackSignal/actions/runs/38618933131)
+passed 90 automated tests, 16 OCI safety checks, 36 browser tests, types, build,
+client boundary and release checks. Main remains at the v0.1.1 baseline. At the
+next successful allocation, the runner resumes this deployment, installs the
+bot stack, verifies local inference/TLS and stops its own cron at the owner QR
+handoff. The full ARM/WhatsApp delivery gate remains pending capacity and pairing.
+
 ## 2026-10-14 — Live scheduler routing and REST lease verification
 
 Hosted [CI run 38609954835](https://github.com/Idoheled/StackSignal/actions/runs/38609954835)

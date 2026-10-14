@@ -8,7 +8,9 @@ The separate dispatcher signs immutable event payloads and verifies signed recei
 
 Temporary hourly provisioning runs on GitHub Actions, dispatched by Supabase cron on this feature branch. A signed control endpoint fences renewable leases, persists exact resource/launch state, resumes the same host and automatically unschedules capacity checks at the QR handoff. The runner checks the free envelope, authenticates the SSH host through Oracle console history, installs pinned runtimes, and verifies local model generation and public HTTPS. Private credentials are in Vault and encrypted Actions secrets; the bot has no Supabase service key.
 
-Validation: 90 automated tests, 15 OCI safety checks, both TypeScript checks, standalone build, asset boundary and release checks passed locally. Hosted CI verifies the three-browser suite. The live control endpoint accepts signed requests and rejects unsigned, stale and tampered requests. Production RPC grants deny members access to provisioning state and credentials.
+Validation: 90 automated tests, 16 OCI safety checks, 36 browser tests, both TypeScript checks, standalone build, asset boundary and release checks passed in hosted CI. Live control checks cover signatures, leases, renewal, checkpoint, release and premature-stop rejection. Production RPC grants deny members access to provisioning state and credentials.
+
+The hourly job is active at `17 * * * *` UTC. A real timer fired at 18:59 UTC and completed the full Supabase → GitHub Actions → Oracle check in [run 38619792381](https://github.com/Idoheled/StackSignal/actions/runs/38619792381). Both approved A1 sizes remain unavailable across all placements. The free network is prepared and reused; no VM has been allocated.
 
 This remains a draft: the additive notification schema and dispatcher are staged with delivery disabled. The six member profiles, bookmarks, folders and feedback are preserved, and existing collection schedules are active. Physical ARM capacity, installation, QR pairing and real group receipts are release gates; no actual WhatsApp message is claimed by synthetic checks.
 

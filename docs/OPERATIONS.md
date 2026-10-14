@@ -2,6 +2,13 @@
 
 ## WhatsApp host preparation — October 14, 2026
 
+Latest checkpoint: the temporary hourly OCI claimer is active and timer-verified
+at `17 * * * *` UTC on Supabase job 5. The 18:59 UTC scheduled run reached Oracle
+and returned no ARM capacity in all eight placements. The five free network
+resources are available; no VM exists yet. Additive notification tables and the
+dispatcher are staged disabled. See [WhatsApp progress](WHATSAPP_PROGRESS.md)
+for current verification and the historical preparation snapshots below.
+
 Preparation is isolated on `feat/whatsapp-notifications`, based on release
 `v0.1.1`. The owner has an OCI account and a WhatsApp group, and selected local
 Ollama to preserve Gemini evaluation quotas. Draft PR #4 contains opt-in UI,
