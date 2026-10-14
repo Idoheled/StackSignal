@@ -43,9 +43,38 @@ for (const width of [360, 1280]) {
     await expect(page.getByRole("dialog", { name: "Notification settings" }).getByRole("checkbox")).toBeChecked();
     await page.getByRole("dialog", { name: "Notification settings" }).getByRole("checkbox").uncheck();
     await expect(page.getByRole("link", { name: "Join the private group" })).toHaveCount(0);
+    await expect(page.getByRole("dialog", { name: "Notification settings" }).getByRole("checkbox")).toBeEnabled();
     expect(opted).toBe(false);
   });
 }
+
+test("a failed preference save restores the previous choice and permits retry", async ({ page }) => {
+  let fail = true;
+  await page.route("**/api/**", async route => {
+    const path = new URL(route.request().url()).pathname;
+    if (path === "/api/status") return route.fulfill({ json: { configured: true } });
+    if (path === "/api/me") return route.fulfill({ json: { member, mfa_required: false } });
+    const { action, payload } = route.request().postDataJSON();
+    if (action === "whatsapp_preferences") return route.fulfill({ json: { opt_in: false, enabled: false, invite_url: null } });
+    if (action === "whatsapp_preferences_save") {
+      if (fail) return route.fulfill({ status: 503, json: { error: "Preference save unavailable" } });
+      return route.fulfill({ json: { opt_in: payload.opt_in, enabled: false, invite_url: invite } });
+    }
+    return route.fulfill({ json: ["feed", "library"].includes(action) ? { items: [], total: 0 } : [] });
+  });
+  await page.goto("/");
+  await page.getByRole("button", { name: "WhatsApp alerts", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Notification settings" });
+  await dialog.getByRole("checkbox").click();
+  await expect(dialog.getByRole("alert")).toHaveText("Preference save unavailable");
+  await expect(dialog.getByRole("checkbox")).not.toBeChecked();
+  await expect(dialog.getByRole("checkbox")).toBeEnabled();
+  await expect(dialog.getByRole("link", { name: "Join the private group" })).toHaveCount(0);
+  fail = false;
+  await dialog.getByRole("checkbox").check();
+  await expect(dialog.getByText("Preference saved", { exact: true })).toBeVisible();
+  await expect(dialog.getByRole("link", { name: "Join the private group" })).toHaveAttribute("href", invite);
+});
 
 test("invited registration starts unchecked and submits the user's explicit choice", async ({ page }) => {
   let payload: any;

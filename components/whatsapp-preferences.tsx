@@ -39,12 +39,15 @@ export function WhatsAppPreferences({ open, onOpenChange, preview = false }: {
   }, [open, preview]);
 
   async function toggle(opt_in: boolean) {
+    const previous = preferences;
+    if (!previous || busy) return;
+    setPreferences({ ...previous, opt_in });
     setBusy(true); setError(""); setSaved(false);
     try {
       const value = preview ? { opt_in, enabled: false, invite_url: null }
         : await act("whatsapp_preferences_save", { opt_in });
       setPreferences(value); setSaved(true);
-    } catch (e) { setError((e as Error).message); }
+    } catch (e) { setPreferences(previous); setError((e as Error).message); }
     finally { setBusy(false); }
   }
   const url = preferences?.opt_in ? inviteURL(preferences.invite_url) : null;
