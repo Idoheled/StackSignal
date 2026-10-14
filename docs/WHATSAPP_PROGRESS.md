@@ -1,5 +1,39 @@
 # WhatsApp notification implementation progress
 
+## 2026-10-14 — GitHub access restored; signed transport implemented
+
+The owner's permission update allowed creation of [draft PR #4](https://github.com/Idoheled/StackSignal/pull/4).
+Its first hosted CI run passed types, all database/security tests, the standalone
+build and asset checks, then caught a checkbox timing bug across browsers. The
+checkbox now updates immediately, disables during saving and restores its
+previous value on failure. The suite will rerun on the next feature commit.
+
+Added the signed, bounded webhook dispatcher and signed receipts, a loopback
+Node receiver with a persistent SQLite WAL queue, immutable payload deduplication,
+local-only Ollama message generation and an OpenClaw group adapter. The adapter's
+receipt contract was checked against pinned OpenClaw 2026.10.3 source. Model text
+cannot choose the destination, timestamps or UI link. Ollama cloud inference is
+disabled in the prepared systemd service; Gemini is untouched.
+
+The queue retries generation failures before sending. Lost webhook responses
+replay the same event ID without another send. Interrupted/ambiguous sends pause
+for reconciliation. Confirmed provider receipts clear copied content. These are
+synthetic transport/recovery checks, not proof of a real WhatsApp group send.
+
+The new OCI SDK script defaults to an inventory/capacity check. Its apply path is
+bounded, uses resumable resource tags/idempotency tokens, requires a separate
+Ed25519 SSH key and narrow administrative SSH network, and guards home region,
+existing compute and the free CPU/RAM/volume envelope. A live run at 15:09 UTC
+again returned OUT_OF_HOST_CAPACITY for 2 OCPU/12 GB and 1 OCPU/8 GB in all
+Jerusalem fault domains. It created no infrastructure. No background retry has
+been scheduled.
+
+Validation so far: 86 automated tests, six preflight checks, four provisioning
+policy checks and both TypeScript checks passed. Runtime installation, OpenClaw
+configuration validation, ARM model benchmarking, production secrets/HTTPS,
+WhatsApp pairing, actual delivery/reconnect checks and rollout remain pending.
+Main and production are unchanged.
+
 ## 2026-10-14 — Oracle access and notification foundations
 
 The owner supplied an OCI API signing-key pair and configuration. The pair and

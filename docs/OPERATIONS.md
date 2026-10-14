@@ -4,11 +4,13 @@
 
 Preparation is isolated on `feat/whatsapp-notifications`, based on release
 `v0.1.1`. The owner has an OCI account and a WhatsApp group, and selected local
-Ollama to preserve Gemini evaluation quotas. A read-only Cloud Shell preflight
-and onboarding guide are prepared; no Oracle VM, production schema, message or
-main deployment was created. Six synthetic preflight checks, both TypeScript
-checks and all 67 existing automated tests passed locally. Live OCI checks and
-bot pairing remain pending. Follow [WhatsApp progress](WHATSAPP_PROGRESS.md) and
+Ollama to preserve Gemini evaluation quotas. Draft PR #4 contains opt-in UI,
+an additive private outbox, signed webhook dispatch/receipts, a durable SQLite
+receiver and Ollama/OpenClaw adapters. No Oracle VM, production schema, message
+or main deployment was created. All 86 automated tests, ten OCI checks and both
+TypeScript checks passed locally. Direct OCI authentication works; home-region
+ARM capacity is unavailable. Hosted browser checks and actual host installation,
+pairing and delivery remain release gates. Follow [WhatsApp progress](WHATSAPP_PROGRESS.md) and
 [host onboarding](WHATSAPP_SETUP.md); do not treat this as an enabled feature.
 
 ## Preserve this deployment

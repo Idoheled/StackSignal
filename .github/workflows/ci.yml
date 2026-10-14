@@ -38,6 +38,8 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm typecheck:collector
       - run: pnpm test
+      - run: python3 tests/oci-preflight.test.py
+      - run: python3 tests/oci-host.test.py
       - run: pnpm build:standalone
       - run: node scripts/verify-client-boundary.mjs
       - run: pnpm exec playwright install --with-deps chromium firefox webkit
