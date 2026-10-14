@@ -1,5 +1,19 @@
 # WhatsApp notification implementation progress
 
+## 2026-10-14 — Live scheduler routing and REST lease verification
+
+Hosted [CI run 38609954835](https://github.com/Idoheled/StackSignal/actions/runs/38609954835)
+passed 90 automated tests, 15 OCI checks and all 36 browser tests. Supabase
+`pg_net` successfully dispatched the feature workflow with HTTP 200 and returned
+[runner 38615783181](https://github.com/Idoheled/StackSignal/actions/runs/38615783181).
+That run caught a live-only REST safeguard: the control updates lacked explicit
+WHERE clauses and were rejected before any OCI operation. Native SQL/PGlite did
+not enforce that REST safeguard. Every control update is now scoped to the fixed
+deployment, and the correction was applied as an additive temporary migration.
+The signed live endpoint is being retested for leases, renewal, checkpoint,
+premature-stop rejection and release before another hosted capacity attempt.
+The hourly schedule remains paused until that complete attempt is verified.
+
 ## 2026-10-14 — Persistent hourly provisioner implementation
 
 Implemented the branch-only hosted runner, atomic fenced leases, durable launch
