@@ -24,6 +24,7 @@ fi
 install -d -m 0750 /etc/stacksignal
 printf '%s\n' "$bootstrap_version" > "$marker"
 chmod 0600 "$marker"
+systemctl stop stacksignal-bot stacksignal-openclaw caddy 2>/dev/null || true
 source_root="$(cd "$(dirname "$0")/../.." && pwd)"
 if [[ "$source_root" != /opt/stacksignal || ! -f "$source_root/bot/server.mjs" ]]; then
   echo 'Place the reviewed checkout at /opt/stacksignal first.' >&2

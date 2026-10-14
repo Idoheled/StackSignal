@@ -45,5 +45,6 @@ if Path("/etc/iptables/rules.v4").parent.exists():
     with open("/etc/iptables/rules.v4","w") as output:
         subprocess.run(["iptables-save"],stdout=output,check=True)
 subprocess.run(["systemctl","daemon-reload"],check=True)
-subprocess.run(["systemctl","enable","--now","stacksignal-openclaw","stacksignal-bot","caddy"],check=True)
+subprocess.run(["systemctl","enable","stacksignal-openclaw","stacksignal-bot","caddy"],check=True)
+subprocess.run(["systemctl","restart","stacksignal-openclaw","stacksignal-bot","caddy"],check=True)
 print(json.dumps({"configured":True,"delivery_enabled":False}))

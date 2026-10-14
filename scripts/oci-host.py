@@ -131,6 +131,8 @@ def main(argv=None, on_manifest=None):
     if manifest.get("instance") and not owned:
         raise HostError("Saved instance is absent or terminated; do not allocate a replacement automatically.")
     if owned:
+        if manifest.get("instance") and manifest["instance"] != owned[0]["id"]:
+            raise HostError("The tagged host differs from the saved instance; reconcile manually.")
         manifest["instance"] = owned[0]["id"]
         if on_manifest is not None:
             on_manifest(dict(manifest))
