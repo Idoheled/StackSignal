@@ -27,7 +27,11 @@ TypeScript checks, standalone build, client asset boundary and release metadata
 checks passed. Local browser execution is blocked by unavailable binaries;
 downloads returned invalid archives and dependency installation was unsupported.
 The three-engine suite must run in hosted CI before this work is considered
-browser-verified.
+browser-verified. The work branch was pushed successfully, but both the supplied
+GitHub PAT and connected integration returned 403 when creating a draft PR.
+No PR or new hosted CI run was created. Opening the prepared compare page as
+the repository owner, or granting Pull Requests write access, is the next CI
+handoff; main must remain unchanged.
 
 The Oracle host, webhook dispatcher/receiver and Ollama/OpenClaw delivery are
 still pending. No production migration, frontend deployment, WhatsApp pairing
