@@ -1,0 +1,40 @@
+# TEMPORARY branch-only provisioner. Remove before merging the bot feature.
+name: OCI Always Free capacity and bot bootstrap
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: stacksignal-oci-one-host
+  cancel-in-progress: false
+
+jobs:
+  claim:
+    if: github.repository == 'Idoheled/StackSignal' && github.ref == 'refs/heads/feat/whatsapp-notifications'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install reviewed OCI SDK
+        run: |
+          python3 -m venv "$RUNNER_TEMP/oci-venv"
+          "$RUNNER_TEMP/oci-venv/bin/pip" install --disable-pip-version-check 'oci==2.187.2'
+      - name: Reconcile, check capacity and prepare the dedicated bot host
+        run: '"$RUNNER_TEMP/oci-venv/bin/python" scripts/oci-capacity-runner.py'
+        env:
+          OCI_USER: ${{ secrets.OCI_USER }}
+          OCI_TENANCY: ${{ secrets.OCI_TENANCY }}
+          OCI_FINGERPRINT: ${{ secrets.OCI_FINGERPRINT }}
+          OCI_API_PRIVATE_KEY: ${{ secrets.OCI_API_PRIVATE_KEY }}
+          SSH_ADMIN_PRIVATE_KEY: ${{ secrets.SSH_ADMIN_PRIVATE_KEY }}
+          SSH_ADMIN_PUBLIC_KEY: ${{ secrets.SSH_ADMIN_PUBLIC_KEY }}
+          OCI_CRON_CONTROL_SECRET: ${{ secrets.OCI_CRON_CONTROL_SECRET }}
+          OCI_CRON_CONTROL_WEBHOOK_URL: ${{ secrets.OCI_CRON_CONTROL_WEBHOOK_URL }}
+          WHATSAPP_WEBHOOK_SECRET: ${{ secrets.WHATSAPP_WEBHOOK_SECRET }}
+          WHATSAPP_APP_ORIGIN: ${{ secrets.WHATSAPP_APP_ORIGIN }}
+          GITHUB_TOKEN: ${{ github.token }}

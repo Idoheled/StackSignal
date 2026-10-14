@@ -3,3 +3,6 @@ verify_jwt = false
 
 [functions.whatsapp-dispatcher]
 verify_jwt = false
+
+[functions.oci-cron-control]
+verify_jwt = false

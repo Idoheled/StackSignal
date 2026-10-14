@@ -72,6 +72,15 @@ test("durable queue deduplicates retries, signed receipts and payload conflicts"
     assert.equal(sent, 1);
   } finally { store.close(); }
 });
+test("unpaired health is explicit and authenticated events cannot enter the queue", async () => {
+  const store = new DeliveryStore(":memory:");
+  try {
+    const options = { store, secret, appOrigin, now: () => time, deliveryEnabled: false };
+    assert.deepEqual(await (await handleWebhook(new Request("https://bot.example/healthz"), options)).json(), { ok: true, delivery_enabled: false });
+    assert.equal((await handleWebhook(await request(), options)).status, 503);
+    assert.equal(store.get(event.id), undefined);
+  } finally { store.close(); }
+});
 test("lost webhook receipt retries the same event without another send", async () => {
   const store = new DeliveryStore(":memory:"); let sends = 0; const finished: any[] = [];
   try {

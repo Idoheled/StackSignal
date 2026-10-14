@@ -34,6 +34,16 @@ class FreeHostPolicy(unittest.TestCase):
             with self.assertRaises(host.HostError):
                 host.ssh_rule(value)
 
+    def test_saved_launch_cannot_expand_cost_or_change_identity(self):
+        request = {"availability_domain":"AD-1","fault_domain":None,"ocpus":2,"memory_gb":12,
+            "image_id":"ocid1.image.oc1.il-jerusalem-1.example","subnet_id":"subnet","ssh_public_key":"dedicated"}
+        host.validate_launch(request,["AD-1"],"subnet","dedicated")
+        for changed in ({"ocpus":4},{"memory_gb":24},{"availability_domain":"other"},
+                        {"subnet_id":"other"},{"ssh_public_key":"other"},{"fault_domain":"unknown"},
+                        {"image_id":"ocid1.image.oc1.other.example"}):
+            with self.assertRaises(host.HostError):
+                host.validate_launch({**request,**changed},["AD-1"],"subnet","dedicated")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -64,14 +64,24 @@ def read_public_key(path):
     return " ".join(parts[:2])
 
 
-def main():
+def validate_launch(request, domains, subnet, public_key):
+    if (not isinstance(request, dict) or (request.get("ocpus"), request.get("memory_gb")) not in SIZES
+        or request.get("availability_domain") not in domains
+        or request.get("fault_domain") not in (None, "FAULT-DOMAIN-1", "FAULT-DOMAIN-2", "FAULT-DOMAIN-3")
+        or request.get("subnet_id") != subnet or request.get("ssh_public_key") != public_key
+        or not str(request.get("image_id", "")).startswith("ocid1.image.oc1.il-jerusalem-1.")):
+        raise HostError("Saved launch parameters do not match the reviewed free host.")
+
+
+def main(argv=None, on_manifest=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", required=True)
     parser.add_argument("--state-dir", required=True)
     parser.add_argument("--apply", action="store_true")
     parser.add_argument("--ssh-public-key")
     parser.add_argument("--ssh-cidr")
-    args = parser.parse_args()
+    parser.add_argument("--prepare-network", action="store_true")
+    args = parser.parse_args(argv)
     os.umask(0o077)
     state_dir = Path(args.state_dir).resolve()
     repo = Path(__file__).resolve().parent.parent
@@ -118,11 +128,28 @@ def main():
         "deployment": (i.freeform_tags or {}).get("deployment")} for i in instances]
     volume_summary = [{"size": v.size_in_gbs, "state": v.lifecycle_state} for v in volumes]
     owned = free_guard(config["region"], homes[0], instance_summary, volume_summary, manifest["deployment"])
+    if manifest.get("instance") and not owned:
+        raise HostError("Saved instance is absent or terminated; do not allocate a replacement automatically.")
     if owned:
+        manifest["instance"] = owned[0]["id"]
+        if on_manifest is not None:
+            on_manifest(dict(manifest))
         print(json.dumps({"status": "existing_instance", "instance_id": owned[0]["id"], "state": owned[0]["state"], "resources_created": 0}))
         return 0
     reports, choice = [], None
-    for domain in domains:
+    previous_request = manifest.get("launch_request")
+    if previous_request:
+        if args.prepare_network:
+            raise HostError("Reconcile the saved launch before preparing any network.")
+        if not args.ssh_public_key:
+            raise HostError("Reconciliation requires the original dedicated SSH public key.")
+        validate_launch(previous_request, [d.name for d in domains], manifest.get("subnet"), read_public_key(args.ssh_public_key))
+        age = (datetime.now(timezone.utc) - datetime.fromisoformat(manifest["launch_started_at"])).total_seconds()
+        if age < -300 or age > 23 * 3600:
+            raise HostError("An ambiguous launch is older than its retry-token safety window; reconcile manually.")
+        choice = (previous_request["availability_domain"], previous_request.get("fault_domain"),
+                  previous_request["ocpus"], previous_request["memory_gb"])
+    for domain in ([] if previous_request or args.prepare_network else domains):
         faults = all_items(identity.list_fault_domains, compartment_id=tenancy, availability_domain=domain.name)
         details = oci.core.models.CreateComputeCapacityReportDetails(compartment_id=tenancy, availability_domain=domain.name,
             shape_availabilities=[oci.core.models.CreateCapacityReportShapeAvailabilityDetails(
@@ -136,14 +163,16 @@ def main():
             reports.append({"domain": domain.name, "fault_domain": item.fault_domain, "ocpus": cpu, "memory_gb": ram, "status": item.availability_status})
             if item.availability_status == "AVAILABLE" and (choice is None or cpu > choice[2]):
                 choice = (domain.name, item.fault_domain, cpu, ram)
+    if args.prepare_network:
+        choice = (domains[0].name, None, 2, 12)
     if not choice:
         print(json.dumps({"status": "out_of_host_capacity", "checked_at": datetime.now(timezone.utc).isoformat(), "resources_created": 0, "capacity": reports}))
         return 2
-    if not args.apply:
+    if not args.apply and not args.prepare_network:
         print(json.dumps({"status": "capacity_available", "shape": SHAPE, "ocpus": choice[2], "memory_gb": choice[3], "boot_gb": BOOT_GB, "resources_created": 0}))
         return 0
     if not args.ssh_public_key or not args.ssh_cidr:
-        raise HostError("--apply requires --ssh-public-key and --ssh-cidr.")
+        raise HostError("Provisioning requires --ssh-public-key and --ssh-cidr.")
     public_key, admin_cidr = read_public_key(args.ssh_public_key), ssh_rule(args.ssh_cidr)
     images = all_items(compute.list_images, compartment_id=tenancy, operating_system="Canonical Ubuntu", operating_system_version="24.04", shape=SHAPE, sort_by="TIMECREATED", sort_order="DESC")
     images = [i for i in images if "aarch64" in i.display_name and i.lifecycle_state == "AVAILABLE"]
@@ -157,6 +186,8 @@ def main():
         temporary = manifest_path.with_suffix(".tmp")
         temporary.write_text(json.dumps(manifest, indent=2) + "\n")
         temporary.replace(manifest_path)
+        if on_manifest is not None:
+            on_manifest(dict(manifest))  # Persist in the fenced control plane before proceeding.
     save()  # Persist idempotency token before the first mutation.
 
     def resource(label, items, create):
@@ -164,10 +195,10 @@ def main():
         if len(matches) > 1:
             raise HostError("Duplicate deployment resources; reconcile " + label + " before continuing.")
         value = matches[0] if matches else create().data
-        if value.lifecycle_state != "AVAILABLE":
-            raise HostError(label + " is not yet available; rerun after it finishes provisioning.")
         manifest[label] = value.id
         save()
+        if value.lifecycle_state != "AVAILABLE":
+            raise HostError(label + " is not yet available; rerun after it finishes provisioning.")
         return value
 
     m = oci.core.models
@@ -188,12 +219,30 @@ def main():
     subnet = resource("subnet", all_items(network.list_subnets, compartment_id=tenancy, vcn_id=vcn.id), lambda: network.create_subnet(m.CreateSubnetDetails(
         compartment_id=tenancy, vcn_id=vcn.id, cidr_block="10.42.1.0/24", route_table_id=route.id, security_list_ids=[security.id],
         prohibit_public_ip_on_vnic=False, display_name="stacksignal-whatsapp", dns_label="whatsapp", freeform_tags=tags), opc_retry_token=manifest["deployment"]))
-    instance = compute.launch_instance(m.LaunchInstanceDetails(
+    if args.prepare_network:
+        print(json.dumps({"status":"network_prepared","resources_created":"free networking only","instance_created":False}))
+        return 0
+    if not previous_request:
+        manifest["launch_request"] = {"availability_domain":choice[0],"fault_domain":choice[1],"ocpus":choice[2],"memory_gb":choice[3],"image_id":images[0].id,"subnet_id":subnet.id,"ssh_public_key":public_key}
+        manifest["launch_started_at"] = datetime.now(timezone.utc).isoformat()
+        save()  # Durable launch intent and exact parameters precede the allocation call.
+    request = manifest["launch_request"]
+    validate_launch(request, [d.name for d in domains], subnet.id, public_key)
+    try:
+        instance = compute.launch_instance(m.LaunchInstanceDetails(
         compartment_id=tenancy, availability_domain=choice[0], fault_domain=choice[1], display_name="stacksignal-whatsapp", freeform_tags=tags,
         shape=SHAPE, shape_config=m.LaunchInstanceShapeConfigDetails(ocpus=choice[2], memory_in_gbs=choice[3]),
-        source_details=m.InstanceSourceViaImageDetails(image_id=images[0].id, boot_volume_size_in_gbs=BOOT_GB, boot_volume_vpus_per_gb=10),
-        create_vnic_details=m.CreateVnicDetails(subnet_id=subnet.id, assign_public_ip=True, hostname_label="whatsapp"),
-        metadata={"ssh_authorized_keys": public_key}), opc_retry_token=manifest["launch_token"]).data
+        source_details=m.InstanceSourceViaImageDetails(image_id=request["image_id"], boot_volume_size_in_gbs=BOOT_GB, boot_volume_vpus_per_gb=10),
+        create_vnic_details=m.CreateVnicDetails(subnet_id=request["subnet_id"], assign_public_ip=True, hostname_label="whatsapp"),
+        metadata={"ssh_authorized_keys": request["ssh_public_key"]}), opc_retry_token=manifest["launch_token"]).data
+    except oci.exceptions.ServiceError as error:
+        if error.status == 500 and "out of host capacity" in (error.message or "").lower():
+            # OCI explicitly rejected allocation. A later attempt gets a new token.
+            manifest.pop("launch_request", None); manifest.pop("launch_started_at", None)
+            manifest["launch_token"] = str(uuid.uuid4()); save()
+            print(json.dumps({"status":"out_of_host_capacity","resources_created":"free networking only","instance_created":False}))
+            return 2
+        raise
     manifest["instance"] = instance.id
     save()
     print(json.dumps({"status": "instance_requested", "instance_id": instance.id, "state": instance.lifecycle_state, "shape": SHAPE, "ocpus": choice[2], "memory_gb": choice[3], "boot_gb": BOOT_GB}))

@@ -98,6 +98,8 @@ test("WhatsApp opt-in isolation, reviewed events, leases and delivery receipts",
       assert(!JSON.stringify(item).includes("Private test secret"));
       await assert.rejects(db.query("select * from ss_private.whatsapp_outbox"),/permission denied/);
       await assert.rejects(db.query("select ss_whatsapp_claim_events()"),/permission denied/);
+      await assert.rejects(db.query("select ss_whatsapp_dispatch_configuration()"),/permission denied/);
+      await assert.rejects(db.query("select ss_whatsapp_stage_webhook('https://stacksignal.8.8.8.8.sslip.io/v1/events')"),/permission denied/);
       await db.exec("reset role;set role anon");
       await assert.rejects(db.query("select ss_whatsapp_article($1)",[article]),/permission denied/);
       await db.exec("reset role");

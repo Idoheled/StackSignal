@@ -1,5 +1,30 @@
 # WhatsApp notification implementation progress
 
+## 2026-10-14 — Persistent hourly provisioner implementation
+
+Implemented the branch-only hosted runner, atomic fenced leases, durable launch
+parameters, signed control/replies and automatic cron stop with owner PR notice.
+The existing registered CI workflow dispatches the temporary reusable workflow
+on this feature branch, preserving main and its deployment/release conditions.
+The runner resumes owned resources, rejects paid configurations and replacement
+hosts, verifies SSH identity through the OCI console API, and runs a local model
+and TLS readiness check before requesting QR pairing. Partial installs resume.
+
+Applied the additive disabled WhatsApp schema, temporary control schema and
+server-only Vault configuration RPCs to the existing Supabase project. Deployed
+custom-authenticated `oci-cron-control` and `whatsapp-dispatcher`. Signed live
+ping succeeds; unsigned, tampered and stale control requests return 401.
+Member count remains six; all opt-ins default false and the outbox is empty.
+Delivery remains disabled. Existing collection schedules remain active.
+
+Validation: 90 automated tests, 15 Python OCI safety checks, both TypeScript
+checks, standalone build, client asset boundary, release metadata, workflow YAML
+and local unpaired HTTP health passed. Hosted CI and the actual scheduler route
+must pass before activation. ARM installation, model benchmark, QR pairing and
+actual group delivery await physical capacity. Follow [automation operations](OCI_AUTOMATION.md).
+
+This entry supersedes earlier preparation-only snapshots below; main is unchanged.
+
 ## 2026-10-14 — GitHub access restored; signed transport implemented
 
 The owner's permission update allowed creation of [draft PR #4](https://github.com/Idoheled/StackSignal/pull/4).
