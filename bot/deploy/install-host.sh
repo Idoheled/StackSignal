@@ -96,9 +96,11 @@ if [[ ! -e /var/lib/stacksignal-bot/openclaw/openclaw.json ]]; then
   run_bot node "$source_root/bot/deploy/render-openclaw-config.mjs" --core-only
 fi
 step whatsapp_plugin
-if ! run_bot node -e 'const c=JSON.parse(require("fs").readFileSync(process.env.OPENCLAW_CONFIG_PATH));process.exit(c.plugins?.installs?.whatsapp ? 0:1)'; then
-  run_bot openclaw plugins install npm:@openclaw/whatsapp@2026.10.3 --pin
+if ! run_bot node "$source_root/bot/deploy/verify-whatsapp-plugin.mjs" --quiet; then
+  # Explicit confirmation of this reviewed npm source; security policy is enforced.
+  run_bot openclaw plugins install npm:@openclaw/whatsapp@2026.10.3 --pin --force --no-enable --accept-capabilities
 fi
+run_bot node "$source_root/bot/deploy/verify-whatsapp-plugin.mjs"
 if ! run_bot node -e 'const c=JSON.parse(require("fs").readFileSync(process.env.OPENCLAW_CONFIG_PATH));process.exit(c.channels?.whatsapp ? 0:1)'; then
   run_bot node "$source_root/bot/deploy/render-openclaw-config.mjs" --finalize-plugin-install
 fi

@@ -2,6 +2,7 @@
 import { randomBytes } from "node:crypto";
 import { mkdirSync, writeFileSync, existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { verifyInstalledWhatsApp } from "./verify-whatsapp-plugin.mjs";
 process.umask(0o077);
 const state = process.env.OPENCLAW_STATE_DIR;
 if (!state || !state.startsWith("/") || state.includes("..")) throw new Error("Absolute OpenClaw state directory required");
@@ -23,8 +24,9 @@ const config = {
 };
 if (coreOnly) { delete config.channels; config.plugins = { allow: [] }; }
 if (finalize) {
-  if (!existing?.plugins?.installs?.whatsapp) throw new Error("Pinned WhatsApp plugin has not been installed");
-  config.plugins.installs = existing.plugins.installs;
+  verifyInstalledWhatsApp(state);
+  // 2026.10.3 stores installation provenance in the installed index, not JSON.
+  if (existing.plugins?.load) config.plugins.load = existing.plugins.load;
   config.gateway = existing.gateway;
 }
 writeFileSync(path, JSON.stringify(config, null, 2) + "\n", { mode: 0o600, flag: existing ? "w" : "wx" });

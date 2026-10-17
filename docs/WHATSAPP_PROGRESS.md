@@ -1,5 +1,25 @@
 # WhatsApp notification implementation progress
 
+## 2026-10-17 — Match pinned OpenClaw plugin-source and index contracts
+
+The service-context retry still exited at the plugin step, without the earlier
+EACCES code. Review of the exact upstream `v2026.10.3` source confirmed two
+bootstrap incompatibilities: npm sources require explicit non-ClawHub source
+confirmation, and `plugins.installs` is a transient runtime carrier which must
+not be written to `openclaw.json`. Authoritative provenance is in the installed
+index and exposed by `openclaw plugins inspect whatsapp --json`.
+
+Setup confirms only `npm:@openclaw/whatsapp@2026.10.3`, leaves it disabled during
+installation, and validates indexed npm provenance, exact name/version/spec and
+the installed package/entry real paths under the service state. The final
+outbound-only config preserves the gateway identity without legacy install
+records. The pinned official manifest was reviewed: WhatsApp channel, login/call
+contracts and its skills; agent tools remain denied and incoming chats disabled.
+Security install policy remains enforced. New tests cover modern index records,
+publisher/version changes, package tampering and symlinks outside managed state.
+Both stdout and stderr are classified into fixed safe diagnostics. CI and live
+same-host verification remain required.
+
 ## 2026-10-17 — Isolate service-user installation context
 
 [Run 39050260289](https://github.com/Idoheled/StackSignal/actions/runs/39050260289)

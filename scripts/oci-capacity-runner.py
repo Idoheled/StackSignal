@@ -202,7 +202,7 @@ def run_command(args, heartbeat, timeout=120, data=None):
 
 def command_diagnostic(stdout, stderr):
     """Return only known codes/our own fixed markers; never raw remote output."""
-    text=stderr[-65536:].decode(errors="replace")
+    text=(stderr[-65536:]+b"\n"+stdout[-65536:]).decode(errors="replace")
     result={"codes":[code for code in ("ENOENT","EACCES","EBADENGINE","ECONNRESET","ENOTFOUND","ENOMEM","EINTEGRITY","E404","E401","ETARGET","EUSAGE") if code in text]}
     if "spawn git" in text.lower() and "ENOENT" in text:result["missing_git"]=True
     if "EACCES" in text:
@@ -212,6 +212,9 @@ def command_diagnostic(stdout, stderr):
                          ("ssh_authentication","Permission denied"),("ssh_identity","Host key verification failed")):
         if marker in text:result[value]=True
     lower=text.lower()
+    for value,marker in (("plugin_source_confirmation","non-clawhub"),("plugin_already_exists","already exists"),
+        ("plugin_capability_consent","requires capability consent"),("plugin_legacy_record","Pinned WhatsApp plugin has not been installed")):
+        if marker.lower() in lower:result[value]=True
     for value,markers in (("package_lock",("could not get lock","frontend lock was locked","dpkg database lock")),
         ("package_dependency",("dependency problems","unmet dependencies")),
         ("package_architecture",("does not match system","wrong architecture")),
@@ -219,11 +222,14 @@ def command_diagnostic(stdout, stderr):
         ("disk_full",("no space left on device",)),("filesystem_readonly",("read-only file system",))):
         if any(marker in lower for marker in markers):result[value]=True
     allowed={"prerequisites","node","openclaw","ollama","caddy","service_users","whatsapp_plugin","config_validation","model_pull","complete"}
-    for line in stdout[-65536:].decode(errors="replace").splitlines():
+    for line in text.splitlines():
         try:entry=json.loads(line)
         except (ValueError,TypeError):continue
         if isinstance(entry,dict) and entry.get("status")=="bootstrap_step" and isinstance(entry.get("step"),str) and entry["step"] in allowed:
             result["bootstrap_step"]=entry["step"]
+        if isinstance(entry,dict) and entry.get("status")=="plugin_verification_failed" and entry.get("reason") in (
+            "plugin_identity","plugin_provenance","plugin_path","plugin_package","plugin_inspection"):
+            result["plugin_verification"]=entry["reason"]
     return result
 
 
