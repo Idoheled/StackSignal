@@ -47,7 +47,9 @@ download 'https://nodejs.org/dist/v24.19.0/node-v24.19.0-linux-arm64.tar.xz' \
 umask 022  # Runtime binaries must be readable by the unprivileged service users.
 install -d -m 0755 /opt/node
 tar -xJf "$download_dir/node.tar.xz" --strip-components=1 -C /opt/node
-export PATH=/opt/node/bin:/usr/local/bin:/usr/bin:/bin
+# Debian package helpers (ldconfig/start-stop-daemon) and account utilities
+# (useradd/runuser) live in sbin and are needed by this root bootstrap.
+export PATH=/opt/node/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 step openclaw
 npm_extra=()
 npm_release="$(npm --version)"

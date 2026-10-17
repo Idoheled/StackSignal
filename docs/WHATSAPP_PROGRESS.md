@@ -1,5 +1,16 @@
 # WhatsApp notification implementation progress
 
+## 2026-10-17 — Caddy installed; root administrative PATH corrected
+
+[Run 39049658349](https://github.com/Idoheled/StackSignal/actions/runs/39049658349)
+passed the Caddy step and reached service-user setup, then exited 127. The
+bootstrap had replaced PATH with bin directories only, hiding `/usr/sbin/useradd`,
+`runuser` and Debian package-maintainer helpers such as `ldconfig`. The root
+installer PATH now includes the standard sbin directories. This also explains
+why bare dpkg failed earlier; apt installation already advanced past Caddy.
+The same host and installed runtimes are preserved. CI and the same-host retry
+remain required before QR handoff is claimed.
+
 ## 2026-10-17 — Caddy package installation isolated
 
 The structured [run 39049088516](https://github.com/Idoheled/StackSignal/actions/runs/39049088516)
