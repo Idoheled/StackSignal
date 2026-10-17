@@ -1,5 +1,30 @@
 # WhatsApp notification implementation progress
 
+## 2026-10-17 — Host ready for WhatsApp QR handoff
+
+[Run 39067999141](https://github.com/Idoheled/StackSignal/actions/runs/39067999141)
+resumed the same allocated VM without creating resources and completed setup
+at 20:50 UTC (23:50 in Israel). All four services passed their active checks.
+Local-only `qwen3:4b` generated a real formatted test alert in 70,743 ms; the
+smaller-model fallback was unnecessary. Public HTTPS health returned HTTP 200,
+`ok: true`, `delivery_enabled: false`, independently confirmed after the run.
+
+The signed deployment state is `AWAITING_WHATSAPP_QR`. The provisioner removed
+its temporary SSH rule, disabled itself and unscheduled only the capacity job.
+The collector, evaluator and internal-review schedules remain active; WhatsApp
+dispatch remains paused. Owner QR instructions were posted to PR #4.
+
+Runtime source `36600a5` passed hosted CI: 94 Node tests, 27 Python OCI safety
+checks, 36 browser tests, both TypeScript checks, build and boundary/release
+checks. Earlier hourly runs of this revision safely skipped with
+`unverified_revision` until the tested SHA was approved with no active lease;
+they were not successful installations. The final run is the installation proof.
+
+Phone pairing, exact group identity and real article/release delivery receipts
+remain outstanding. Main and production UI have not been released. Use the
+service-owned working-directory QR command in `WHATSAPP_SETUP.md` or the owner
+handoff comment; never publish administration keys or pairing state.
+
 ## 2026-10-17 — Plugin/config passed; local-model startup readiness
 
 [Run 39051981216](https://github.com/Idoheled/StackSignal/actions/runs/39051981216)

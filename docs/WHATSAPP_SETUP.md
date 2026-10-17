@@ -143,7 +143,8 @@ The implementer places the reviewed checkout at `/opt/stacksignal` and runs
 prepared bootstrap pins Node 24.19.0, OpenClaw/WhatsApp plugin 2026.10.3, Ollama
 0.40.4 and Caddy 2.11.7; downloaded runtime archives have recorded SHA-256
 checks. It validates the OpenClaw configuration and starts only local Ollama.
-These deployment steps have not yet run on an actual ARM host.
+These deployment steps run on the allocated ARM host. Consult
+`WHATSAPP_PROGRESS.md` for the latest live verification checkpoint.
 
 The `qwen3:4b` model is an initial candidate. Record its installed digest, measure
 memory/latency and review generated messages before activation. If it does not
@@ -173,10 +174,11 @@ health are exposed. OpenClaw admin and Ollama ports stay on loopback.
 For pairing, the implementer runs this in the secure SSH terminal:
 
 ```sh
-sudo -u stacksignal env PATH=/opt/node/bin:/usr/local/bin:/usr/bin:/bin \
+sudo -u stacksignal -H /bin/sh -c 'cd /var/lib/stacksignal-bot && exec env \
+  PATH=/opt/node/bin:/usr/local/bin:/usr/bin:/bin \
   OPENCLAW_STATE_DIR=/var/lib/stacksignal-bot/openclaw \
   OPENCLAW_CONFIG_PATH=/var/lib/stacksignal-bot/openclaw/openclaw.json \
-  /opt/node/bin/openclaw channels login --channel whatsapp
+  /opt/node/bin/openclaw channels login --channel whatsapp'
 ```
 
 The only required phone action is **WhatsApp → Settings/menu → Linked devices →
