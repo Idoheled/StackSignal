@@ -1,5 +1,16 @@
 # WhatsApp notification implementation progress
 
+## 2026-10-17 — Full console snapshot for trusted SSH identity
+
+Live SSH verification found a second bootstrap issue: OCI's default console
+content response contains the first 10,240 bytes. Ubuntu's host keys were outside
+that prefix. An independent authenticated full snapshot returned 127,993 bytes,
+one valid Ed25519 public key and completed cloud-init. The runner now requests
+the bounded full 1 MiB snapshot before validating the key. A regression fixture
+places the host key after the default prefix and verifies identity extraction.
+No SSH trust checks were relaxed, and the same RUNNING host is preserved.
+The corrected source is undergoing CI before same-host bootstrap resumes.
+
 ## 2026-10-17 — Resume allocated host after empty RPC response
 
 The allocation run saved the RUNNING host and its public address, then stopped

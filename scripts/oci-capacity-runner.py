@@ -139,6 +139,12 @@ def console_host_key(console):
     return key, fingerprint
 
 
+def console_host_identity(compute, history_id):
+    # OCI defaults to the first 10 KiB; Ubuntu's host keys appear later in boot.
+    console=compute.get_console_history_content(history_id,offset=0,length=1024*1024).data
+    return console_host_key(console)
+
+
 def run_command(args, heartbeat, timeout=120, data=None):
     heartbeat.ensure()
     result = subprocess.run(args, input=data, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=timeout)
@@ -310,8 +316,7 @@ def main():
                             if history.lifecycle_state=="SUCCEEDED":break
                             if history.lifecycle_state=="FAILED":raise RunnerError("Console capture failed")
                             time.sleep(5)
-                        console=compute.get_console_history_content(history.id).data
-                        try:key,fingerprint=console_host_key(console)
+                        try:key,fingerprint=console_host_identity(compute,history.id)
                         except RunnerError:
                             time.sleep(10);continue
                         manifest.update(host_public_key=key,host_fingerprint=fingerprint);checkpoint();break

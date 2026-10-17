@@ -2,6 +2,7 @@ import base64
 import hashlib
 import importlib.util
 from pathlib import Path
+from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
@@ -27,6 +28,21 @@ class ProvisionerBoundary(unittest.TestCase):
         self.assertEqual(fingerprint,"SHA256:"+base64.b64encode(hashlib.sha256(raw).digest()).decode().rstrip("="))
         for console in (b"fingerprint only",key+b"\nssh-ed25519 "+base64.b64encode(header+bytes(reversed(range(32))))):
             with self.assertRaises(runner.RunnerError):runner.console_host_key(console)
+
+    def test_host_identity_reads_beyond_oci_default_console_prefix(self):
+        raw=b"\x00\x00\x00\x0bssh-ed25519\x00\x00\x00\x20"+bytes(range(32))
+        key=b"ssh-ed25519 "+base64.b64encode(raw)
+        log=b"early boot output\n"*1000+key+b" root@host\n"
+        class Compute:
+            def get_console_history_content(self,identifier,offset=0,length=10240):
+                self.identifier=identifier
+                return SimpleNamespace(data=log[offset:offset+length])
+        compute=Compute()
+        with self.assertRaises(runner.RunnerError):runner.console_host_key(compute.get_console_history_content("snapshot").data)
+        public_key,fingerprint=runner.console_host_identity(compute,"snapshot")
+        self.assertEqual(public_key,key.decode())
+        self.assertTrue(fingerprint.startswith("SHA256:"))
+        self.assertEqual(compute.identifier,"snapshot")
 
     def test_lost_lease_stops_before_running_host_commands(self):
         heartbeat=runner.Heartbeat(None);heartbeat.lost.set()
