@@ -75,7 +75,8 @@ umask 077
 step service_users
 id stacksignal >/dev/null 2>&1 || useradd --system --user-group --home-dir /var/lib/stacksignal-bot --shell /usr/sbin/nologin stacksignal
 id ollama >/dev/null 2>&1 || useradd --system --user-group --home-dir /var/lib/ollama --shell /usr/sbin/nologin ollama
-install -d -o stacksignal -g stacksignal -m 0700 /var/lib/stacksignal-bot /var/lib/stacksignal-bot/openclaw
+install -d -o stacksignal -g stacksignal -m 0700 /var/lib/stacksignal-bot /var/lib/stacksignal-bot/openclaw \
+  /var/lib/stacksignal-bot/.cache /var/lib/stacksignal-bot/.npm
 install -d -o root -g stacksignal -m 0750 /etc/stacksignal
 install -d -o ollama -g ollama -m 0700 /var/lib/ollama
 install -m 0644 "$source_root/bot/deploy/ollama.service" /etc/systemd/system/ollama.service
@@ -84,11 +85,13 @@ install -m 0644 "$source_root/bot/deploy/stacksignal-openclaw.service" /etc/syst
 if [[ ! -e /etc/stacksignal/bot.env ]]; then
   install -o root -g stacksignal -m 0640 "$source_root/bot/deploy/bot.env.example" /etc/stacksignal/bot.env
 fi
-run_bot() {
-  runuser -u stacksignal -- env PATH="$PATH" \
+run_bot() (
+  cd /var/lib/stacksignal-bot
+  runuser -u stacksignal -- env PATH="$PATH" HOME=/var/lib/stacksignal-bot \
+    XDG_CACHE_HOME=/var/lib/stacksignal-bot/.cache npm_config_cache=/var/lib/stacksignal-bot/.npm \
     OPENCLAW_STATE_DIR=/var/lib/stacksignal-bot/openclaw \
     OPENCLAW_CONFIG_PATH=/var/lib/stacksignal-bot/openclaw/openclaw.json "$@"
-}
+)
 if [[ ! -e /var/lib/stacksignal-bot/openclaw/openclaw.json ]]; then
   run_bot node "$source_root/bot/deploy/render-openclaw-config.mjs" --core-only
 fi

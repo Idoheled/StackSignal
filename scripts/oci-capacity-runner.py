@@ -205,6 +205,9 @@ def command_diagnostic(stdout, stderr):
     text=stderr[-65536:].decode(errors="replace")
     result={"codes":[code for code in ("ENOENT","EACCES","EBADENGINE","ECONNRESET","ENOTFOUND","ENOMEM","EINTEGRITY","E404","E401","ETARGET","EUSAGE") if code in text]}
     if "spawn git" in text.lower() and "ENOENT" in text:result["missing_git"]=True
+    if "EACCES" in text:
+        result["permission_context"]=[name for name,path in (("bootstrap_home","/home/ubuntu"),
+            ("root_home","/root/"),("node_prefix","/opt/node/"),("service_state","/var/lib/stacksignal-bot/")) if path in text]
     for value,marker in (("ssh_timeout","Connection timed out"),("ssh_refused","Connection refused"),
                          ("ssh_authentication","Permission denied"),("ssh_identity","Host key verification failed")):
         if marker in text:result[value]=True

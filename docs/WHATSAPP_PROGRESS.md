@@ -1,5 +1,16 @@
 # WhatsApp notification implementation progress
 
+## 2026-10-17 — Isolate service-user installation context
+
+[Run 39050260289](https://github.com/Idoheled/StackSignal/actions/runs/39050260289)
+confirmed Caddy is present, passed root account creation and reached the WhatsApp
+plugin step. It then failed with `EACCES`. The bootstrap's service-user commands
+inherited the SSH bootstrap working directory. They now run from the bot's
+owned state directory with explicit HOME and owned npm/XDG caches. Private
+configuration permissions stay restrictive. Permission diagnostics report only
+known path categories; QR instructions also change into the service directory.
+CI and a same-host retry remain pending; no WhatsApp pairing/delivery is claimed.
+
 ## 2026-10-17 — Caddy installed; root administrative PATH corrected
 
 [Run 39049658349](https://github.com/Idoheled/StackSignal/actions/runs/39049658349)

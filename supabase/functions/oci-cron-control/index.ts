@@ -27,7 +27,7 @@ const notify = async (state: any, token: string) => {
     `\n2. Verify the host fingerprint ${state.manifest.host_fingerprint || "from the protected provisioning state"}, then connect with ` +
     '`ssh -i stacksignal_ed25519 ubuntu@' + state.public_ip + '`.' +
     ` Before connecting, open Oracle Console → Networking → Virtual Cloud Networks → stacksignal-whatsapp → Security Lists → stacksignal-whatsapp → Add Ingress Rules. Set source to your current public IPv4 followed by /32, protocol TCP, destination port 22, then save. The runner's temporary SSH ingress was removed after setup.\n` +
-    `3. Run ` + '`sudo -u stacksignal env PATH=/opt/node/bin:/usr/local/bin:/usr/bin:/bin OPENCLAW_STATE_DIR=/var/lib/stacksignal-bot/openclaw OPENCLAW_CONFIG_PATH=/var/lib/stacksignal-bot/openclaw/openclaw.json /opt/node/bin/openclaw channels login --channel whatsapp`.' +
+    `3. Run ` + "`sudo -u stacksignal -H /bin/sh -c 'cd /var/lib/stacksignal-bot && exec env PATH=/opt/node/bin:/usr/local/bin:/usr/bin:/bin OPENCLAW_STATE_DIR=/var/lib/stacksignal-bot/openclaw OPENCLAW_CONFIG_PATH=/var/lib/stacksignal-bot/openclaw/openclaw.json /opt/node/bin/openclaw channels login --channel whatsapp'`." +
     `\n4. On your intended phone/account: WhatsApp → Linked devices → Link a device → scan the live QR.\n` +
     `5. Reply after pairing so the exact destination group can be verified and the first article/release test receipts checked.\n\n` + marker;
   const response = await fetch(endpoint, { method: "POST", headers, body: JSON.stringify({ body }), redirect: "error", signal: AbortSignal.timeout(15_000) });
