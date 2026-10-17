@@ -1,5 +1,16 @@
 # WhatsApp notification implementation progress
 
+## 2026-10-17 — Plugin/config passed; local-model startup readiness
+
+[Run 39051981216](https://github.com/Idoheled/StackSignal/actions/runs/39051981216)
+passed the pinned plugin's indexed provenance verification and OpenClaw config
+validation. Its failure marker advanced to `model_pull`. The bootstrap now waits
+for Ollama's actual loopback HTTP listener before pulling the model, bounds
+download retries and stops Ollama before replacing its binary on a resumed
+install. Structured inspection includes service states, loopback readiness,
+approved model presence and free disk space without configuration or raw logs.
+Model generation, public TLS and QR readiness remain unverified at this point.
+
 ## 2026-10-17 — Match pinned OpenClaw plugin-source and index contracts
 
 The service-context retry still exited at the plugin step, without the earlier

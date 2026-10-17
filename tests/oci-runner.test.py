@@ -26,6 +26,8 @@ class ProvisionerBoundary(unittest.TestCase):
             {"codes":[],"plugin_source_confirmation":True})
         self.assertEqual(runner.command_diagnostic(b'',b'dpkg: error: dpkg frontend lock was locked by another process'),
             {"codes":[],"package_lock":True})
+        self.assertEqual(runner.command_diagnostic(b'Error: could not connect to Ollama server',b''),
+            {"codes":[],"ollama_connection":True})
 
     def network_fixture(self):
         tags={"managed_by":"StackSignal","deployment":"owned"}

@@ -6,6 +6,7 @@ from pathlib import Path
 import re
 import shutil
 import subprocess
+import urllib.request
 
 def inspect():
     result={"status":"bootstrap_diagnostic","git":bool(shutil.which("git"))}
@@ -13,6 +14,17 @@ def inspect():
         "ollama":"/usr/local/bin/ollama","caddy":"/usr/bin/caddy",
         "bootstrap_complete":"/etc/stacksignal/bootstrap-complete"}.items():
         result[label]=Path(path).exists()
+    result["disk_free_gb"]=shutil.disk_usage("/").free//(1024**3)
+    result["services"]={}
+    for service in ("ollama","caddy","stacksignal-openclaw","stacksignal-bot"):
+        value=subprocess.run(["systemctl","is-active",service],capture_output=True,text=True,timeout=10).stdout.strip()
+        result["services"][service]=value if value in ("active","inactive","activating","failed","unknown") else "unknown"
+    try:
+        with urllib.request.urlopen("http://127.0.0.1:11434/api/tags",timeout=2) as response:
+            data=json.loads(response.read(32768))
+        result["ollama_http_ready"]=True
+        result["local_models"]=[m.get("name") for m in data.get("models",[]) if m.get("name") in ("qwen3:4b","qwen3:1.7b")]
+    except Exception:result["ollama_http_ready"]=False
     logs=sorted(Path("/root/.npm/_logs").glob("*debug*"),key=lambda x:x.stat().st_mtime)
     if logs:
         with logs[-1].open("rb") as stream:

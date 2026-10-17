@@ -212,6 +212,9 @@ def command_diagnostic(stdout, stderr):
                          ("ssh_authentication","Permission denied"),("ssh_identity","Host key verification failed")):
         if marker in text:result[value]=True
     lower=text.lower()
+    for value,markers in (("ollama_connection",("could not connect to ollama server","ollama server not responding","ollama http listener did not become ready")),
+        ("model_registry",("pull model manifest","error pulling manifest","model download did not complete"))):
+        if any(marker in lower for marker in markers):result[value]=True
     for value,marker in (("plugin_source_confirmation","non-clawhub"),("plugin_already_exists","already exists"),
         ("plugin_capability_consent","requires capability consent"),("plugin_legacy_record","Pinned WhatsApp plugin has not been installed")):
         if marker.lower() in lower:result[value]=True
@@ -221,7 +224,7 @@ def command_diagnostic(stdout, stderr):
         ("package_archive",("not a debian format archive","cannot access archive","unexpected end of file")),
         ("disk_full",("no space left on device",)),("filesystem_readonly",("read-only file system",))):
         if any(marker in lower for marker in markers):result[value]=True
-    allowed={"prerequisites","node","openclaw","ollama","caddy","service_users","whatsapp_plugin","config_validation","model_pull","complete"}
+    allowed={"prerequisites","node","openclaw","ollama","caddy","service_users","whatsapp_plugin","config_validation","ollama_health","model_pull","complete"}
     for line in text.splitlines():
         try:entry=json.loads(line)
         except (ValueError,TypeError):continue

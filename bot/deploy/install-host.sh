@@ -25,7 +25,7 @@ fi
 install -d -m 0750 /etc/stacksignal
 printf '%s\n' "$bootstrap_version" > "$marker"
 chmod 0600 "$marker"
-systemctl stop stacksignal-bot stacksignal-openclaw caddy 2>/dev/null || true
+systemctl stop stacksignal-bot stacksignal-openclaw caddy ollama 2>/dev/null || true
 source_root="$(cd "$(dirname "$0")/../.." && pwd)"
 if [[ "$source_root" != /opt/stacksignal || ! -f "$source_root/bot/server.mjs" ]]; then
   echo 'Place the reviewed checkout at /opt/stacksignal first.' >&2
@@ -108,9 +108,33 @@ step config_validation
 run_bot openclaw config validate --json
 systemctl daemon-reload
 systemctl enable --now ollama
+step ollama_health
+ollama_ready=0
+for attempt in {1..30}; do
+  if curl --fail --silent --max-time 2 http://127.0.0.1:11434/api/tags >/dev/null; then
+    ollama_ready=1
+    break
+  fi
+  sleep 2
+done
+if [[ "$ollama_ready" != 1 ]]; then
+  echo 'Local Ollama HTTP listener did not become ready.' >&2
+  exit 1
+fi
 # Fixed local model, no credentials for Gemini or any other inference service.
 step model_pull
-OLLAMA_HOST=127.0.0.1:11434 ollama pull qwen3:4b
+model_ready=0
+for attempt in {1..3}; do
+  if OLLAMA_HOST=127.0.0.1:11434 ollama pull qwen3:4b; then
+    model_ready=1
+    break
+  fi
+  sleep 5
+done
+if [[ "$model_ready" != 1 ]]; then
+  echo 'Local model download did not complete within bounded retries.' >&2
+  exit 1
+fi
 install -o ollama -g ollama -m 0600 /dev/null /var/lib/ollama/model-manifest.json
 curl --fail --silent --max-time 30 http://127.0.0.1:11434/api/tags > /var/lib/ollama/model-manifest.json
 printf '%s\n' 'complete' > /etc/stacksignal/bootstrap-complete
