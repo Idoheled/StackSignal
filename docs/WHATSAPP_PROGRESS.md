@@ -1,5 +1,23 @@
 # WhatsApp notification implementation progress
 
+## 2026-10-17 15:32 UTC — ARM host claimed and RUNNING
+
+The immediate [allocation run 39045443557](https://github.com/Idoheled/StackSignal/actions/runs/39045443557)
+successfully launched the first reviewed placement at **15:32:32 UTC**: one
+`VM.Standard.A1.Flex`, **2 OCPU / 12 GB RAM**, Jerusalem home region. Independent
+OCI API reads confirm **RUNNING** and one **AVAILABLE 50 GB** boot volume at
+10 VPUs/GB. Public address: `82.70.223.24`. State is
+`VM_ALLOCATED_INSTALLING`; the leased runner is continuing SSH verification and
+bot bootstrap on the saved instance, not allocating another host.
+
+[Implementation CI 39045182640](https://github.com/Idoheled/StackSignal/actions/runs/39045182640)
+passed 90 automated tests, **22 OCI safety checks**, all **36 browser tests**,
+types, build, client boundary and release validation before activation.
+Runtime setup, local model/TLS checks, cron auto-stop, QR pairing and actual
+message receipts are still pending at this checkpoint. Delivery remains off.
+The allocation event is now propagated into `last_result`, avoiding stale
+capacity-shortage metadata beside a saved instance on subsequent runner saves.
+
 ## 2026-10-17 — Allocation audit and direct launch verification
 
 At 15:17 UTC the hourly runner was healthy: recent eight dispatches succeeded,

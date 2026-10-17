@@ -2,11 +2,11 @@
 
 ## WhatsApp host preparation — October 14, 2026
 
-Latest checkpoint: the temporary hourly OCI claimer is active and timer-verified
-at `17 * * * *` UTC on Supabase job 5. The 18:59 UTC scheduled run reached Oracle
-and returned no ARM capacity in all eight placements. The five free network
-resources are available; no VM exists yet. Additive notification tables and the
-dispatcher are staged disabled. See [WhatsApp progress](WHATSAPP_PROGRESS.md)
+Latest checkpoint (October 17, 15:32 UTC): Oracle has allocated one RUNNING
+ARM host, 2 OCPU / 12 GB with a 50 GB boot volume in Jerusalem. The signed
+runner is installing the bot on that saved host. The hourly provisioner remains
+enabled during bootstrap and will stop itself after model/TLS verification at
+the QR handoff. Delivery remains disabled. See [WhatsApp progress](WHATSAPP_PROGRESS.md)
 for current verification and the historical preparation snapshots below.
 
 Preparation is isolated on `feat/whatsapp-notifications`, based on release

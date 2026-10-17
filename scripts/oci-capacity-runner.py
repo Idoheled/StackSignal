@@ -211,7 +211,8 @@ def main():
     def save(updated):
         nonlocal manifest
         manifest=updated
-        checkpoint()
+        # Do not leave an older OUT_OF_HOST_CAPACITY result beside a saved VM.
+        checkpoint({"result":manifest["last_launch_result"]} if manifest.get("last_launch_result") else None)
 
     try:
         with tempfile.TemporaryDirectory(prefix="stacksignal-oci-",dir=os.environ.get("RUNNER_TEMP")) as temporary:
@@ -274,6 +275,13 @@ def main():
             hostname="stacksignal."+public_ip+".sslip.io"
             checkpoint({"public_ip":public_ip,"shape_allocated":f"{host.SHAPE} {instance.shape_config.ocpus:g} OCPU / {instance.shape_config.memory_in_gbs:g} GB",
                 "webhook_url":"https://"+hostname+"/v1/events"})
+            summary=os.environ.get("GITHUB_STEP_SUMMARY")
+            if summary:
+                with open(summary,"a") as output:
+                    output.write("## OCI VM claimed\n\nOracle confirms one RUNNING `"+instance.shape+"` host: "+
+                        f"{instance.shape_config.ocpus:g} OCPU / {instance.shape_config.memory_in_gbs:g} GB RAM, 50 GB boot disk.\n\n"+
+                        "Bot installation continues on this same host. WhatsApp delivery stays disabled until QR pairing.\n\n"+
+                        "Quality, Production and GitHub Release skips are intentional for this provisioning mode.\n")
 
             def ssh_ingress(allow):
                 heartbeat.ensure()
