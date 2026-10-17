@@ -1,5 +1,22 @@
 # WhatsApp notification implementation progress
 
+## 2026-10-17 — Network repaired; runtime prerequisite/diagnostic correction
+
+[Run 39047997570](https://github.com/Idoheled/StackSignal/actions/runs/39047997570)
+applied the internet route and web ingress. Independent OCI reads confirm the
+route to the saved internet gateway, ports 80/443 public and SSH restricted to
+the current runner /32. SSH succeeded and the exact reviewed code was copied.
+The run then failed in `install_pinned_runtime`, preserving the same VM.
+
+Local SSH diagnostics are unavailable from this environment (`Network is
+unreachable`); the temporary diagnostic ingress and operator lease were cleaned
+up. Hosted diagnostics now report only installed-binary flags, npm version,
+known error codes and fixed bootstrap markers. Raw logs/configuration are never
+copied into Actions logs. The bootstrap adds Git, which OpenClaw's official npm
+installer also requires, scopes public Git dependencies to HTTPS and selects the
+supported lifecycle-script flag for the bundled npm version. Pin versions and
+the existing instance identity are unchanged. CI and a same-host retry follow.
+
 ## 2026-10-17 — Reconcile inherited default network configuration
 
 The full console reader passed and saved the trusted host key. The next run

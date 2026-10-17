@@ -193,8 +193,28 @@ def run_command(args, heartbeat, timeout=120, data=None):
     heartbeat.ensure()
     if result.returncode:
         # Remote output can include package/config details: never copy it to logs.
-        raise RunnerError("Reviewed host command failed; saved host will be resumed")
+        error=RunnerError("Reviewed host command failed; saved host will be resumed")
+        error.command_exit=result.returncode
+        error.command_diagnostic=command_diagnostic(result.stdout,result.stderr)
+        raise error
     return result.stdout
+
+
+def command_diagnostic(stdout, stderr):
+    """Return only known codes/our own fixed markers; never raw remote output."""
+    text=stderr[-65536:].decode(errors="replace")
+    result={"codes":[code for code in ("ENOENT","EACCES","EBADENGINE","ECONNRESET","ENOTFOUND","ENOMEM","EINTEGRITY","E404","E401","ETARGET","EUSAGE") if code in text]}
+    if "spawn git" in text.lower() and "ENOENT" in text:result["missing_git"]=True
+    for value,marker in (("ssh_timeout","Connection timed out"),("ssh_refused","Connection refused"),
+                         ("ssh_authentication","Permission denied"),("ssh_identity","Host key verification failed")):
+        if marker in text:result[value]=True
+    allowed={"prerequisites","node","openclaw","ollama","caddy","service_users","whatsapp_plugin","config_validation","model_pull","complete"}
+    for line in stdout[-65536:].decode(errors="replace").splitlines():
+        try:entry=json.loads(line)
+        except (ValueError,TypeError):continue
+        if isinstance(entry,dict) and entry.get("status")=="bootstrap_step" and isinstance(entry.get("step"),str) and entry["step"] in allowed:
+            result["bootstrap_step"]=entry["step"]
+    return result
 
 
 def failure_notice(error_type):
@@ -387,8 +407,10 @@ def main():
             run_command(["git","archive","--format=tar","-o",str(archive),os.environ["GITHUB_SHA"]],heartbeat)
             run_command(["scp",*ssh_options,str(archive),"ubuntu@"+public_ip+":stacksignal-source.tar"],heartbeat,180)
             run_command(ssh+["sudo install -d -m 0755 /opt/stacksignal && sudo tar -xf stacksignal-source.tar -C /opt/stacksignal && rm stacksignal-source.tar"],heartbeat)
+            diagnostic=json.loads(run_command(ssh+["sudo python3 /opt/stacksignal/bot/deploy/inspect-host.py"],heartbeat,30))
+            print(json.dumps(diagnostic),flush=True)
             stage="install_pinned_runtime"
-            print(json.dumps({"status":"installing_existing_host","stage":stage,"instance":instance.id}))
+            print(json.dumps({"status":"installing_existing_host","stage":stage,"instance":instance.id}),flush=True)
             run_command(ssh+["sudo bash /opt/stacksignal/bot/deploy/install-host.sh"],heartbeat,2100)
             stage="configure_private_services"
             selected_model=manifest.get("selected_model","qwen3:4b")
@@ -444,6 +466,8 @@ def main():
         permanent=permanent or isinstance(error,NetworkIdentityError) or getattr(error,"status",None) in (401,403)
         result={"status":"PAUSED_ERROR" if permanent else "RETRY_PENDING","stage":stage,"type":type(error).__name__,
             "oci_status":getattr(error,"status",None),"checked_at":datetime.now(timezone.utc).isoformat()}
+        if hasattr(error,"command_exit"):
+            result.update(command_exit=error.command_exit,command_diagnostic=error.command_diagnostic)
         try:
             heartbeat.ensure()
             if state["status"] not in ("AWAITING_WHATSAPP_QR","VERIFIED_LIVE"):

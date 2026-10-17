@@ -1,6 +1,7 @@
 import base64
 import hashlib
 import importlib.util
+import json
 from pathlib import Path
 from types import SimpleNamespace
 import unittest
@@ -11,6 +12,17 @@ runner=importlib.util.module_from_spec(spec);spec.loader.exec_module(runner)
 
 
 class ProvisionerBoundary(unittest.TestCase):
+    def test_command_diagnostics_never_copy_remote_secrets_or_unknown_step_values(self):
+        secret="private-value-that-must-not-leave-the-host"
+        stdout=('arbitrary output '+secret+'\n'+
+            json.dumps({"status":"bootstrap_step","step":"openclaw"})+'\n'+
+            json.dumps({"status":"bootstrap_step","step":[secret]})+'\n'+
+            json.dumps({"status":"bootstrap_step","step":secret})).encode()
+        stderr=("npm error spawn git ENOENT\n"+secret).encode()
+        result=runner.command_diagnostic(stdout,stderr)
+        self.assertEqual(result,{"codes":["ENOENT"],"missing_git":True,"bootstrap_step":"openclaw"})
+        self.assertNotIn(secret,json.dumps(result))
+
     def network_fixture(self):
         tags={"managed_by":"StackSignal","deployment":"owned"}
         def resource(identifier,**kw):return SimpleNamespace(id=identifier,vcn_id="vcn",freeform_tags=dict(tags),**kw)
