@@ -7,7 +7,9 @@ const rpc = async (name: string, args: Record<string, unknown>) => {
     headers: { apikey: serviceKey, authorization: "Bearer " + serviceKey, "content-type": "application/json" }, body: JSON.stringify(args),
   });
   if (!response.ok) throw new Error("Control database unavailable");
-  return response.json();
+  // PostgREST returns an empty 204 for the staging RPC's void result.
+  const body = await response.text();
+  return body ? JSON.parse(body) : null;
 };
 const notify = async (state: any, token: string) => {
   const endpoint = "https://api.github.com/repos/Idoheled/StackSignal/issues/4/comments";

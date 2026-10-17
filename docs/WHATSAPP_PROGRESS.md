@@ -1,5 +1,17 @@
 # WhatsApp notification implementation progress
 
+## 2026-10-17 — Resume allocated host after empty RPC response
+
+The allocation run saved the RUNNING host and its public address, then stopped
+with `LeaseLost` at the webhook-staging checkpoint. The staging RPC returns
+HTTP 204 with no body; the deployed adapter unconditionally parsed JSON and
+returned a signed error after both database writes had succeeded. The adapter
+now accepts an empty successful response. A regression test runs the actual
+deployed adapter/handler across configuration → checkpoint → empty staging RPC,
+and verifies the signed HTTP 200 reply. No VM was lost or replaced. The source
+also propagates saved allocation evidence into `last_result`. Live control
+recovery and same-host bootstrap are being verified before final handoff.
+
 ## 2026-10-17 15:32 UTC — ARM host claimed and RUNNING
 
 The immediate [allocation run 39045443557](https://github.com/Idoheled/StackSignal/actions/runs/39045443557)
