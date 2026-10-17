@@ -1,0 +1,36 @@
+[Unit]
+Description=StackSignal signed WhatsApp webhook and delivery queue
+After=network-online.target ollama.service stacksignal-openclaw.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=stacksignal
+Group=stacksignal
+WorkingDirectory=/opt/stacksignal
+EnvironmentFile=/etc/stacksignal/bot.env
+Environment=PATH=/opt/node/bin:/usr/local/bin:/usr/bin:/bin
+Environment=OPENCLAW_STATE_DIR=/var/lib/stacksignal-bot/openclaw
+Environment=OPENCLAW_CONFIG_PATH=/var/lib/stacksignal-bot/openclaw/openclaw.json
+Environment=WHATSAPP_STATE_DIR=/var/lib/stacksignal-bot
+Environment=NODE_OPTIONS=--max-old-space-size=1536
+ExecStart=/opt/node/bin/node --experimental-strip-types /opt/stacksignal/bot/server.mjs
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=240
+UMask=0077
+StateDirectory=stacksignal-bot
+StateDirectoryMode=0700
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/stacksignal-bot
+RestrictSUIDSGID=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+LimitCORE=0
+
+[Install]
+WantedBy=multi-user.target

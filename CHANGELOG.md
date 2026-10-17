@@ -2,6 +2,20 @@
 
 ## [Unreleased]
 
+### Notification preparation
+
+- Add invitation opt-in, per-user WhatsApp notification settings, protected group
+  handoff cards and authenticated article deep links on the feature branch.
+- Add a private reviewed-content outbox with duplicate protection, leased claims,
+  delivery receipts and reconciliation for uncertain sends. Delivery remains
+  disabled until Oracle/OpenClaw hosting and real group checks succeed.
+- Add a read-only Oracle Cloud Shell onboarding check and setup/progress guides
+  plus bounded, resumable Always Free ARM provisioning with free-budget guards.
+- Implement signed webhook dispatch and receipts, a durable SQLite receiver,
+  immutable event deduplication, local-only Ollama message generation and fixed
+  group delivery through OpenClaw. Deployment and actual group verification
+  remain pending; production notifications are disabled.
+
 ## [0.1.1] - 2026-10-13
 
 ### Release management

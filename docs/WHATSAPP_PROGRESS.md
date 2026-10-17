@@ -1,0 +1,366 @@
+# WhatsApp notification implementation progress
+
+## 2026-10-17 — Host ready for WhatsApp QR handoff
+
+[Run 39067999141](https://github.com/Idoheled/StackSignal/actions/runs/39067999141)
+resumed the same allocated VM without creating resources and completed setup
+at 20:50 UTC (23:50 in Israel). All four services passed their active checks.
+Local-only `qwen3:4b` generated a real formatted test alert in 70,743 ms; the
+smaller-model fallback was unnecessary. Public HTTPS health returned HTTP 200,
+`ok: true`, `delivery_enabled: false`, independently confirmed after the run.
+
+The signed deployment state is `AWAITING_WHATSAPP_QR`. The provisioner removed
+its temporary SSH rule, disabled itself and unscheduled only the capacity job.
+The collector, evaluator and internal-review schedules remain active; WhatsApp
+dispatch remains paused. Owner QR instructions were posted to PR #4.
+
+Runtime source `36600a5` passed hosted CI: 94 Node tests, 27 Python OCI safety
+checks, 36 browser tests, both TypeScript checks, build and boundary/release
+checks. Earlier hourly runs of this revision safely skipped with
+`unverified_revision` until the tested SHA was approved with no active lease;
+they were not successful installations. The final run is the installation proof.
+
+Phone pairing, exact group identity and real article/release delivery receipts
+remain outstanding. Main and production UI have not been released. Use the
+service-owned working-directory QR command in `WHATSAPP_SETUP.md` or the owner
+handoff comment; never publish administration keys or pairing state.
+
+## 2026-10-17 — Plugin/config passed; local-model startup readiness
+
+[Run 39051981216](https://github.com/Idoheled/StackSignal/actions/runs/39051981216)
+passed the pinned plugin's indexed provenance verification and OpenClaw config
+validation. Its failure marker advanced to `model_pull`. The bootstrap now waits
+for Ollama's actual loopback HTTP listener before pulling the model, bounds
+download retries and stops Ollama before replacing its binary on a resumed
+install. Structured inspection includes service states, loopback readiness,
+approved model presence and free disk space without configuration or raw logs.
+Model generation, public TLS and QR readiness remain unverified at this point.
+
+## 2026-10-17 — Match pinned OpenClaw plugin-source and index contracts
+
+The service-context retry still exited at the plugin step, without the earlier
+EACCES code. Review of the exact upstream `v2026.10.3` source confirmed two
+bootstrap incompatibilities: npm sources require explicit non-ClawHub source
+confirmation, and `plugins.installs` is a transient runtime carrier which must
+not be written to `openclaw.json`. Authoritative provenance is in the installed
+index and exposed by `openclaw plugins inspect whatsapp --json`.
+
+Setup confirms only `npm:@openclaw/whatsapp@2026.10.3`, leaves it disabled during
+installation, and validates indexed npm provenance, exact name/version/spec and
+the installed package/entry real paths under the service state. The final
+outbound-only config preserves the gateway identity without legacy install
+records. The pinned official manifest was reviewed: WhatsApp channel, login/call
+contracts and its skills; agent tools remain denied and incoming chats disabled.
+Security install policy remains enforced. New tests cover modern index records,
+publisher/version changes, package tampering and symlinks outside managed state.
+Both stdout and stderr are classified into fixed safe diagnostics. CI and live
+same-host verification remain required.
+
+## 2026-10-17 — Isolate service-user installation context
+
+[Run 39050260289](https://github.com/Idoheled/StackSignal/actions/runs/39050260289)
+confirmed Caddy is present, passed root account creation and reached the WhatsApp
+plugin step. It then failed with `EACCES`. The bootstrap's service-user commands
+inherited the SSH bootstrap working directory. They now run from the bot's
+owned state directory with explicit HOME and owned npm/XDG caches. Private
+configuration permissions stay restrictive. Permission diagnostics report only
+known path categories; QR instructions also change into the service directory.
+CI and a same-host retry remain pending; no WhatsApp pairing/delivery is claimed.
+
+## 2026-10-17 — Caddy installed; root administrative PATH corrected
+
+[Run 39049658349](https://github.com/Idoheled/StackSignal/actions/runs/39049658349)
+passed the Caddy step and reached service-user setup, then exited 127. The
+bootstrap had replaced PATH with bin directories only, hiding `/usr/sbin/useradd`,
+`runuser` and Debian package-maintainer helpers such as `ldconfig`. The root
+installer PATH now includes the standard sbin directories. This also explains
+why bare dpkg failed earlier; apt installation already advanced past Caddy.
+The same host and installed runtimes are preserved. CI and the same-host retry
+remain required before QR handoff is claimed.
+
+## 2026-10-17 — Caddy package installation isolated
+
+The structured [run 39049088516](https://github.com/Idoheled/StackSignal/actions/runs/39049088516)
+diagnostic confirmed Git, Node, OpenClaw and Ollama are present; Caddy is absent.
+Git was already present, so it was not the observed failure's cause. The new
+bootstrap marker identified the Caddy package step with command exit 2. Direct
+`dpkg -i` is replaced by apt installation of the same checksum-verified local
+archive, with dependency resolution and a bounded dpkg-lock wait. Diagnostics
+also classify package locks, dependencies, archive/architecture errors and
+storage failures without copying raw output. Model/service/TLS and QR handoff
+remain pending. No additional VM or disk was allocated.
+
+## 2026-10-17 — Network repaired; runtime prerequisite/diagnostic correction
+
+[Run 39047997570](https://github.com/Idoheled/StackSignal/actions/runs/39047997570)
+applied the internet route and web ingress. Independent OCI reads confirm the
+route to the saved internet gateway, ports 80/443 public and SSH restricted to
+the current runner /32. SSH succeeded and the exact reviewed code was copied.
+The run then failed in `install_pinned_runtime`, preserving the same VM.
+
+Local SSH diagnostics are unavailable from this environment (`Network is
+unreachable`); the temporary diagnostic ingress and operator lease were cleaned
+up. Hosted diagnostics now report only installed-binary flags, npm version,
+known error codes and fixed bootstrap markers. Raw logs/configuration are never
+copied into Actions logs. The bootstrap adds Git, which OpenClaw's official npm
+installer also requires, scopes public Git dependencies to HTTPS and selects the
+supported lifecycle-script flag for the bundled npm version. Pin versions and
+the existing instance identity are unchanged. CI and a same-host retry follow.
+
+## 2026-10-17 — Reconcile inherited default network configuration
+
+The full console reader passed and saved the trusted host key. The next run
+failed its SSH connection retries, before copying/installing software. A live
+network audit found the cause: OCI's default route/security resources inherited
+the VCN deployment tags and had been mistaken for configured resources. The
+saved default route table was empty, and the saved security list lacked 80/443.
+The VM remained RUNNING, with its public address assigned and a single boot disk.
+
+Fresh resource selection now requires the intended name as well as ownership
+tags, or the exact previously saved resource ID. The runner validates saved
+subnet/VCN/gateway ownership and topology, then adds the missing internet route
+and web ingress through fenced updates. It preserves narrow SSH access and
+rejects unrelated resources or a changed default gateway. Regression checks
+cover inherited tags, actual route/security creation, idempotent repair, changed
+ownership/topology and lost fencing. The corrected source is undergoing CI.
+
+The earlier 409 was caused by the operator diagnostic snapshot overlapping the
+runner's capture. That diagnostic snapshot was removed. It did not affect the VM.
+
+## 2026-10-17 — Full console snapshot for trusted SSH identity
+
+Live SSH verification found a second bootstrap issue: OCI's default console
+content response contains the first 10,240 bytes. Ubuntu's host keys were outside
+that prefix. An independent authenticated full snapshot returned 127,993 bytes,
+one valid Ed25519 public key and completed cloud-init. The runner now requests
+the bounded full 1 MiB snapshot before validating the key. A regression fixture
+places the host key after the default prefix and verifies identity extraction.
+No SSH trust checks were relaxed, and the same RUNNING host is preserved.
+The corrected source is undergoing CI before same-host bootstrap resumes.
+
+## 2026-10-17 — Resume allocated host after empty RPC response
+
+The allocation run saved the RUNNING host and its public address, then stopped
+with `LeaseLost` at the webhook-staging checkpoint. The staging RPC returns
+HTTP 204 with no body; the deployed adapter unconditionally parsed JSON and
+returned a signed error after both database writes had succeeded. The adapter
+now accepts an empty successful response. A regression test runs the actual
+deployed adapter/handler across configuration → checkpoint → empty staging RPC,
+and verifies the signed HTTP 200 reply. No VM was lost or replaced. The source
+also propagates saved allocation evidence into `last_result`. Live control
+recovery and same-host bootstrap are being verified before final handoff.
+
+## 2026-10-17 15:32 UTC — ARM host claimed and RUNNING
+
+The immediate [allocation run 39045443557](https://github.com/Idoheled/StackSignal/actions/runs/39045443557)
+successfully launched the first reviewed placement at **15:32:32 UTC**: one
+`VM.Standard.A1.Flex`, **2 OCPU / 12 GB RAM**, Jerusalem home region. Independent
+OCI API reads confirm **RUNNING** and one **AVAILABLE 50 GB** boot volume at
+10 VPUs/GB. Public address: `82.70.223.24`. State is
+`VM_ALLOCATED_INSTALLING`; the leased runner is continuing SSH verification and
+bot bootstrap on the saved instance, not allocating another host.
+
+[Implementation CI 39045182640](https://github.com/Idoheled/StackSignal/actions/runs/39045182640)
+passed 90 automated tests, **22 OCI safety checks**, all **36 browser tests**,
+types, build, client boundary and release validation before activation.
+Runtime setup, local model/TLS checks, cron auto-stop, QR pairing and actual
+message receipts are still pending at this checkpoint. Delivery remains off.
+The allocation event is now propagated into `last_result`, avoiding stale
+capacity-shortage metadata beside a saved instance on subsequent runner saves.
+
+## 2026-10-17 — Allocation audit and direct launch verification
+
+At 15:17 UTC the hourly runner was healthy: recent eight dispatches succeeded,
+and Oracle reported no capacity across all eight placements. Independent live
+tenancy inventory confirmed zero instances and zero boot/block volumes. State
+was `SEARCHING_CAPACITY`, no instance/IP/launch intent, with hourly cron active.
+Quality, Production and Release skips were intentional mode/branch conditions.
+
+Audit found that negative capacity reports prevented any `LaunchInstance`
+request. The new runner tries the eight reviewed placements directly, prioritizes
+positive reports, records provider request IDs and stops at the first allocation.
+Definitive capacity rejection rotates the token; uncertain failures preserve
+exact parameters/token. Inventory changes or failed durable fencing stop further
+requests. Six new safety tests cover the negative-report SDK path, eight bounded
+rejections, first-success termination, uncertain response retry, lost fence and
+changed inventory. Live activation/allocator results will be recorded after CI.
+
+## 2026-10-14 19:00 UTC — Hourly capacity claimer active and timer-verified
+
+`stacksignal-oci-hourly-claim` is **active** on Supabase cron job 5 with
+`17 * * * *` UTC. An actual verification timer fired at 18:59:00 UTC, its
+`pg_net` dispatch returned HTTP 200, and
+[hosted run 38619792381](https://github.com/Idoheled/StackSignal/actions/runs/38619792381)
+completed successfully. The timer's temporary one-shot schedule was restored to
+the hourly cadence. The preceding
+[manual full-route check](https://github.com/Idoheled/StackSignal/actions/runs/38619594550)
+also completed successfully. This is a live external runner, independent of
+conversation storage or the Gemini scheduled task.
+
+The latest Oracle check at **18:59:43 UTC** returned `OUT_OF_HOST_CAPACITY` for
+2 OCPU/12 GB and 1 OCPU/8 GB in automatic placement and all three Jerusalem
+fault domains. State is `SEARCHING_CAPACITY`, provisioning enabled, lease
+released, no instance allocated. Four lease acquisitions include one control-only
+diagnostic, initial network setup and two actual capacity checks.
+
+Created only the dedicated free VCN, internet gateway, route table, security list
+and subnet; all five are AVAILABLE and carry the saved deployment identity.
+The prepared network is reused. Asynchronous resource startup now uses a fenced,
+bounded wait. No VM, boot disk, paid fallback, WhatsApp pairing or message has
+occurred. The dispatcher remains paused and notification configuration disabled.
+Existing collector, evaluator and internal-review schedules remain active.
+
+[CI run 38618933131](https://github.com/Idoheled/StackSignal/actions/runs/38618933131)
+passed 90 automated tests, 16 OCI safety checks, 36 browser tests, types, build,
+client boundary and release checks. Main remains at the v0.1.1 baseline. At the
+next successful allocation, the runner resumes this deployment, installs the
+bot stack, verifies local inference/TLS and stops its own cron at the owner QR
+handoff. The full ARM/WhatsApp delivery gate remains pending capacity and pairing.
+
+## 2026-10-14 — Live scheduler routing and REST lease verification
+
+Hosted [CI run 38609954835](https://github.com/Idoheled/StackSignal/actions/runs/38609954835)
+passed 90 automated tests, 15 OCI checks and all 36 browser tests. Supabase
+`pg_net` successfully dispatched the feature workflow with HTTP 200 and returned
+[runner 38615783181](https://github.com/Idoheled/StackSignal/actions/runs/38615783181).
+That run caught a live-only REST safeguard: the control updates lacked explicit
+WHERE clauses and were rejected before any OCI operation. Native SQL/PGlite did
+not enforce that REST safeguard. Every control update is now scoped to the fixed
+deployment, and the correction was applied as an additive temporary migration.
+The signed live endpoint is being retested for leases, renewal, checkpoint,
+premature-stop rejection and release before another hosted capacity attempt.
+The hourly schedule remains paused until that complete attempt is verified.
+
+## 2026-10-14 — Persistent hourly provisioner implementation
+
+Implemented the branch-only hosted runner, atomic fenced leases, durable launch
+parameters, signed control/replies and automatic cron stop with owner PR notice.
+The existing registered CI workflow dispatches the temporary reusable workflow
+on this feature branch, preserving main and its deployment/release conditions.
+The runner resumes owned resources, rejects paid configurations and replacement
+hosts, verifies SSH identity through the OCI console API, and runs a local model
+and TLS readiness check before requesting QR pairing. Partial installs resume.
+
+Applied the additive disabled WhatsApp schema, temporary control schema and
+server-only Vault configuration RPCs to the existing Supabase project. Deployed
+custom-authenticated `oci-cron-control` and `whatsapp-dispatcher`. Signed live
+ping succeeds; unsigned, tampered and stale control requests return 401.
+Member count remains six; all opt-ins default false and the outbox is empty.
+Delivery remains disabled. Existing collection schedules remain active.
+
+Validation: 90 automated tests, 15 Python OCI safety checks, both TypeScript
+checks, standalone build, client asset boundary, release metadata, workflow YAML
+and local unpaired HTTP health passed. Hosted CI and the actual scheduler route
+must pass before activation. ARM installation, model benchmark, QR pairing and
+actual group delivery await physical capacity. Follow [automation operations](OCI_AUTOMATION.md).
+
+This entry supersedes earlier preparation-only snapshots below; main is unchanged.
+
+## 2026-10-14 — GitHub access restored; signed transport implemented
+
+The owner's permission update allowed creation of [draft PR #4](https://github.com/Idoheled/StackSignal/pull/4).
+Its first hosted CI run passed types, all database/security tests, the standalone
+build and asset checks, then caught a checkbox timing bug across browsers. The
+checkbox now updates immediately, disables during saving and restores its
+previous value on failure. The suite will rerun on the next feature commit.
+
+Added the signed, bounded webhook dispatcher and signed receipts, a loopback
+Node receiver with a persistent SQLite WAL queue, immutable payload deduplication,
+local-only Ollama message generation and an OpenClaw group adapter. The adapter's
+receipt contract was checked against pinned OpenClaw 2026.10.3 source. Model text
+cannot choose the destination, timestamps or UI link. Ollama cloud inference is
+disabled in the prepared systemd service; Gemini is untouched.
+
+The queue retries generation failures before sending. Lost webhook responses
+replay the same event ID without another send. Interrupted/ambiguous sends pause
+for reconciliation. Confirmed provider receipts clear copied content. These are
+synthetic transport/recovery checks, not proof of a real WhatsApp group send.
+
+The new OCI SDK script defaults to an inventory/capacity check. Its apply path is
+bounded, uses resumable resource tags/idempotency tokens, requires a separate
+Ed25519 SSH key and narrow administrative SSH network, and guards home region,
+existing compute and the free CPU/RAM/volume envelope. A live run at 15:09 UTC
+again returned OUT_OF_HOST_CAPACITY for 2 OCPU/12 GB and 1 OCPU/8 GB in all
+Jerusalem fault domains. It created no infrastructure. No background retry has
+been scheduled.
+
+Validation so far: 86 automated tests, six preflight checks, four provisioning
+policy checks and both TypeScript checks passed. Runtime installation, OpenClaw
+configuration validation, ARM model benchmarking, production secrets/HTTPS,
+WhatsApp pairing, actual delivery/reconnect checks and rollout remain pending.
+Main and production are unchanged.
+
+## 2026-10-14 — Oracle access and notification foundations
+
+The owner supplied an OCI API signing-key pair and configuration. The pair and
+fingerprint match; direct SDK authentication succeeded. Home region is
+`il-jerusalem-1`; the new account contains no existing compute instances, boot
+volumes, block volumes or VCNs. Service limits permit A1, but the live capacity
+report at 14:01 UTC returned `OUT_OF_HOST_CAPACITY` for both 2 OCPU/12 GB and
+1 OCPU/8 GB across all three fault domains. No infrastructure was created.
+Cloud Shell is no longer required for the initial account read. Credentials and
+raw tenancy reports remain outside the public source repository.
+
+Implemented on the work branch:
+
+- Invitation checkbox, explicitly unchecked by default, and atomic opt-in signup.
+- Notification settings for every member, protected group handoff, join/leave
+  guidance and phone-number disclosure.
+- Authenticated article deep links without private-note data in the response.
+- Additive disabled-by-default preference/configuration schema and private outbox.
+- Review/repository/release-policy admission, duplicate-event protection, private
+  payload cleanup, leased claims and confirmed-vs-uncertain receipt handling.
+- Database/service security regressions and synthetic browser flow checks.
+
+Validation: all 76 automated tests, six OCI preflight safety checks, both
+TypeScript checks, standalone build, client asset boundary and release metadata
+checks passed. Local browser execution is blocked by unavailable binaries;
+downloads returned invalid archives and dependency installation was unsupported.
+The three-engine suite must run in hosted CI before this work is considered
+browser-verified. The work branch was pushed successfully, but both the supplied
+GitHub PAT and connected integration returned 403 when creating a draft PR.
+No PR or new hosted CI run was created. Opening the prepared compare page as
+the repository owner, or granting Pull Requests write access, is the next CI
+handoff; main must remain unchanged.
+
+The Oracle host, webhook dispatcher/receiver and Ollama/OpenClaw delivery are
+still pending. No production migration, frontend deployment, WhatsApp pairing
+or group message has occurred. Main remains unchanged.
+
+## 2026-10-14 — Initial onboarding preparation
+
+Confirmed with the owner: OCI account exists; no VM/server has been provisioned;
+destination WhatsApp group exists; message generation must use local Ollama to
+preserve Gemini's evaluation quota. The private group invite is excluded from
+this public source repository.
+
+Repository baseline: `5bbe924894d80ddd6e0579bf1d036efcaece160e` (`v0.1.1`).
+Work branch: `feat/whatsapp-notifications`. Main remains unchanged.
+
+Completed:
+
+- Checked existing production architecture, onboarding and release boundaries.
+- Checked available connectors; no OCI infrastructure provisioning connector
+  surfaced. Oracle Analytics is unrelated and is not a substitute.
+- Verified current Oracle Cloud Shell and read-only OCI CLI commands against
+  official documentation.
+- Added a standard-library-only preflight script and synthetic safety checks.
+- Documented the exact credential-free first handoff and later QR pairing.
+
+Validation: six synthetic preflight checks, both application/collector TypeScript
+checks, all 67 existing automated tests, local setup-guide links and whitespace
+checks passed. No live Oracle or WhatsApp test has run.
+
+Pending:
+
+- Owner runs the live preflight; confirm home region, quota, IAM access and billing
+  eligibility. Physical ARM host capacity cannot be established by quota reads.
+- Confirm which existing WhatsApp identity should be paired.
+- Provision and configure a reviewed Always Free VM; prepare recovery/SSH access.
+- Implement signup/settings, additive preference/outbox schema, signed webhook
+  dispatcher/receiver, durable delivery queue, OpenClaw and Ollama integration.
+- Run regression and actual group-delivery checks; only then merge/release.
+
+No VM was created, production database changed, message sent, group joined, or
+main deployment triggered by this checkpoint. This is onboarding preparation,
+not a working notification feature.

@@ -1,5 +1,29 @@
 # StackSignal operations checkpoint — October 11, 2026
 
+## WhatsApp host preparation — October 14, 2026
+
+Latest checkpoint (October 17, 20:50 UTC): the allocated Jerusalem ARM host,
+2 OCPU / 12 GB with a 50 GB boot volume, is `AWAITING_WHATSAPP_QR`.
+All four services passed active checks, local Qwen3 generated a real alert in
+70.7 seconds, and public HTTPS health returned 200 with delivery disabled.
+The provisioning cron stopped and removed its own schedule automatically;
+existing collector/evaluator/internal-review schedules remain active. Owner
+handoff instructions are on PR #4. Phone pairing, exact group verification and
+real delivery receipts remain release gates. See
+[WhatsApp progress](WHATSAPP_PROGRESS.md) for dated evidence and the historical
+preparation snapshots below.
+
+Historical October 14 preparation: work is isolated on `feat/whatsapp-notifications`, based on release
+`v0.1.1`. The owner has an OCI account and a WhatsApp group, and selected local
+Ollama to preserve Gemini evaluation quotas. Draft PR #4 contains opt-in UI,
+an additive private outbox, signed webhook dispatch/receipts, a durable SQLite
+receiver and Ollama/OpenClaw adapters. No Oracle VM, production schema, message
+or main deployment was created. All 86 automated tests, ten OCI checks and both
+TypeScript checks passed locally. Direct OCI authentication works; home-region
+ARM capacity is unavailable. Hosted browser checks and actual host installation,
+pairing and delivery remain release gates. Follow [WhatsApp progress](WHATSAPP_PROGRESS.md) and
+[host onboarding](WHATSAPP_SETUP.md); do not treat this as an enabled feature.
+
 ## Preserve this deployment
 
 - Team website: https://stacksignal.stacksignal-idoheled.workers.dev — deployed on the owner's existing Cloudflare account `49c94d7ba2a9124b3e0ddea7a329ad05`, Worker `stacksignal`.
