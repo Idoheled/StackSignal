@@ -1,5 +1,17 @@
 # WhatsApp notification implementation progress
 
+## 2026-10-17 — Caddy package installation isolated
+
+The structured [run 39049088516](https://github.com/Idoheled/StackSignal/actions/runs/39049088516)
+diagnostic confirmed Git, Node, OpenClaw and Ollama are present; Caddy is absent.
+Git was already present, so it was not the observed failure's cause. The new
+bootstrap marker identified the Caddy package step with command exit 2. Direct
+`dpkg -i` is replaced by apt installation of the same checksum-verified local
+archive, with dependency resolution and a bounded dpkg-lock wait. Diagnostics
+also classify package locks, dependencies, archive/architecture errors and
+storage failures without copying raw output. Model/service/TLS and QR handoff
+remain pending. No additional VM or disk was allocated.
+
 ## 2026-10-17 — Network repaired; runtime prerequisite/diagnostic correction
 
 [Run 39047997570](https://github.com/Idoheled/StackSignal/actions/runs/39047997570)

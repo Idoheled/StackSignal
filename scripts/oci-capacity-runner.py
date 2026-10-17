@@ -208,6 +208,13 @@ def command_diagnostic(stdout, stderr):
     for value,marker in (("ssh_timeout","Connection timed out"),("ssh_refused","Connection refused"),
                          ("ssh_authentication","Permission denied"),("ssh_identity","Host key verification failed")):
         if marker in text:result[value]=True
+    lower=text.lower()
+    for value,markers in (("package_lock",("could not get lock","frontend lock was locked","dpkg database lock")),
+        ("package_dependency",("dependency problems","unmet dependencies")),
+        ("package_architecture",("does not match system","wrong architecture")),
+        ("package_archive",("not a debian format archive","cannot access archive","unexpected end of file")),
+        ("disk_full",("no space left on device",)),("filesystem_readonly",("read-only file system",))):
+        if any(marker in lower for marker in markers):result[value]=True
     allowed={"prerequisites","node","openclaw","ollama","caddy","service_users","whatsapp_plugin","config_validation","model_pull","complete"}
     for line in stdout[-65536:].decode(errors="replace").splitlines():
         try:entry=json.loads(line)

@@ -22,6 +22,8 @@ class ProvisionerBoundary(unittest.TestCase):
         result=runner.command_diagnostic(stdout,stderr)
         self.assertEqual(result,{"codes":["ENOENT"],"missing_git":True,"bootstrap_step":"openclaw"})
         self.assertNotIn(secret,json.dumps(result))
+        self.assertEqual(runner.command_diagnostic(b'',b'dpkg: error: dpkg frontend lock was locked by another process'),
+            {"codes":[],"package_lock":True})
 
     def network_fixture(self):
         tags={"managed_by":"StackSignal","deployment":"owned"}

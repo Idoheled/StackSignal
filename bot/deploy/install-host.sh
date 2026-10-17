@@ -67,7 +67,7 @@ tar --zstd -xf "$download_dir/ollama.tar.zst" -C /usr/local
 step caddy
 download 'https://github.com/caddyserver/caddy/releases/download/v2.11.7/caddy_2.11.7_linux_arm64.deb' \
   'ca8ae5a50439642d7672344b4ec64e47cbddf81beb5da302420a78522eb5a47e' "$download_dir/caddy.deb"
-dpkg -i "$download_dir/caddy.deb"
+DEBIAN_FRONTEND=noninteractive apt-get -o DPkg::Lock::Timeout=180 install -y --no-install-recommends "$download_dir/caddy.deb"
 systemctl disable --now caddy
 umask 077
 step service_users
