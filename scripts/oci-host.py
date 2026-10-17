@@ -258,7 +258,10 @@ def main(argv=None, on_manifest=None):
 
     def resource(label, items, create):
         matches = [i for i in items if all((getattr(i, "freeform_tags", {}) or {}).get(k)==v for k,v in tags.items())
-                   and i.lifecycle_state != "TERMINATED"]
+                   and i.lifecycle_state != "TERMINATED"
+                   and (i.id == manifest[label] if manifest.get(label) else getattr(i,"display_name",None)=="stacksignal-whatsapp")]
+        if manifest.get(label) and not matches:
+            raise HostError("Saved network resource is missing or has different ownership: " + label)
         if len(matches) > 1:
             raise HostError("Duplicate deployment resources; reconcile " + label + " before continuing.")
         value = matches[0] if matches else create().data

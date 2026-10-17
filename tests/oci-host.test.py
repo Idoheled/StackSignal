@@ -110,7 +110,13 @@ class AllocationSafety(unittest.TestCase):
         compute.launch_instance.side_effect=CapacityError()
         tags={"managed_by":"StackSignal","deployment":"saved","deployment_id":"stacksignal-whatsapp-bot-il-jerusalem-1"}
         for plural,label in (("vcns","vcn"),("internet_gateways","gateway"),("route_tables","route"),("security_lists","security"),("subnets","subnet")):
-            getattr(network,"list_"+plural).return_value=response([SimpleNamespace(id=label,lifecycle_state="AVAILABLE",freeform_tags=tags)])
+            getattr(network,"list_"+plural).return_value=response([SimpleNamespace(id=label,display_name="stacksignal-whatsapp",lifecycle_state="AVAILABLE",freeform_tags=tags)])
+        # OCI default route/security resources inherit the VCN's tags. They are
+        # not configured resources and must not be mistaken for our named ones.
+        for plural,label,create in (("route_tables","route","create_route_table"),("security_lists","security","create_security_list")):
+            getattr(network,"list_"+plural).return_value=response([SimpleNamespace(id="default-"+label,
+                display_name="Default "+label+" for stacksignal-whatsapp",lifecycle_state="AVAILABLE",freeform_tags=tags)])
+            getattr(network,create).return_value=response(SimpleNamespace(id=label,display_name="stacksignal-whatsapp",lifecycle_state="AVAILABLE",freeform_tags=tags))
         fake=SimpleNamespace(config=SimpleNamespace(from_file=lambda _: {"tenancy":"tenancy","region":"il-jerusalem-1"}),
             retry=SimpleNamespace(NoneRetryStrategy=lambda:None),identity=SimpleNamespace(IdentityClient=lambda *a,**kw:identity),
             core=SimpleNamespace(ComputeClient=lambda *a,**kw:compute,BlockstorageClient=lambda *a,**kw:volumes,
@@ -125,6 +131,11 @@ class AllocationSafety(unittest.TestCase):
             compute.launch_instance.assert_not_called()
             self.assertEqual(host.main(args+["--apply"]),2)
             self.assertEqual(compute.launch_instance.call_count,8)
+            network.create_route_table.assert_called_once()
+            network.create_security_list.assert_called_once()
+            self.assertEqual(network.create_route_table.call_args.args[0].route_rules[0].network_entity_id,"gateway")
+            self.assertEqual([r.tcp_options.destination_port_range.min for r in
+                network.create_security_list.call_args.args[0].ingress_security_rules if r.protocol=="6"],[22,80,443])
             for call in compute.launch_instance.call_args_list:
                 details=call.args[0]
                 self.assertEqual(details.shape,host.SHAPE)

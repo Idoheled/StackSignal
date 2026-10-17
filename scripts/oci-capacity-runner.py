@@ -36,6 +36,48 @@ class LeaseLost(RunnerError):
     pass
 
 
+class NetworkIdentityError(RunnerError):
+    pass
+
+
+def ensure_network_access(network, models, manifest, vnic_subnet_id, ensure):
+    """Reconcile only this deployment's saved network, including legacy defaults."""
+    if vnic_subnet_id != manifest.get("subnet"):
+        raise NetworkIdentityError("The allocated VNIC uses an unexpected subnet")
+    subnet=network.get_subnet(vnic_subnet_id).data
+    if (subnet.vcn_id!=manifest.get("vcn") or subnet.route_table_id!=manifest.get("route")
+        or subnet.security_list_ids!=[manifest.get("security")]):
+        raise NetworkIdentityError("The saved subnet topology changed")
+    route=network.get_route_table(manifest["route"]).data
+    security=network.get_security_list(manifest["security"]).data
+    gateway=network.get_internet_gateway(manifest["gateway"]).data
+    for value in (subnet,route,security,gateway):
+        tags=value.freeform_tags or {}
+        if tags.get("deployment")!=manifest["deployment"] or tags.get("managed_by")!="StackSignal":
+            raise NetworkIdentityError("Network ownership does not match this deployment")
+    if any(v.vcn_id!=manifest["vcn"] for v in (route,security,gateway)) or not gateway.is_enabled:
+        raise NetworkIdentityError("The saved internet gateway/network is not enabled")
+    default=[r for r in route.route_rules if r.destination=="0.0.0.0/0"]
+    if default and (len(default)!=1 or default[0].network_entity_id!=gateway.id):
+        raise NetworkIdentityError("An unexpected default route needs review")
+    if not default:
+        ensure()
+        network.update_route_table(route.id,models.UpdateRouteTableDetails(route_rules=[*route.route_rules,
+            models.RouteRule(destination="0.0.0.0/0",destination_type="CIDR_BLOCK",network_entity_id=gateway.id)]))
+    rules=list(security.ingress_security_rules)
+    for port in (80,443):
+        def permits(rule):
+            ports=getattr(getattr(rule,"tcp_options",None),"destination_port_range",None)
+            return rule.protocol=="6" and rule.source=="0.0.0.0/0" and ports and ports.min<=port<=ports.max
+        if not any(permits(rule) for rule in rules):
+            rules.append(models.IngressSecurityRule(protocol="6",source="0.0.0.0/0",source_type="CIDR_BLOCK",
+                is_stateless=False,tcp_options=models.TcpOptions(destination_port_range=models.PortRange(min=port,max=port))))
+    if len(rules)!=len(security.ingress_security_rules):
+        ensure()
+        network.update_security_list(security.id,models.UpdateSecurityListDetails(ingress_security_rules=rules))
+    print(json.dumps({"status":"network_access_verified","internet_route":True,"web_ports":[80,443]}),flush=True)
+
+
 class NoRedirect(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, *args, **kwargs):
         return None
@@ -277,7 +319,10 @@ def main():
                 compartment_id=config["tenancy"],instance_id=instance.id).data
             active=[a for a in attachments if a.lifecycle_state=="ATTACHED"]
             if len(active)!=1:raise RunnerError("Expected one attached VNIC")
-            public_ip=global_ipv4(network.get_vnic(active[0].vnic_id).data.public_ip)
+            vnic=network.get_vnic(active[0].vnic_id).data
+            public_ip=global_ipv4(vnic.public_ip)
+            stage="verify_owned_network"
+            ensure_network_access(network,oci.core.models,manifest,vnic.subnet_id,checkpoint)
             hostname="stacksignal."+public_ip+".sslip.io"
             checkpoint({"public_ip":public_ip,"shape_allocated":f"{host.SHAPE} {instance.shape_config.ocpus:g} OCPU / {instance.shape_config.memory_in_gbs:g} GB",
                 "webhook_url":"https://"+hostname+"/v1/events"})
@@ -396,7 +441,7 @@ def main():
         raise
     except Exception as error:
         permanent=isinstance(error,host.HostError) and "not yet available" not in str(error)
-        permanent=permanent or getattr(error,"status",None) in (401,403)
+        permanent=permanent or isinstance(error,NetworkIdentityError) or getattr(error,"status",None) in (401,403)
         result={"status":"PAUSED_ERROR" if permanent else "RETRY_PENDING","stage":stage,"type":type(error).__name__,
             "oci_status":getattr(error,"status",None),"checked_at":datetime.now(timezone.utc).isoformat()}
         try:

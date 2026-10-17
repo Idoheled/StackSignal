@@ -1,5 +1,25 @@
 # WhatsApp notification implementation progress
 
+## 2026-10-17 — Reconcile inherited default network configuration
+
+The full console reader passed and saved the trusted host key. The next run
+failed its SSH connection retries, before copying/installing software. A live
+network audit found the cause: OCI's default route/security resources inherited
+the VCN deployment tags and had been mistaken for configured resources. The
+saved default route table was empty, and the saved security list lacked 80/443.
+The VM remained RUNNING, with its public address assigned and a single boot disk.
+
+Fresh resource selection now requires the intended name as well as ownership
+tags, or the exact previously saved resource ID. The runner validates saved
+subnet/VCN/gateway ownership and topology, then adds the missing internet route
+and web ingress through fenced updates. It preserves narrow SSH access and
+rejects unrelated resources or a changed default gateway. Regression checks
+cover inherited tags, actual route/security creation, idempotent repair, changed
+ownership/topology and lost fencing. The corrected source is undergoing CI.
+
+The earlier 409 was caused by the operator diagnostic snapshot overlapping the
+runner's capture. That diagnostic snapshot was removed. It did not affect the VM.
+
 ## 2026-10-17 — Full console snapshot for trusted SSH identity
 
 Live SSH verification found a second bootstrap issue: OCI's default console

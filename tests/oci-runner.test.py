@@ -4,13 +4,62 @@ import importlib.util
 from pathlib import Path
 from types import SimpleNamespace
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 spec=importlib.util.spec_from_file_location("runner",Path(__file__).resolve().parents[1]/"scripts/oci-capacity-runner.py")
 runner=importlib.util.module_from_spec(spec);spec.loader.exec_module(runner)
 
 
 class ProvisionerBoundary(unittest.TestCase):
+    def network_fixture(self):
+        tags={"managed_by":"StackSignal","deployment":"owned"}
+        def resource(identifier,**kw):return SimpleNamespace(id=identifier,vcn_id="vcn",freeform_tags=dict(tags),**kw)
+        manifest={"deployment":"owned","vcn":"vcn","subnet":"subnet","route":"route","security":"security","gateway":"gateway"}
+        subnet=resource("subnet",route_table_id="route",security_list_ids=["security"])
+        route=resource("route",route_rules=[])
+        ssh=SimpleNamespace(protocol="6",source="198.51.100.8/32",tcp_options=SimpleNamespace(destination_port_range=SimpleNamespace(min=22,max=22)))
+        security=resource("security",ingress_security_rules=[ssh])
+        gateway=resource("gateway",is_enabled=True)
+        network=Mock()
+        for name,value in (("subnet",subnet),("route_table",route),("security_list",security),("internet_gateway",gateway)):
+            getattr(network,"get_"+name).return_value=SimpleNamespace(data=value)
+        network.update_route_table.side_effect=lambda identifier,details:setattr(route,"route_rules",details.route_rules)
+        network.update_security_list.side_effect=lambda identifier,details:setattr(security,"ingress_security_rules",details.ingress_security_rules)
+        class Models:
+            def __getattr__(self,name):return lambda **kw:SimpleNamespace(**kw)
+        return manifest,network,Models(),subnet,route,security,gateway
+
+    def test_inherited_default_network_gets_route_and_web_rules_without_broadening_ssh(self):
+        manifest,network,models,subnet,route,security,gateway=self.network_fixture()
+        fence=Mock()
+        with patch("sys.stdout"):
+            runner.ensure_network_access(network,models,manifest,"subnet",fence)
+        self.assertEqual(route.route_rules[0].destination,"0.0.0.0/0")
+        self.assertEqual(route.route_rules[0].network_entity_id,"gateway")
+        self.assertEqual([(r.tcp_options.destination_port_range.min,r.source) for r in security.ingress_security_rules],
+            [(22,"198.51.100.8/32"),(80,"0.0.0.0/0"),(443,"0.0.0.0/0")])
+        self.assertEqual(fence.call_count,2)
+        with patch("sys.stdout"):
+            runner.ensure_network_access(network,models,manifest,"subnet",fence)
+        self.assertEqual(network.update_route_table.call_count,1)
+        self.assertEqual(network.update_security_list.call_count,1)
+
+    def test_network_repair_rejects_changed_topology_ownership_and_default_gateway(self):
+        for change in ("subnet","ownership","gateway"):
+            manifest,network,models,subnet,route,security,gateway=self.network_fixture()
+            if change=="subnet":subnet.security_list_ids=["unrelated"]
+            if change=="ownership":route.freeform_tags["deployment"]="someone-else"
+            if change=="gateway":route.route_rules=[SimpleNamespace(destination="0.0.0.0/0",network_entity_id="unrelated")]
+            with self.assertRaises(runner.NetworkIdentityError):
+                runner.ensure_network_access(network,models,manifest,"subnet",lambda:None)
+            network.update_route_table.assert_not_called();network.update_security_list.assert_not_called()
+
+    def test_network_repair_stops_before_mutation_when_fence_is_lost(self):
+        manifest,network,models,*_=self.network_fixture()
+        def lost():raise runner.LeaseLost("lost")
+        with self.assertRaises(runner.LeaseLost):runner.ensure_network_access(network,models,manifest,"subnet",lost)
+        network.update_route_table.assert_not_called();network.update_security_list.assert_not_called()
+
     def test_signed_reply_cannot_be_reflected_tampered_or_replayed(self):
         secret="ab"*32;stamp="1791990000";body=b'{"action":"ping","result":{"ok":true}}'
         headers={"x-stacksignal-timestamp":stamp,"x-stacksignal-signature":runner.signature(secret,stamp,body,True)}

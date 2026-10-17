@@ -34,6 +34,11 @@ on every run. Free networking is prepared once, with no NAT gateway or paid
 fallback. SSH accepts only the current runner's public IPv4 /32. The boot
 console API supplies the trusted SSH host public key; SSH requires that key.
 Only HTTPS/HTTP are public. Ollama, OpenClaw and the webhook process bind locally.
+Oracle's default route/security resources inherit VCN tags. Fresh selection also
+requires the intended resource name; resumes use exact saved IDs. Before SSH,
+the runner validates the saved network topology and reconciles the internet
+route and web rules, including legacy default resources. Ownership, gateway or
+subnet changes stop setup before a network mutation.
 
 The runner installs pinned runtimes, validates OpenClaw, generates a real alert
 with local Qwen3 and checks public TLS health. It benchmarks `qwen3:4b` first and
