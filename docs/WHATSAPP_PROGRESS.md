@@ -1,5 +1,22 @@
 # WhatsApp notification implementation progress
 
+## 2026-10-17 — Allocation audit and direct launch verification
+
+At 15:17 UTC the hourly runner was healthy: recent eight dispatches succeeded,
+and Oracle reported no capacity across all eight placements. Independent live
+tenancy inventory confirmed zero instances and zero boot/block volumes. State
+was `SEARCHING_CAPACITY`, no instance/IP/launch intent, with hourly cron active.
+Quality, Production and Release skips were intentional mode/branch conditions.
+
+Audit found that negative capacity reports prevented any `LaunchInstance`
+request. The new runner tries the eight reviewed placements directly, prioritizes
+positive reports, records provider request IDs and stops at the first allocation.
+Definitive capacity rejection rotates the token; uncertain failures preserve
+exact parameters/token. Inventory changes or failed durable fencing stop further
+requests. Six new safety tests cover the negative-report SDK path, eight bounded
+rejections, first-success termination, uncertain response retry, lost fence and
+changed inventory. Live activation/allocator results will be recorded after CI.
+
 ## 2026-10-14 19:00 UTC — Hourly capacity claimer active and timer-verified
 
 `stacksignal-oci-hourly-claim` is **active** on Supabase cron job 5 with

@@ -18,6 +18,16 @@ before the next mutation. Uncertain launches retain their retry token; after
 23 hours without reconciliation they pause for owner review. A recorded or
 terminated instance is never automatically replaced.
 
+Capacity reports prioritize the eight reviewed placements: both approved sizes,
+automatic fault placement and fault domains 1–3. Even if all reports are negative,
+the runner sends bounded `LaunchInstance` requests. Only OCI's explicit HTTP 500
+`Out of host capacity` rejection permits moving to another placement with a new
+token. Timeouts, rate limits and other uncertain errors stop that run and retain
+the original parameters/token. Inventory is reconciled before each request;
+unexpected compute or storage changes stop further launches. Success stops the
+loop immediately. Logs and `last_result.attempts` record provider status and
+request IDs; a green check alone does not mean a VM exists.
+
 Only home-region A1, Ubuntu 24.04 ARM, 2 OCPU/12 GB or 1 OCPU/8 GB, and a 50 GB
 balanced boot volume are allowed. Tenancy compute/storage inventory is reviewed
 on every run. Free networking is prepared once, with no NAT gateway or paid

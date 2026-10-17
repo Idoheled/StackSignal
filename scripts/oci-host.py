@@ -87,6 +87,53 @@ def wait_available(value, read, ensure, sleep=time.sleep, clock=time.monotonic):
     return value
 
 
+def launch_candidates(manifest, requests, launch, save, reconcile, is_capacity_error):
+    """Try reviewed placements; only a definitive capacity rejection permits moving on.
+
+    An uncertain response retains its exact request/token for the next fenced run.
+    The caller validates all requests and reconciles inventory before every call.
+    """
+    result = {"operation": "LaunchInstance", "checked_at": datetime.now(timezone.utc).isoformat(),
+              "status": "LAUNCH_IN_FLIGHT", "attempts": []}
+    manifest["last_launch_result"] = result
+    for request in requests:
+        reconcile()  # Stop if another host or an unexpected disk appeared.
+        if manifest.get("launch_request") and manifest["launch_request"] != request:
+            raise HostError("Uncertain launch parameters cannot change.")
+        if not manifest.get("launch_request"):
+            manifest["launch_request"] = dict(request)
+            manifest["launch_started_at"] = datetime.now(timezone.utc).isoformat()
+        save()  # A failed durable checkpoint must prevent the allocation API call.
+        attempt = {key: request[key] for key in ("availability_domain", "fault_domain", "ocpus", "memory_gb")}
+        attempt["started_at"] = datetime.now(timezone.utc).isoformat()
+        print(json.dumps({"status": "launch_attempt", "operation": "LaunchInstance", **attempt}), flush=True)
+        try:
+            instance = launch(request, manifest["launch_token"])
+        except Exception as error:
+            if not is_capacity_error(error):
+                raise  # Preserve the exact request/token, including on timeout or rate limiting.
+            attempt.update(status="OUT_OF_HOST_CAPACITY", http_status=error.status,
+                           code=error.code, request_id=getattr(error, "opc_request_id", None),
+                           completed_at=datetime.now(timezone.utc).isoformat())
+            result["attempts"].append(attempt)
+            manifest.pop("launch_request", None)
+            manifest.pop("launch_started_at", None)
+            manifest["launch_token"] = str(uuid.uuid4())
+            save()
+            print(json.dumps(attempt), flush=True)
+            continue
+        attempt.update(status="INSTANCE_REQUESTED", instance_id=instance.id)
+        result["attempts"].append(attempt)
+        result["status"] = "INSTANCE_REQUESTED"
+        manifest["instance"] = instance.id
+        save()
+        return instance  # Never try another placement after success.
+    result["status"] = "OUT_OF_HOST_CAPACITY"
+    result["checked_at"] = datetime.now(timezone.utc).isoformat()
+    save()
+    return None
+
+
 def main(argv=None, on_manifest=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", required=True)
@@ -179,9 +226,11 @@ def main(argv=None, on_manifest=None):
             reports.append({"domain": domain.name, "fault_domain": item.fault_domain, "ocpus": cpu, "memory_gb": ram, "status": item.availability_status})
             if item.availability_status == "AVAILABLE" and (choice is None or cpu > choice[2]):
                 choice = (domain.name, item.fault_domain, cpu, ram)
+    if args.apply and reports:
+        print(json.dumps({"status": "capacity_report", "capacity": reports}), flush=True)
     if args.prepare_network:
         choice = (domains[0].name, None, 2, 12)
-    if not choice:
+    if not choice and not args.apply:
         print(json.dumps({"status": "out_of_host_capacity", "checked_at": datetime.now(timezone.utc).isoformat(), "resources_created": 0, "capacity": reports}))
         return 2
     if not args.apply and not args.prepare_network:
@@ -241,30 +290,54 @@ def main(argv=None, on_manifest=None):
     if args.prepare_network:
         print(json.dumps({"status":"network_prepared","resources_created":"free networking only","instance_created":False}))
         return 0
-    if not previous_request:
-        manifest["launch_request"] = {"availability_domain":choice[0],"fault_domain":choice[1],"ocpus":choice[2],"memory_gb":choice[3],"image_id":images[0].id,"subnet_id":subnet.id,"ssh_public_key":public_key}
-        manifest["launch_started_at"] = datetime.now(timezone.utc).isoformat()
-        save()  # Durable launch intent and exact parameters precede the allocation call.
-    request = manifest["launch_request"]
-    validate_launch(request, [d.name for d in domains], subnet.id, public_key)
-    try:
-        instance = compute.launch_instance(m.LaunchInstanceDetails(
-        compartment_id=tenancy, availability_domain=choice[0], fault_domain=choice[1], display_name="stacksignal-whatsapp", freeform_tags=tags,
-        shape=SHAPE, shape_config=m.LaunchInstanceShapeConfigDetails(ocpus=choice[2], memory_in_gbs=choice[3]),
+    # Reports prioritize placements; the allocator is still tried when all reports
+    # are negative. A report response is not itself an allocation attempt.
+    if previous_request:
+        requests = [previous_request]
+    else:
+        placements = {}
+        for item in reports:
+            key = (item["domain"], item["fault_domain"], item["ocpus"], item["memory_gb"])
+            placements[key] = item["status"] == "AVAILABLE"
+        if not placements or len(placements) > 8:
+            raise HostError("Capacity placements exceed the bounded Jerusalem review.")
+        ordered = sorted(placements, key=lambda p: (not placements[p], -p[2], p[0], p[1] or ""))
+        requests = [{"availability_domain":ad,"fault_domain":fd,"ocpus":cpu,"memory_gb":ram,
+                     "image_id":images[0].id,"subnet_id":subnet.id,"ssh_public_key":public_key}
+                    for ad, fd, cpu, ram in ordered]
+    for request in requests:
+        validate_launch(request, [d.name for d in domains], subnet.id, public_key)
+
+    def reconcile():
+        current_instances, current_volumes = [], []
+        for compartment in compartments:
+            current_instances.extend(all_items(compute.list_instances, compartment_id=compartment))
+            current_volumes.extend(all_items(volumes_client.list_volumes, compartment_id=compartment))
+            for domain in domains:
+                current_volumes.extend(all_items(volumes_client.list_boot_volumes,
+                    compartment_id=compartment, availability_domain=domain.name))
+        if any(i.lifecycle_state != "TERMINATED" for i in current_instances):
+            raise HostError("Compute appeared during allocation; reconcile before another launch.")
+        def disks(items):
+            return {(v.id, v.size_in_gbs) for v in items if v.lifecycle_state != "TERMINATED"}
+        if disks(current_volumes) != disks(volumes):
+            raise HostError("Storage changed during allocation; review before another launch.")
+
+    def launch(request, token):
+        return compute.launch_instance(m.LaunchInstanceDetails(
+        compartment_id=tenancy, availability_domain=request["availability_domain"], fault_domain=request["fault_domain"], display_name="stacksignal-whatsapp", freeform_tags=tags,
+        shape=SHAPE, shape_config=m.LaunchInstanceShapeConfigDetails(ocpus=request["ocpus"], memory_in_gbs=request["memory_gb"]),
         source_details=m.InstanceSourceViaImageDetails(image_id=request["image_id"], boot_volume_size_in_gbs=BOOT_GB, boot_volume_vpus_per_gb=10),
         create_vnic_details=m.CreateVnicDetails(subnet_id=request["subnet_id"], assign_public_ip=True, hostname_label="whatsapp"),
-        metadata={"ssh_authorized_keys": request["ssh_public_key"]}), opc_retry_token=manifest["launch_token"]).data
-    except oci.exceptions.ServiceError as error:
-        if error.status == 500 and "out of host capacity" in (error.message or "").lower():
-            # OCI explicitly rejected allocation. A later attempt gets a new token.
-            manifest.pop("launch_request", None); manifest.pop("launch_started_at", None)
-            manifest["launch_token"] = str(uuid.uuid4()); save()
-            print(json.dumps({"status":"out_of_host_capacity","resources_created":"free networking only","instance_created":False}))
-            return 2
-        raise
-    manifest["instance"] = instance.id
-    save()
-    print(json.dumps({"status": "instance_requested", "instance_id": instance.id, "state": instance.lifecycle_state, "shape": SHAPE, "ocpus": choice[2], "memory_gb": choice[3], "boot_gb": BOOT_GB}))
+        metadata={"ssh_authorized_keys": request["ssh_public_key"]}), opc_retry_token=token).data
+
+    instance = launch_candidates(manifest, requests, launch, save, reconcile,
+        lambda e: isinstance(e, oci.exceptions.ServiceError) and e.status == 500
+                  and "out of host capacity" in (e.message or "").lower())
+    print(json.dumps({"status": "instance_requested" if instance else "out_of_host_capacity",
+        "instance_created": bool(instance), **manifest["last_launch_result"]}))
+    if not instance:
+        return 2
     return 0
 
 

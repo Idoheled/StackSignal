@@ -235,9 +235,17 @@ def main():
             stage="capacity_and_allocation"
             code=host.main(args+["--apply"],on_manifest=save)
             if code==2:
+                result=manifest.get("last_launch_result",{})
                 control.call("release",{"status":"SEARCHING_CAPACITY","manifest":manifest,
-                    "result":{"status":"OUT_OF_HOST_CAPACITY","checked_at":datetime.now(timezone.utc).isoformat()}})
-                print(json.dumps({"status":"waiting_for_capacity","next_check":"hourly"}))
+                    "result":result})
+                attempts=len(result.get("attempts",[]))
+                summary=os.environ.get("GITHUB_STEP_SUMMARY")
+                if summary:
+                    with open(summary,"a") as output:
+                        output.write("## OCI allocation result\n\nNo VM was allocated. Oracle rejected all "+str(attempts)+
+                            " `LaunchInstance` requests with `Out of host capacity`. The hourly cron remains active.\n\n"+
+                            "Quality, Production and GitHub Release are intentionally skipped in `oci_capacity` mode on this feature branch.\n")
+                print(json.dumps({"status":"waiting_for_capacity","operation":"LaunchInstance","launch_attempts":attempts,"next_check":"hourly"}))
                 return 0
             if not manifest.get("instance"):
                 raise RunnerError("No allocated instance in the reconciled state")
