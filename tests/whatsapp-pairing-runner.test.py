@@ -12,7 +12,8 @@ class PairingGuards(unittest.TestCase):
         runner.validate_request(request,sha,now)
         runner.validate_request({**request,"operation":"columbus_deploy","verification_mode":"answer_only"},sha,now)
         runner.validate_request({**request,"operation":"columbus_diagnostics"},sha,now)
-        for change in ({"sha":"b"*40},{"expires_at":now},{"phone":"+15555550123"},{"session":"invalid"},{"key":"short"},{"operation":"provision"},{"verification_mode":"skip_checks"}):
+        runner.validate_request({**request,"operation":"columbus_diagnostics","verification_mode":"quality_audit"},sha,now)
+        for change in ({"sha":"b"*40},{"expires_at":now},{"phone":"+15555550123"},{"session":"invalid"},{"key":"short"},{"operation":"provision"},{"verification_mode":"skip_checks"},{"operation":"columbus_deploy","verification_mode":"quality_audit"}):
             with self.assertRaises(RuntimeError):runner.validate_request({**request,**change},sha,now)
         state=dict(status="AWAITING_WHATSAPP_QR",cron_enabled=False,lease_id=None,instance_ocid="one",manifest={"instance":"one"})
         runner.validate_host(state)

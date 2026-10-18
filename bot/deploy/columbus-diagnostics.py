@@ -17,6 +17,14 @@ with sqlite3.connect((base/'columbus.sqlite').as_uri()+'?mode=ro',uri=True) as d
 creds=json.loads((base/'openclaw/credentials/whatsapp/default/creds.json').read_text())
 report['identity']={'registered':bool(creds.get('registered')),'has_id':bool(creds.get('me',{}).get('id')),'has_lid':bool(creds.get('me',{}).get('lid'))}
 report['services']={name:subprocess.run(['systemctl','is-active','--quiet',name]).returncode==0 for name in ('stacksignal-openclaw','stacksignal-bot','ollama','caddy')}
+if request.get('quality_audit') is True:
+ # Only checked-in synthetic prompts. No group text, provider keys or chat sends.
+ env=dict(line.split('=',1) for line in Path('/etc/stacksignal/bot.env').read_text().splitlines() if '=' in line and not line.startswith('#'))
+ try:
+  audit=subprocess.run(['runuser','-u','stacksignal','--','env','OLLAMA_MODEL='+env.get('OLLAMA_MODEL','qwen3:4b'),'/opt/node/bin/node','/opt/stacksignal-pairing/bot/deploy/columbus-model-audit.mjs'],capture_output=True,timeout=440)
+  if audit.returncode:report['model_audit_error']='Synthetic model audit failed'
+  else:report['model_audit']=json.loads(audit.stdout)
+ except subprocess.TimeoutExpired:report['model_audit_error']='Synthetic model audit timed out'
 script="import {readFileSync} from 'node:fs';import {encryptPrivateResult} from '/opt/stacksignal-pairing/bot/deploy/pair-phone.mjs';const x=JSON.parse(readFileSync(0,'utf8'));console.log(JSON.stringify(encryptPrivateResult(x.result,x.request)));"
 result=subprocess.run(['/opt/node/bin/node','--input-type=module','-e',script],input=json.dumps({'request':request,'result':report}).encode(),capture_output=True,timeout=10,check=True)
 print(result.stdout.decode().strip())
