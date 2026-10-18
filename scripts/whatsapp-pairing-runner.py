@@ -16,7 +16,7 @@ STAGE="request_validation"
 def validate_request(request,sha,now=None):
     now=time.time()*1000 if now is None else now
     if (request.get("sha")!=sha or not re.fullmatch(r"[1-9][0-9]{7,14}",request.get("phone",""))
-        or request.get("operation","pair") not in ("pair","activation_test","delivery_readiness","columbus_deploy")
+        or request.get("operation","pair") not in ("pair","activation_test","delivery_readiness","columbus_deploy","columbus_diagnostics")
         or request.get("verification_mode") not in (None,"answer_only")
         or not re.fullmatch(r"[0-9a-f]{64}",request.get("key",""))
         or not re.fullmatch(r"[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}",request.get("session",""))
@@ -88,6 +88,14 @@ def main():
             run(["scp",*ssh_options,str(archive),"ubuntu@"+public_ip+":stacksignal-pairing.tar"])
             run(ssh+["sudo install -d -m 0755 /opt/stacksignal-pairing && sudo tar -xf stacksignal-pairing.tar -C /opt/stacksignal-pairing && rm stacksignal-pairing.tar"])
             private={k:request[k] for k in ("phone","key","session","expires_at")}
+            if request.get("operation")=="columbus_diagnostics":
+                STAGE="read_group_runtime_diagnostics"
+                raw=run(ssh+["sudo python3 /opt/stacksignal-pairing/bot/deploy/columbus-diagnostics.py"],json.dumps(private).encode(),timeout=60)
+                result=json.loads(raw)
+                if result.get("session")!=request["session"] or result.get("status")!="private_result":raise RuntimeError("Invalid private diagnostic result")
+                print("MAINTENANCE_ENCRYPTED:"+json.dumps({k:result[k] for k in ("status","session","nonce","encrypted","tag")},separators=(",",":")),flush=True)
+                print(json.dumps({"status":"diagnostic_report_ready","provisioning_enabled":False}),flush=True)
+                return
             if request.get("operation")=="columbus_deploy":
                 STAGE="deploy_group_only_columbus"
                 private.update(invite_url=request["invite_url"],group_name=request["group_name"],operation=request["operation"],sha=sha)
