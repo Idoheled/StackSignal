@@ -8,7 +8,7 @@ StackSignal uses stable semantic versions in `package.json`, matching dated entr
 2. Choose the next version: patch for fixes, minor for features, major for incompatible changes. Before 1.0, document incompatible changes explicitly and use a minor bump. This process publishes stable versions only.
 3. Run `pnpm release:prepare 0.1.2` (replace with the intended version). The command increments `package.json`, freezes the Unreleased notes into a dated entry, and leaves an empty Unreleased section for future work. It does not commit, push or publish.
 4. Review both files, run `pnpm release:check` and `pnpm test`, and commit the release with the associated changes. Use the normal PR/review process; required Quality checks still apply.
-5. Merge to `main`. The existing **CI and Cloudflare** workflow runs all checks, deploys the verified artifact, and runs production smoke checks. Its **GitHub Release** job then publishes the matching version automatically.
+5. After feature PRs pass into `dev`, open the release PR from `dev` to `main`. Obtain owner approval of the private preview and merge the reviewed release PR. The existing **CI and Cloudflare** workflow runs all checks, deploys the verified artifact, and runs production smoke checks. Its **GitHub Release** job then publishes the matching version automatically.
 
 Do not bump versions for every maintenance commit. Ordinary main updates continue to deploy; a version already published causes release publication to skip. A release is a named source/deployment checkpoint. Published notes and tags are not automatically rewritten when later commits arrive.
 

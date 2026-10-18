@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-18
+
 ### WhatsApp registration and delivery preparation
 
 - Add optional signup registration, authenticated join/confirmation dialogs,

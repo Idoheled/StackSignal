@@ -214,3 +214,22 @@ Administrators edit queries/interests/priorities/thresholds in Coverage and insp
 - Production UI/main remain unchanged while the private version is reviewed.
   The notification dispatcher cron remains paused; resource polling remains
   retired. See the checkpoint for later delivery verification results.
+
+Live registration migration history version: `20261018074942` (management-tool
+application); its CLI-created source file was reconciled to that returned
+version. Earlier hosted/local timestamp differences predate this change and
+must not cause migrations to be replayed. The named registration update and
+schema were verified by live reads and the advisor; production dependencies
+have no reported advisories. The full development-tool audit retains the three
+previously documented advisory paths; no blanket suppression was added.
+
+At 08:00:12 and 08:01:37 UTC, explicitly labeled real release/article tests
+completed through the deployed dispatcher, signed HTTPS receiver, SQLite queue,
+local Ollama and OpenClaw. Both outbox records are Sent, have provider receipts,
+zero webhook failures and cleared payloads. Signed replay returned the same
+receipts; unsigned requests returned 401. The tests used two already-reviewed
+public articles with valid platform deep links, without altering their content
+or review history. Cron stayed paused; a temporary future admission watermark
+blocked ordinary new admissions during the manual test. Global enablement was
+then restored to false and the watermark to its prior null value. Receipt IDs
+remain in the protected database and host ledger.

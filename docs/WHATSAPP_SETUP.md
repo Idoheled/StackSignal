@@ -73,12 +73,14 @@ the independent collector/evaluator/internal-review jobs.
 
 Activation requires successful real article/release delivery, signed receipts,
 replay/restart checks, passing CI and the owner's private-preview approval.
-Then set `active_from=now()` and `enabled=true` together and activate only the
-named WhatsApp dispatch cron. The new watermark prevents historical backfill.
+Then run the guarded operator transaction in
+`bot/deploy/activate-notifications.sql` to set a fresh activation watermark and
+activate only the named WhatsApp dispatch cron. The new watermark prevents historical backfill.
 Verify a newly evaluated qualifying event, the provider receipt and the group's
 actual message. Main promotion follows [the branch convention](BRANCHING.md).
 
-To pause, disable the named dispatch cron and set the global flag false.
+To pause, run `bot/deploy/pause-notifications.sql`, which disables the named
+dispatch cron and sets the global flag false.
 Already accepted host work can finish; inspect the SQLite ledger before making
 any destination change. Do not delete delivery history to retry a message.
 
@@ -102,7 +104,8 @@ The owner-only `whatsapp_pairing` manual CI operation accepts an exact-commit,
 15-minute private encrypted request. It verifies the saved existing host, no
 active provisioning lease and disabled provisioning control. A temporary runner
 /32 SSH rule is added and removed in `finally`; trusted SSH identity comes from
-the retained verified host key. No maintenance operation can allocate a VM.
+the retained verified host key. No maintenance operation can allocate a VM. Maintenance runs from `dev` after
+feature integration; the current feature branch is also allowed during rollout.
 
 - `pair`: for explicit recovery of an unlinked account only. Uses the installed
   pinned library; the owner enters the encrypted phone-pairing code in WhatsApp.

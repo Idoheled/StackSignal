@@ -51,7 +51,7 @@ Administrators see registration labels in their existing member table.
 
 ## Verification and recovery
 
-The additive migration is `20261018074722_whatsapp_registration_status.sql`.
+The additive migration is `20261018074942_whatsapp_registration_status.sql`.
 Apply it before releasing the new API/UI. Old preference callers remain valid;
 rollback the UI rather than dropping registration history. Do not rerun named
 member onboarding as a general migration. The owner-confirmed three-member

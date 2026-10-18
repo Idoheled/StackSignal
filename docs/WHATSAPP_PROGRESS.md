@@ -1,59 +1,77 @@
-# WhatsApp deployment checkpoint
+# WhatsApp rollout checkpoint
 
-**Paired; verified StackSignal group; manual announcement confirmed.
-Automatic curated alerts remain disabled. Resource provisioning is retired.**
+**Paired, fixed group configured, and real article/release delivery verified.
+Production dispatch remains paused pending owner approval of the private UI.
+Resource provisioning is retired. No further phone pairing is needed.**
 
-On October 18 at 07:26 UTC (10:26 Israel), [the activation
-run](https://github.com/Idoheled/StackSignal/actions/runs/39107509714) connected
-using the paired identity, resolved the supplied invite, verified the exact
-StackSignal group and membership, restarted the gateway and sent one
-announcement through the production OpenClaw transport. Its provider message ID
-and private destination evidence are saved in the protected manifest and host
-announcement ledger. No phone number, group identifier, invite or code is
-committed here. Maintenance source `6658b52` passed hosted CI, including
-recipient-identity and confirmed/uncertain-send replay tests. The temporary SSH
-rule and Actions request secret were removed. No further owner pairing steps
-are required.
+## Verified delivery — October 18, 2026
 
-## Verified host baseline — October 17
+- The owner received the real announcement from
+  [activation run 39107509714](https://github.com/Idoheled/StackSignal/actions/runs/39107509714).
+- [Readiness run 39109432899](https://github.com/Idoheled/StackSignal/actions/runs/39109432899)
+  re-verified the supplied invite, exact StackSignal group and linked account,
+  set the fixed destination without overwriting credentials and checked all four
+  services and the connected WhatsApp gateway.
+- Two explicitly labeled real tests used existing reviewed public articles and
+  valid platform links. The GitHub release was confirmed at 08:00:12 UTC and
+  the article at 08:01:37 UTC through the deployed dispatcher, signed HTTPS
+  receiver, durable queue, local Ollama and actual OpenClaw adapter. Both private
+  outbox records are Sent, have provider IDs, zero webhook failures and cleared
+  payloads. Existing articles/reviews were not modified.
+- Signed event replay returned the same provider receipts; unsigned events were
+  rejected with 401. [Restart run 39109941531](https://github.com/Idoheled/StackSignal/actions/runs/39109941531)
+  rechecked membership, restarted the gateway/receiver, found the same fixed
+  target, two durable confirmed deliveries and all four healthy services.
+  Replaying after restart returned those same receipts.
+- Each maintenance run removed its temporary /32 SSH ingress. The encrypted
+  request secret is removed after the operation. No private phone, invite,
+  group ID or raw provider response is committed.
 
-On October 17, 2026 at 20:50 UTC (23:50 Israel),
-[the successful bootstrap](https://github.com/Idoheled/StackSignal/actions/runs/39067999141)
-finished on the existing Jerusalem A1 ARM VM: 2 OCPU, 12 GB RAM, 50 GB boot disk,
-public IP `82.70.223.24`. Setup retries created no replacement VM.
+The manual tests kept cron paused and temporarily used a future admission
+watermark to block ordinary collection from creating alerts. Global enablement
+was restored to false and its watermark to the original null value afterward.
+No historical backfill or unreviewed content was broadcast. Source-trigger,
+policy, failure/retry and uncertain-send cases are covered by migration/runtime
+regressions; the live tests verify the deployed delivery path and persistence.
 
-Verified runtime source: `36600a5dd1f328144e356b51fa7c3c8a4833af5f`.
-Ollama, OpenClaw, receiver and Caddy passed active checks. Local-only qwen3:4b
-generated a real formatted alert in 70,743 ms. Public HTTPS health returned 200
-with ok true and delivery_enabled false. Hosted verification passed 94 Node
-tests, 27 Python safety checks, 36 browser tests, both TypeScript checks, build
-and boundary/release checks before the final bootstrap.
+## Registration and repository
 
-## Current operating state
+The additive registration migration is applied. The owner, Eilon and Roi are
+administrator-confirmed Registered, per the owner's explicit group-membership
+confirmation. Other users' preferences are preserved. Signup is optional;
+Pending users see the invite after login and explicitly confirm joining.
+Unregistering records the change and explains how to leave the actual group.
+See [registration](WHATSAPP_REGISTRATION.md).
 
-- Provisioner state AWAITING_WHATSAPP_QR is its historical stop boundary, not
-  current WhatsApp status. Private `manifest.whatsapp` records paired,
-  group-verified and announcement-sent evidence; there is no active lease.
-- [Owner SSH/QR recovery instructions](https://github.com/Idoheled/StackSignal/pull/4#issuecomment-6240842512)
-  contain secure key retrieval, narrow SSH ingress, fingerprint and the
-  service-user login command. Actual security list: **Default Security List for
-  stacksignal-whatsapp**.
-- VM, private configuration, saved manifest, model and owner SSH key are intact.
-  Do not rerun installation or relink the working account.
-- Resource-claim schedule deleted; control flag false; private dispatch helper
-  inert behind the disabled control state; workflow template archived outside GitHub's workflow path.
-  Normal CI has no provisioning mode or job.
-- Collector, evaluator and internal-review schedules remain active. WhatsApp
-  dispatch stays paused. Production UI and main are unchanged.
+The repository now has protected `main`, protected `dev`, and the active feature
+branch. Superseded dependency PRs #1–#3 were closed and their temporary branches
+removed; their diffs and history remain on GitHub. They contained only package
+and lockfile proposals. Feature PR #4 targets `dev`; only main can deploy the
+public app. [Branch conventions](BRANCHING.md) explain the integration/release
+path. The private preview is owner-only; main/public UI remain unchanged until
+explicit owner approval.
 
-Next: configure the verified fixed group for queued delivery → article/release
-webhook-to-group tests and receipts → reconnect/duplicate checks → enable
-new-event dispatch → release the opt-in UI. The manual announcement is confirmed;
-automatic content delivery is not yet claimed.
+## Existing host and retired provisioning
 
-## Preserved knowledge
+The [October 17 bootstrap](https://github.com/Idoheled/StackSignal/actions/runs/39067999141)
+installed the existing Jerusalem A1 VM (2 OCPU, 12 GB RAM, one 50 GB boot disk),
+using runtime source `36600a5dd1f328144e356b51fa7c3c8a4833af5f`.
+Ollama, OpenClaw, receiver and Caddy passed active checks; qwen3:4b generated a
+real formatted alert in 70.7 seconds. Pairing and later maintenance preserve that
+installed runtime and private state. Maintenance helpers are copied separately.
 
-The [dormant toolkit](../ops/oci/README.md) documents the complete flow,
-dependencies, safety boundaries and explicit recovery process. The
-[dated archive](archive/OCI_BOOTSTRAP_2026_10.md) retains implementation history.
-These files can merge without enabling capacity polling or VM setup.
+Provisioner status `AWAITING_WHATSAPP_QR` is its historical stop boundary, not
+current WhatsApp status. The protected manifest now records pairing, group,
+delivery and restart verification. Control remains false with no active lease;
+there are zero resource-claim cron jobs. The private dispatch helper is inert.
+Its workflow template is outside GitHub's workflow directory and CI has no
+provisioning mode. The [dormant toolkit](../ops/oci/README.md) and
+[historical archive](archive/OCI_BOOTSTRAP_2026_10.md) preserve the proven setup.
+Never rerun installation, reset the manifest or relink the working account.
+
+Collector, evaluator and internal-review schedules remain active and unchanged.
+The only pending operational gate is the production notification release:
+approve the private version, promote the reviewed release to main, run the
+guarded activation transaction with a fresh watermark and verify the first
+newly admitted production event. [Operations](WHATSAPP_SETUP.md) documents
+activation, pausing and recovery.
