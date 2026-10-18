@@ -95,6 +95,12 @@ try:
  (Path('/etc/stacksignal')/'runtime-source').write_text(request['sha']+'\n')
 except Exception as error:
  report['diagnostic']=str(error)[-5000:]
+ # Keep diagnostics inside the encrypted owner report, never public CI output.
+ if modified:
+  try:
+   startup=command(['journalctl','-u','stacksignal-openclaw','--since',stamp,'--no-pager','-o','cat']).decode(errors='replace')
+   report['startup_diagnostic']='\n'.join(line for line in startup.splitlines() if any(token in line.lower() for token in ('error','columbus','failed','exception','socket-close','at file:','at /')))[-12000:]
+  except Exception:report['startup_diagnostic']='Startup diagnostics unavailable'
  if modified:
   subprocess.run(['systemctl','stop','stacksignal-bot','stacksignal-openclaw'])
   for dest,prior in reversed(saved):
