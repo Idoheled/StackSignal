@@ -1,10 +1,14 @@
 # WhatsApp notification host onboarding
 
-Status: invitation/settings UI, authenticated deep links and a private outbox are
-implemented on the feature branch, along with the signed dispatcher, durable
-receiver and local Ollama/OpenClaw adapters. They are not deployed. Oracle VM,
-installation, pairing and actual WhatsApp delivery remain pending. Existing
-Cloudflare/Supabase services remain unchanged. See [progress](WHATSAPP_PROGRESS.md).
+Status: the Oracle host, local Ollama/OpenClaw runtime and HTTPS receiver are
+installed and verified. State is `AWAITING_WHATSAPP_QR`; capacity provisioning
+is retired. Pairing and real group delivery remain pending. Invitation/settings
+UI and dispatcher rollout remain on the feature branch; delivery stays disabled.
+See the [current checkpoint](WHATSAPP_PROGRESS.md) and
+[owner handoff instructions](https://github.com/Idoheled/StackSignal/pull/4#issuecomment-6240842512).
+For tomorrow's handoff, go directly to the pairing command below; do not repeat
+VM creation or bootstrap. The following preflight sections describe independent
+installations and recovery only.
 
 ## Decisions
 
@@ -20,14 +24,13 @@ Cloudflare/Supabase services remain unchanged. See [progress](WHATSAPP_PROGRESS.
 - Notifications use a shared stream. Turning a website preference off does not
   remove a WhatsApp group member; the planned first version explains how to leave.
 
-## First handoff: read-only Cloud Shell check
+## Independent installation: read-only Cloud Shell preflight
 
 The owner supplied an OCI API signing key and account configuration on October
-14. Direct SDK authentication and account reads now work, so Cloud Shell is an
-optional fallback. Jerusalem is the verified home region. The capacity report
-returned `OUT_OF_HOST_CAPACITY` for 2 OCPU/12 GB and 1 OCPU/8 GB across all three
-fault domains again at 15:09 UTC. No VM or network was provisioned. Keys, account
-configuration and raw tenant reports remain outside this repository.
+14. Direct SDK authentication works; Cloud Shell is an optional fallback for a
+separate installation. Jerusalem is the verified home region. The existing
+installation already owns its VM and network. Keys, account configuration and
+raw tenant reports remain outside this repository.
 
 1. Sign in at <https://cloud.oracle.com/>. Select the tenancy's home region.
 2. Open **Developer tools / Cloud Shell** from the top bar. Wait for the terminal.
@@ -55,7 +58,7 @@ Also choose whether OpenClaw should pair to an existing personal WhatsApp accoun
 or an existing dedicated account. A phone number, password, API signing key or
 WhatsApp verification code is not needed in this handoff.
 
-## Subsequent handoffs
+## Independent provisioning and recovery
 
 After the live report, prepare the exact provisioning configuration, verify
 Always Free eligibility and storage usage, and launch the VM through an

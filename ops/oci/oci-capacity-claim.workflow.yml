@@ -1,4 +1,5 @@
-# TEMPORARY branch-only provisioner. Remove before merging the bot feature.
+# ARCHIVED: outside .github/workflows, so GitHub cannot execute this template.
+# Recovery requires an explicitly reviewed restoration; see ops/oci/README.md.
 name: OCI Always Free capacity and bot bootstrap
 on:
   workflow_call:

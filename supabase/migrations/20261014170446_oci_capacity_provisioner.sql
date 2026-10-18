@@ -1,4 +1,5 @@
--- TEMPORARY provisioning control plane; remove this source before merging the bot.
+-- Historical provisioning control plane, retained as dormant recovery source.
+-- No schedule is created here. The completed deployment has cron_enabled=false.
 -- Existing collector/evaluator schedules are never changed by this migration.
 create table public.oci_provisioner_state (
   deployment_id text primary key default 'stacksignal-whatsapp-bot-il-jerusalem-1'

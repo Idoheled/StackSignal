@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-"""TEMPORARY: leased, resumable OCI claimer, run only on the reviewed feature SHA.
+"""Dormant recovery tool: leased OCI provisioning on an explicitly reviewed SHA.
 
 Secrets enter via encrypted Actions environment and remain outside the checkout.
+No CI or cron invokes this tool. See ops/oci/README.md before restoring a runner.
 Capacity absence is success. Delivery remains disabled until owner QR handoff.
 """
 import base64

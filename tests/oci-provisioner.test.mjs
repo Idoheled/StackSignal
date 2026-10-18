@@ -51,5 +51,13 @@ test("OCI control isolates state, fences leases, preserves launch identity and s
     assert.deepEqual((await db.query("select jobname from cron.job order by jobid")).rows.map(x => x.jobname), ["stacksignal-collector", "stacksignal-evaluator"]);
     assert.equal((await call("stop_cron", secondToken)).status, "AWAITING_WHATSAPP_QR");
     assert.equal((await call("lease", null, { runner_id: "three", commit_sha: sha })).acquired, false);
+    await t.test("dormant dispatcher cannot enqueue workflows after QR handoff", async () => {
+      const before = await call("status");
+      // Vault/net do not exist in this fixture: reaching either would fail.
+      // The disabled-state guard must return before reading a token or HTTP POST.
+      assert.equal((await db.query("select ss_private.oci_hourly_dispatch() value")).rows[0].value, null);
+      assert.deepEqual(await call("status"), before);
+      assert.deepEqual((await db.query("select jobname from cron.job order by jobid")).rows.map(x => x.jobname), ["stacksignal-collector", "stacksignal-evaluator"]);
+    });
   } finally { await db.close(); }
 });

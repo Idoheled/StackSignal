@@ -6,12 +6,6 @@ on:
   pull_request:
     branches: [main]
   workflow_dispatch:
-    inputs:
-      mode:
-        description: Quality checks or temporary OCI provisioning
-        type: choice
-        default: quality
-        options: [quality, oci_capacity]
 
 permissions:
   contents: read
@@ -24,7 +18,6 @@ env:
 jobs:
   quality:
     name: Quality
-    if: github.event_name != 'workflow_dispatch' || inputs.mode != 'oci_capacity'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     concurrency:
@@ -71,15 +64,6 @@ jobs:
           retention-days: 1
           if-no-files-found: error
           include-hidden-files: true
-
-  # TEMPORARY: remove this job and input before merging the WhatsApp feature.
-  oci_capacity:
-    if: github.event_name == 'workflow_dispatch' && inputs.mode == 'oci_capacity' && github.ref == 'refs/heads/feat/whatsapp-notifications' && github.repository == 'Idoheled/StackSignal'
-    permissions:
-      contents: read
-      issues: write
-    uses: ./.github/workflows/oci-capacity-claim.yml
-    secrets: inherit
 
   deploy:
     name: Production

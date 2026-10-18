@@ -13,6 +13,14 @@ real delivery receipts remain release gates. See
 [WhatsApp progress](WHATSAPP_PROGRESS.md) for dated evidence and the historical
 preparation snapshots below.
 
+Post-bootstrap cleanup: the resource-claim schedule is absent and its control
+flag is false. The private dispatch helper returns null without queuing HTTP.
+Normal CI no longer contains an OCI job/input, and the workflow template is
+archived outside GitHub's active workflow directory. The
+[dormant toolkit](../ops/oci/README.md) preserves the complete provisioning flow,
+safety boundaries, lessons and explicit recovery procedure. Existing VM/private
+configuration and owner SSH recovery are preserved for the next QR session.
+
 Historical October 14 preparation: work is isolated on `feat/whatsapp-notifications`, based on release
 `v0.1.1`. The owner has an OCI account and a WhatsApp group, and selected local
 Ollama to preserve Gemini evaluation quotas. Draft PR #4 contains opt-in UI,
