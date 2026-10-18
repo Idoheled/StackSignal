@@ -6,6 +6,23 @@ working account. [The checkpoint](WHATSAPP_PROGRESS.md) records current delivery
 verification and activation status. [Registration](WHATSAPP_REGISTRATION.md)
 explains signup, settings and the distinction from actual group membership.
 
+## Final-answer replies
+
+Columbus question generation requests non-thinking output and a JSON schema
+containing only `answer`. The send boundary accepts that final field alone;
+Ollama's separate `thinking` field and raw generation text are never forwarded.
+Malformed, empty, token-truncated or reasoning-tagged answers are withheld.
+English/Hebrew language selection, personality and group restrictions still
+apply. This is an output validation boundary, not an instruction to log model
+reasoning or users' questions.
+
+For a reply-format-only update, the encrypted `columbus_deploy` request can set
+`verification_mode: "answer_only"`. The existing-host installer tests the
+installed parser against real local Ollama in English and Hebrew, records only
+pass metadata, restarts and verifies reconnection. This mode sends no group
+test messages and does not relink, provision or alter notification activation.
+Normal full setup verification retains its explicit group delivery tests.
+
 ## Runtime and trust boundaries
 
 ```mermaid

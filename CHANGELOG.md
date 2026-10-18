@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-10-18
+
+- Require Columbus question replies to use a strict final-answer JSON field;
+  request non-thinking generation and never forward raw text, separate thinking,
+  reasoning markers or token-truncated output. Preserve the English/Hebrew
+  persona and fixed-group boundary.
+- Add malformed/reasoning-output regressions and a guarded English/Hebrew live
+  Ollama smoke mode that sends no messages and preserves the paired host.
+
 ## [0.2.1] - 2026-10-18
 
 - Fix first-review WhatsApp alerts for collector records containing JSON

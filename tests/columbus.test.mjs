@@ -44,10 +44,28 @@ test('request ledger deduplicates across restart, limits abuse and stores no que
 });
 test('answers use only local Ollama and bounded text, without tools or configurable destinations',async()=>{
  let request;
- const text=await answerQuestion('קולומבוס תסביר KAI',{title:'KAI Scheduler'}, {send:async(url,init)=>{assert.equal(url,'http://127.0.0.1:11434/api/generate');request=JSON.parse(init.body);return Response.json({done:true,response:'קודם נותנים ל-GPU עבודה, גאון. KAI מתזמן עומסי GPU.'});}});
+ const text=await answerQuestion('קולומבוס תסביר KAI',{title:'KAI Scheduler'}, {send:async(url,init)=>{assert.equal(url,'http://127.0.0.1:11434/api/generate');request=JSON.parse(init.body);return Response.json({done:true,thinking:'PRIVATE MODEL REASONING',response:JSON.stringify({answer:'קודם נותנים ל-GPU עבודה, גאון. KAI מתזמן עומסי GPU.'})});}});
  assert(text.startsWith('🤖'));assert(text.includes('KAI'));assert.equal(request.think,false);assert.equal('tools' in request,false);
  assert(request.system.includes('Hebrew'));assert(request.system.includes('no tools'));assert.equal(request.model,'qwen3:4b');
+ assert.deepEqual(request.format.required,['answer']);assert.equal(request.format.additionalProperties,false);
+ assert(request.prompt.endsWith('/no_think'));assert(!text.includes('PRIVATE MODEL REASONING'));assert(!text.includes('"answer"'));
  await assert.rejects(answerQuestion('hi',null,{model:'a-cloud-model'}),/Local/);
+});
+test('reasoning, malformed output and truncated generations never become WhatsApp replies',async()=>{
+ const ask=payload=>answerQuestion('Explain GPU scheduling',null,{send:async()=>Response.json({done:true,...payload})});
+ for(const response of [
+  'Okay, let me think about how to answer the user. The final answer is GPU scheduling.',
+  '<think>private thought</think>{"answer":"GPU scheduling"}',
+  '<think>unfinished private thought',
+  JSON.stringify({answer:'<think>private thought</think>GPU scheduling'}),
+  JSON.stringify({answer:'private thought</think>GPU scheduling'}),
+  JSON.stringify({answer:'<analysis>private thought'}),
+  JSON.stringify({answer:'<|channel|>analysis private thought'}),
+  JSON.stringify({thinking:'private thought',answer:'GPU scheduling'}),
+  JSON.stringify({answer:''}), JSON.stringify({answer:42}), 'null', '[]'
+ ])await assert.rejects(ask({response}));
+ await assert.rejects(ask({done_reason:'length',response:'{"answer":"A truncated explanation"}'}));
+ assert((await ask({thinking:'PRIVATE',response:'{"answer":"Fine, genius. GPU scheduling assigns work to available GPUs."}'})).endsWith('Fine, genius. GPU scheduling assigns work to available GPUs.'));
 });
 test('trusted article context comes from sent public alerts, never arbitrary quoted content',()=>{
  const root=mkdtempSync(join(tmpdir(),'columbus-context-'));const store=new DeliveryStore(join(root,'deliveries.sqlite'));
@@ -66,5 +84,15 @@ test('the installed listener answers only prefixed StackSignal questions and ign
   sock.ev.emit('messages.upsert',{type:'notify',messages:[message('Columbus explain KAI')]});
   await new Promise(setImmediate);assert.equal(generated,1);assert.equal(sock.calls[0].jid,target);
   sock.ev.emit('messages.upsert',{type:'notify',messages:[message('Columbus explain KAI')]});await new Promise(setImmediate);assert.equal(generated,1);
+ }finally{sock.ev.emit('connection.update',{connection:'close'});rmSync(root,{recursive:true,force:true});}
+});
+test('the listener withholds rejected model output instead of sending reasoning',async()=>{
+ const root=mkdtempSync(join(tmpdir(),'columbus-output-'));const sock=socket();
+ try{
+  installColumbusBoundary(sock,{target,enabled:true,activatedAt,base:root,
+   generateAnswer:q=>answerQuestion(q,null,{send:async()=>Response.json({done:true,response:'Let me think about the user request...'})})});
+  sock.ev.emit('messages.upsert',{type:'notify',messages:[message('Columbus explain scheduling')]});
+  await new Promise(setImmediate);
+  assert.equal(sock.calls.length,0,'invalid model text must never reach the WhatsApp send boundary');
  }finally{sock.ev.emit('connection.update',{connection:'close'});rmSync(root,{recursive:true,force:true});}
 });
