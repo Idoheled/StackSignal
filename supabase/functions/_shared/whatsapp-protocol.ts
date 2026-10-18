@@ -20,7 +20,7 @@ export function validateEvent(value: unknown, appOrigin: string): NotificationEv
   const bounds = { title: 500, summary: 1400, why: 700, evidence: 800, topic: 256, source: 500, source_url: 2048 };
   for (const [key, limit] of Object.entries(bounds)) {
     const field = p[key as keyof typeof bounds];
-    if (field != null && (typeof field !== "string" || field.length > limit)) throw new Error("Invalid content field");
+    if (field != null && (typeof field !== "string" || [...field].length > limit)) throw new Error("Invalid content field");
   }
   for (const date of [p.discovered_at, p.evaluated_at])
     if (typeof date !== "string" || !timestamp.test(date) || !Number.isFinite(Date.parse(date))) throw new Error("Invalid timestamp");

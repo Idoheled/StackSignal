@@ -161,3 +161,17 @@ test("OpenClaw transport uses fixed group argument array and requires provider I
   await assert.rejects(sendWhatsApp(message, { target, run: (_a: unknown, _b: unknown, _c: unknown, cb: Function) => cb(new Error("Timeout"), "") }));
   assert.throws(() => sendWhatsApp(message, { target: "+15551234567" }));
 });
+
+test("Columbus retains a searchable long title and only public alert context",async()=>{
+ const store=new DeliveryStore(':memory:');
+ try {
+  const title='KAI Scheduler configuration and GPU topology '.repeat(8);
+  const value={...event,id:'11111111-2222-4333-8444-555555555555',payload:{...event.payload,title}};
+  store.accept(value,time);
+  await processNext(store,{now:()=>time,generate:async p=>formatMessage(p,{opening:'Your scheduler called. It wants a holiday.',summary:'GPU scheduling.',why:'Understand placement.'}),deliver:async()=> 'public-context-receipt'});
+  const saved=store.db.prepare('select payload from article_context where message_id=?').get('public-context-receipt') as any;
+  assert.equal(JSON.parse(saved.payload).title,title);
+  assert.equal(store.get(value.id).payload,null);
+  assert(formatMessage(value.payload,{opening:'New find.',summary:'A summary.',why:'A reason.'}).includes(title.trim()));
+ }finally{store.close();}
+});

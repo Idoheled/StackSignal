@@ -113,6 +113,12 @@ test("WhatsApp opt-in isolation, reviewed events, leases and delivery receipts",
       assert.equal((await db.query("select count(*)::int n from ss_private.whatsapp_outbox")).rows[0].n,1);
     });
 
+    await t.test("an older unevaluated discovery cannot broadcast when first reviewed after activation",async()=>{
+      const row=(await db.query("insert into ss_articles(url,title,discovered_at,reference_meta) values('https://kubernetes.io/old-pending-notification','Old pending',now()-interval '1 day','{}') returning id")).rows[0];
+      await db.query("update ss_articles set reference_meta=$2 where id=$1",[row.id,JSON.stringify(meta())]);
+      assert.equal((await db.query("select count(*)::int n from ss_private.whatsapp_outbox where article_id=$1",[row.id])).rows[0].n,0);
+    });
+
     await t.test("deep links require login and return no private notes",async()=>{
       await db.query("insert into ss_notes(article_id,user_id,body,visibility) values($1,$2,'Private test secret','private')",[article,owner]);
       await as(reader);

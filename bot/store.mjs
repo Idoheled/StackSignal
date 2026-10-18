@@ -22,6 +22,9 @@ export class DeliveryStore {
         available_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
       );
       CREATE INDEX IF NOT EXISTS deliveries_due ON deliveries(phase,available_at);`);
+    this.db.exec(`CREATE TABLE IF NOT EXISTS article_context (
+      message_id TEXT PRIMARY KEY,payload TEXT NOT NULL,created_at INTEGER NOT NULL
+    );`);
     // A crash before sending can retry safely. A crash during a send cannot.
     this.db.exec("UPDATE deliveries SET phase='queued' WHERE phase='generating'; UPDATE deliveries SET phase='uncertain' WHERE phase='sending';");
   }
@@ -56,7 +59,15 @@ export class DeliveryStore {
   }
   confirm(id, messageID, now = Date.now()) {
     if (typeof messageID !== "string" || !messageID.trim() || messageID.length > 256) throw new Error("Invalid provider message ID");
-    return this.db.prepare("UPDATE deliveries SET phase='sent',message_id=?,payload=NULL,message=NULL,updated_at=? WHERE id=? AND phase='sending'").run(messageID, now, id).changes === 1;
+    this.db.exec("BEGIN IMMEDIATE");
+    try {
+      const row = this.get(id);
+      if (!row || row.phase !== 'sending') { this.db.exec('COMMIT'); return false; }
+      this.db.prepare('INSERT OR IGNORE INTO article_context VALUES(?,?,?)').run(messageID,row.payload,now);
+      this.db.prepare('DELETE FROM article_context WHERE created_at<?').run(now-30*86400000);
+      this.db.prepare("UPDATE deliveries SET phase='sent',message_id=?,payload=NULL,message=NULL,updated_at=? WHERE id=? AND phase='sending'").run(messageID, now, id);
+      this.db.exec('COMMIT'); return true;
+    } catch(error) { if(this.db.isTransaction)this.db.exec('ROLLBACK'); throw error; }
   }
   uncertain(id, now = Date.now()) {
     this.db.prepare("UPDATE deliveries SET phase='uncertain',updated_at=? WHERE id=? AND phase IN ('sending','generating')").run(now, id);
