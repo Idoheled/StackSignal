@@ -107,15 +107,14 @@ try:
  if health!={'ok':True,'delivery_enabled':True}:raise RuntimeError('Receiver unhealthy')
  log=command(['journalctl','-u','stacksignal-openclaw','--since',stamp,'--no-pager','-o','cat']).decode(errors='replace')
  if 'columbus_group_boundary_ready' not in log:raise RuntimeError('Group boundary did not initialize')
- if request.get('verification_mode')=='answer_only':
-  report['stage']='final_answer_tests'
-  smoke=json.loads(command(run_as+['/opt/node/bin/node',str(source/'bot/deploy/columbus-answer-smoke.mjs')],timeout=400))
-  if smoke.get('status')!='ready' or smoke.get('languages')!=['en','he'] or smoke.get('final_answer_only') is not True or smoke.get('catalog_verified') is not True or not 1<=smoke.get('catalog_rows',0)<=7 or smoke.get('group_messages_sent')!=0:raise RuntimeError('Final answer verification failed')
-  report['answer_verification']=smoke
- else:
+ report['stage']='final_answer_tests'
+ smoke=json.loads(command(run_as+['/opt/node/bin/node',str(source/'bot/deploy/columbus-answer-smoke.mjs')],timeout=400))
+ if smoke.get('status')!='ready' or smoke.get('languages')!=['en','he'] or smoke.get('final_answer_only') is not True or smoke.get('catalog_verified') is not True or not 1<=smoke.get('catalog_rows',0)<=7 or smoke.get('group_messages_sent')!=0:raise RuntimeError('Final answer verification failed')
+ report['answer_verification']=smoke
+ if request.get('verification_mode')!='answer_only':
   report['stage']='automatic_question_tests'
   smoke=json.loads(command(run_as+['/opt/node/bin/node',str(source/'bot/deploy/columbus-smoke.mjs')],json.dumps(request).encode(),timeout=500))
-  if smoke.get('status')!='sent' or len(smoke.get('questions',[]))!=2:raise RuntimeError('Question test did not complete')
+  if smoke.get('status')!='sent' or len(smoke.get('questions',[]))!=1:raise RuntimeError('Question test did not complete')
   report['questions']=smoke['questions']
  report['stage']='restart_verification';command(['systemctl','restart','stacksignal-openclaw','stacksignal-bot']);connected()
  report.update(status='ready',stage='complete',group_only=True,personal_chats=False,history=False,tools=False,paired_preserved=True,receiver=health,
