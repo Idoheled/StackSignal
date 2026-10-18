@@ -13,7 +13,7 @@ test("evaluation discloses public allowlisted context and bounded excerpts witho
   assert(!serialized.includes("secret.internal"));assert(!serialized.includes("private project"));assert(!serialized.includes("private query"));
   assert.deepEqual(team.interests,["vLLM","H200"]);assert.equal(team.priorities.Inference,20);
   assert.equal(request.generationConfig.maxOutputTokens,650);assert.equal(request.generationConfig.thinkingConfig.thinkingLevel,"LOW");
-  assert.equal("tools" in request,false);assert.equal(request.store,false);
+  assert.equal("tools" in request,false);assert.equal(request.store,false);assert.equal(request.generationConfig.responseFormat.text.mimeType,"application/json");
   assert.equal(publicInput({title:"short"},"tiny"),null);
   assert(samePublicInput(input,{scope:input.scope,text:input.text,title:input.title}),"JSONB key order must not invalidate cached input");
   assert(!samePublicInput(input,{...input,text:input.text+" changed"}));
@@ -47,7 +47,7 @@ test("batch judgments stay bound to their own source and fail closed on identiti
   const sources=[{id:"one",input},{id:"two",input:second}];
   const request=batchEvaluationRequest(sources,publicTeam({}));
   assert.equal(request.generationConfig.maxOutputTokens,1800);
-  assert.equal(request.store,false);assert.equal("tools" in request,false);
+  assert.equal(request.store,false);assert.equal(request.generationConfig.responseFormat.text.mimeType,"application/json");assert.equal("tools" in request,false);
   const valid2={...result,evidence:"NUMA placement and GPU topology"};
   const parsed=parseBatchEvaluation(output({results:[{id:"two",assessment:valid2},{id:"one",assessment:result}]}),sources);
   assert.equal(parsed.valid.size,2);assert.equal(parsed.invalid.length,0);
@@ -85,4 +85,12 @@ test("on-demand pacing reserves five-minute spacing and stops at configured budg
   assert(nextEvaluationAt({used_month:16,used_24h:16,last_attempt:last},16,496,now)>now);
   const firstSlot="2026-10-12T10:48:30Z";
   assert.equal(nextEvaluationAt({used_month:16,used_24h:16,last_attempt:last,next_available_at:firstSlot},16,496,now),Date.parse(firstSlot),"Use the oldest released rolling slot, not the last request plus 24 hours");
+});
+
+test('Gemini diagnostics retain only fixed error categories, never raw keys or provider echoes',async()=>{
+ const {geminiFailureDetail}=await import('../supabase/functions/_shared/evaluation.ts');
+ assert.equal(geminiFailureDetail(JSON.stringify({error:{message:'API key expired. Please renew.'}})),'key_expired');
+ assert.equal(geminiFailureDetail(JSON.stringify({error:{message:'Invalid mimeType APPLICATION_JSON'}})),'response_format');
+ assert.equal(geminiFailureDetail(JSON.stringify({error:{message:'secret provider text AIza-synthetic'}})),'invalid_request');
+ assert.equal(geminiFailureDetail(''),'empty_error_response');
 });

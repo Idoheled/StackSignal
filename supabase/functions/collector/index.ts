@@ -14,7 +14,7 @@ import { githubItems, githubAPIForLink, isPrerelease } from "../_shared/github.t
 import { repositorySearchURL, DEFAULT_REPO_QUERIES } from "../../../lib/source-config.ts";
 import { relevance } from "../_shared/relevance.ts";
 import { webCandidate, webSearchRequest, lowValueDiscovery } from "../_shared/web-discovery.ts";
-import { EVALUATOR_VERSION, EVALUATION_MODEL, publicInput, publicTeam, evaluationRequest, parseEvaluation, effectiveScore, evaluationCandidates, candidateLane, nextEvaluationAt, samePublicInput, batchEvaluationRequest, parseBatchEvaluation, MAX_BATCH_SIZE, DAILY_REQUEST_CAP, MONTHLY_REQUEST_CAP, EVALUATION_TIMEOUT_MS, evaluationFailure, evaluationBatchSize } from "../_shared/evaluation.ts";
+import { EVALUATOR_VERSION, EVALUATION_MODEL, publicInput, publicTeam, evaluationRequest, parseEvaluation, effectiveScore, evaluationCandidates, candidateLane, nextEvaluationAt, samePublicInput, batchEvaluationRequest, parseBatchEvaluation, MAX_BATCH_SIZE, DAILY_REQUEST_CAP, MONTHLY_REQUEST_CAP, EVALUATION_TIMEOUT_MS, evaluationFailure, evaluationBatchSize, geminiFailureDetail } from "../_shared/evaluation.ts";
 import { repositoryHealth, repositoryAdmitted, articleRepositoryAdmitted, repositoryName, trendingProjects } from "../_shared/repository-health.ts";
 import { openshiftWatchURL, openshiftTags, openshiftItem } from "../_shared/openshift.ts";
 import { internalReview, immediateInternalReview, INTERNAL_REVIEW_DELAY_MS } from "../_shared/internal-review.ts";
@@ -294,12 +294,12 @@ async function evaluateSweep(profile: any) {
       method:"POST",redirect:"error",signal:AbortSignal.timeout(EVALUATION_TIMEOUT_MS),headers:{"Content-Type":"application/json","x-goog-api-key":env("GEMINI_API_KEY")},body:JSON.stringify(batchEvaluationRequest(inputs,team)),
     });
     if(!response.ok) {
-      await response.body?.cancel();
-      const reason="Gemini HTTP "+response.status;
+      const detail=geminiFailureDetail(await bodyText(response,8192).catch(()=>""));
+      const reason="Gemini HTTP "+response.status+" ("+detail+")";
       const failures=await Promise.all(batch.map(row=>failedEvaluation(row,reason,response.status,response.headers.get("retry-after"))));
       const retryAt=Math.max(...failures.map(f=>f.retryAt || Date.now()+3600000));
       await rpc("ss_finish_evaluation_request",{request:reservation.request_id,outcome:failures[0].kind,reviewed:0,error:reason});
-      await evaluationHealth({state:failures[0].kind==="configuration" ? "configuration_error" : "cooldown",next_attempt_at:new Date(retryAt).toISOString(),last_error:reason+"; queued links retained for retry",usage:await rpc("ss_evaluation_usage"),cooldown_until:new Date(retryAt).toISOString()}); return;
+      await evaluationHealth({state:failures[0].kind==="configuration" ? "configuration_error" : "cooldown",configuration_detail:detail,next_attempt_at:new Date(retryAt).toISOString(),last_error:reason+"; queued links retained for retry",usage:await rpc("ss_evaluation_usage"),cooldown_until:new Date(retryAt).toISOString()}); return;
     }
     const responseText=await bodyText(response); phase="validation";
     out=JSON.parse(responseText);parsed=parseBatchEvaluation(out,inputs);
