@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-10-18
+
+- Fix the Administration page crashing when the database returns a null job
+  aggregate for an empty queue, with mobile and desktop browser regressions.
+- Add owner-only, read-only, encrypted Columbus runtime diagnostics without
+  restarting services or returning chat messages and contact addresses.
+
 ## [0.3.0] - 2026-10-18
 
 - Add administrator BI and health monitoring with measured content/user statistics,
