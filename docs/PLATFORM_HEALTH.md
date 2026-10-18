@@ -93,6 +93,22 @@ metadata stores hashed senders, status, timestamps and fixed error codes, never
 question or model thinking text. Old installations lack those error codes, so a
 historical failed status alone cannot identify the exact underlying exception.
 
+Exact English/Hebrew capabilities questions use a bounded, maintained description
+of real capabilities rather than depending on model availability. Leading mobile
+RTL direction marks are ignored when matching the name; other name/prefix and
+fixed-group checks still apply.
+
+The owner-only manual `columbus_diagnostics` maintenance operation reads bounded
+status and counters without restarting services. Its encrypted result includes
+only fixed receive/rejection codes, counts and last-seen timestamps, alongside
+question status/error codes and service health. It never returns message bodies,
+addresses or credentials. Receive counters distinguish permitted group wire
+frames from decoded upserts and local send echoes. A local-send canary proves
+generation and delivery, **not** receipt of a real message from a phone; verify
+that path with an actual group question and matching wire/upsert counters.
+Baileys normally uses a silent logger here, so an absence of journal errors
+cannot establish that an incoming message was decrypted successfully.
+
 ## Automatic repair boundaries
 
 `ss_ops_reconcile` requeues only unevaluated links whose recorded HTTP 400

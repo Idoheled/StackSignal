@@ -31,10 +31,11 @@ export function formatReleases(context,question){
  return '🤖 *Columbus · קולומבוס*\n\n'+intro+'\n\n'+rows.join('\n\n')+'\n\n'+(he?'מוצג ה־release המאושר הנוכחי לכל פרויקט; לא תאריכי פרסום מומצאים.':'One current approved release per project; discovery order, not invented publication dates.');
 }
 export function runtimeStatus(base,{now=Date.now()}={}){
- const out={checked_at:now,connected:false,heartbeat_at:0,questions:{answered_24h:0,failed_1h:0,uncertain:0,stuck:0,busy_1h:0,rate_limited_1h:0},deliveries:{}};
+ const out={checked_at:now,connected:false,heartbeat_at:0,receive:[],questions:{answered_24h:0,failed_1h:0,uncertain:0,stuck:0,busy_1h:0,rate_limited_1h:0},deliveries:{}};
  const path=join(base,'columbus.sqlite');
  if(existsSync(path)){const db=new DatabaseSync(path,{readOnly:true});try{
   if(db.prepare("select 1 from sqlite_master where name='runtime_state'").get()){const row=db.prepare('select connected,heartbeat_at from runtime_state where singleton=1').get();if(row){out.connected=row.connected===1;out.heartbeat_at=row.heartbeat_at;}}
+  if(db.prepare("select 1 from sqlite_master where name='receive_counters'").get())out.receive=db.prepare('select code,n,last_seen from receive_counters order by code limit 20').all();
   out.questions=db.prepare("select sum(case when status='sent' and created_at>? then 1 else 0 end) answered_24h,sum(case when status='failed' and created_at>? then 1 else 0 end) failed_1h,sum(case when status='uncertain' then 1 else 0 end) uncertain,sum(case when status in ('accepted','sending') and created_at<? then 1 else 0 end) stuck,sum(case when status='busy' and created_at>? then 1 else 0 end) busy_1h,sum(case when status='rate_limited' and created_at>? then 1 else 0 end) rate_limited_1h from questions").get(now-86400000,now-3600000,now-240000,now-3600000,now-3600000);
  }finally{db.close();}}
  const delivery=join(base,'deliveries.sqlite');if(existsSync(delivery)){const db=new DatabaseSync(delivery,{readOnly:true});try{out.deliveries=Object.fromEntries(db.prepare('select phase,count(*) n from deliveries group by phase').all().map(r=>[r.phase,r.n]));out.deliveries.stuck=db.prepare("select count(*) n from deliveries where (phase in ('generating','sending') and updated_at<?) or(phase='queued' and available_at<?)").get(now-240000,now-900000).n;}finally{db.close();}}

@@ -12,7 +12,7 @@ if(existsSync(path)){
 }
 const report={status:'started',questions:[]};writeFileSync(path,JSON.stringify(report),{mode:0o600,flag:'wx'});
 const pause=ms=>new Promise(resolve=>setTimeout(resolve,ms));
-for(const question of ['קולומבוס מה כל שבעת הreleaseים האחרונים שנכנסו לפלטפורמה?']){
+for(const question of ['קולומבוס מה אתה יכול לעשות?']){
  const id=await sendWhatsApp(question,{target,executable:'/opt/node/bin/openclaw'});
  const entry={question_id:id,status:'sent_to_group'};report.questions.push(entry);writeFileSync(path,JSON.stringify(report));
  let found=false;
