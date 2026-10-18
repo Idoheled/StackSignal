@@ -55,6 +55,14 @@ jobs:
       - run: node scripts/verify-client-boundary.mjs
       - run: pnpm exec playwright install --with-deps chromium firefox webkit
       - run: pnpm test:browser
+      - name: Save dashboard previews
+        if: success()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: dashboard-previews-${{ github.sha }}
+          path: test-results/**/dashboard.png
+          retention-days: 1
+          if-no-files-found: ignore
       - name: Save browser diagnostics
         if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

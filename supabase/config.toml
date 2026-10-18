@@ -6,3 +6,6 @@ verify_jwt = false
 
 [functions.oci-cron-control]
 verify_jwt = false
+
+[functions.platform-context]
+verify_jwt = false

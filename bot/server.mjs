@@ -5,6 +5,7 @@ import { handleWebhook } from "./webhook.mjs";
 import { generateMessage } from "./message.mjs";
 import { sendWhatsApp } from "./transport.mjs";
 import { processNext } from "./worker.mjs";
+import { runtimeStatus,formatIncident,watchdog } from './operations.mjs';
 import { MAX_EVENT_BYTES, validateEvent } from "../supabase/functions/_shared/whatsapp-protocol.ts";
 
 process.umask(0o077);
@@ -27,19 +28,26 @@ const server = createServer(async (req, res) => {
     const response = await handleWebhook(new Request("http://127.0.0.1:8787" + req.url, {
       method: req.method, headers: req.headers,
       ...(req.method !== "GET" && req.method !== "HEAD" ? { body } : {}),
-    }), { store, secret, appOrigin, deliveryEnabled: Boolean(target) });
+    }), { store, secret, appOrigin, deliveryEnabled: Boolean(target),statusProvider:async()=>{
+      let ollama_ok=false;try{const r=await fetch('http://127.0.0.1:11434/',{signal:AbortSignal.timeout(2000)});ollama_ok=r.ok;await r.body?.cancel();}catch{}
+      return {...runtimeStatus(state),ollama_ok};
+    } });
     res.writeHead(response.status, Object.fromEntries(response.headers)); res.end(await response.text());
   } catch { res.writeHead(500); res.end('{"error":"Request failed"}'); }
 });
 server.requestTimeout = 15_000; server.headersTimeout = 10_000;
 server.listen(8787, "127.0.0.1", () => console.log(JSON.stringify({ event: "webhook_listening" })));
 let stopping = false;
+let watchdogBusy=false;
+const watch=setInterval(()=>{if(stopping||watchdogBusy||!target)return;watchdogBusy=true;
+  void watchdog(store,{secret,origin:appOrigin}).catch(()=>console.error('{"event":"watchdog_error"}')).finally(()=>{watchdogBusy=false;});
+},60000);watch.unref();
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 const loop = (async () => {
   while (!stopping) {
     if (!target) { await delay(1000); continue; }
     try {
-      const processed = await processNext(store, { generate: payload => generateMessage(payload, { model }),
+      const processed = await processNext(store, { generate: payload => payload.kind==='platform_incident'?formatIncident(payload):generateMessage(payload, { model }),
         deliver: message => sendWhatsApp(message, { target }) });
       await delay(processed ? 10_000 : 1000);
     } catch { console.error(JSON.stringify({ event: "worker_error" })); await delay(5000); }
@@ -47,6 +55,6 @@ const loop = (async () => {
 })();
 async function stop() {
   if (stopping) return;
-  stopping = true; server.close(); await loop; store.close();
+  stopping = true; clearInterval(watch);server.close(); await loop;while(watchdogBusy)await delay(100);store.close();
 }
 process.on("SIGTERM", () => void stop()); process.on("SIGINT", () => void stop());

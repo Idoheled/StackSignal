@@ -36,15 +36,15 @@ async function key(secret: string, usage: "sign" | "verify") {
   if (!/^[0-9a-f]{64,128}$/i.test(secret)) throw new Error("Signing secret must contain at least 32 random bytes in hex");
   return crypto.subtle.importKey("raw", encoder.encode(secret), { name: "HMAC", hash: "SHA-256" }, false, [usage]);
 }
-function input(purpose: "event" | "receipt", body: string, time: string) {
+function input(purpose: "event" | "receipt" | "ops-event" | "ops-status" | "ops-context" | "ops-receipt", body: string, time: string) {
   return encoder.encode("stacksignal-whatsapp-v1\n" + purpose + "\n" + time + "\n" + body);
 }
-export async function signedHeaders(secret: string, purpose: "event" | "receipt", body: string, now = Date.now()): Promise<Record<string, string>> {
+export async function signedHeaders(secret: string, purpose: "event" | "receipt" | "ops-event" | "ops-status" | "ops-context" | "ops-receipt", body: string, now = Date.now()): Promise<Record<string, string>> {
   const time = String(Math.floor(now / 1000));
   const signature = new Uint8Array(await crypto.subtle.sign("HMAC", await key(secret, "sign"), input(purpose, body, time)));
   return { "x-stacksignal-time": time, "x-stacksignal-signature": Array.from(signature, x => x.toString(16).padStart(2, "0")).join("") };
 }
-export async function verifySignature(secret: string, purpose: "event" | "receipt", body: string, headers: Headers, now = Date.now()): Promise<boolean> {
+export async function verifySignature(secret: string, purpose: "event" | "receipt" | "ops-event" | "ops-status" | "ops-context" | "ops-receipt", body: string, headers: Headers, now = Date.now()): Promise<boolean> {
   const time = headers.get("x-stacksignal-time") || "", signature = headers.get("x-stacksignal-signature") || "";
   if (!/^\d{10,12}$/.test(time) || !/^[0-9a-f]{64}$/i.test(signature) || Math.abs(now / 1000 - Number(time)) > 300) return false;
   const bytes = Uint8Array.from(signature.match(/../g)!, pair => parseInt(pair, 16));
@@ -70,4 +70,11 @@ export async function readBoundedBody(response: Response | Request, max = MAX_EV
   const bytes = new Uint8Array(size); let offset = 0;
   for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
   return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+}
+
+export type OpsPayload = { version: 1; kind: 'platform_incident'; code: string; phase: 'open'|'recovery'; summary: string; observed_at: string; ui_url: string };
+export function validateOpsEvent(value: unknown, origin: string): {id:string;payload:OpsPayload} {
+ const e=value as {id:string;payload:OpsPayload}; const p=e?.payload;
+ if(!e || !/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(e.id) || !p || p.version!==1 || p.kind!=='platform_incident' || !/^[a-z_]{1,64}$/.test(p.code) || !['open','recovery'].includes(p.phase) || typeof p.summary!=='string' || !p.summary.trim() || p.summary.length>500 || !Number.isFinite(Date.parse(p.observed_at)) || p.ui_url!==origin+'/?view=admin')throw Error('Invalid health event');
+ return e;
 }

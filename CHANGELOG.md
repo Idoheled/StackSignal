@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-18
+
+- Add administrator BI and health monitoring with measured content/user statistics,
+  durable problem/recovery notifications and independent VM watchdog checks.
+- Answer recent-release questions from the signed platform catalog; provide
+  explicit bounded replies for busy, rate-limited and failed requests.
+- Recover obsolete provider-configuration retries and superseded source failures
+  without resetting quota accounting, historical evaluations or alert cutoffs.
+
 ## [0.2.2] - 2026-10-18
 
 - Require Columbus question replies to use a strict final-answer JSON field;

@@ -12,7 +12,7 @@ if(existsSync(path)){
 }
 const report={status:'started',questions:[]};writeFileSync(path,JSON.stringify(report),{mode:0o600,flag:'wx'});
 const pause=ms=>new Promise(resolve=>setTimeout(resolve,ms));
-for(const question of ['Columbus, explain briefly how KAI Scheduler helps share GPUs in Kubernetes. This is the production setup test.','קולומבוס, תסביר בקצרה איך KAI Scheduler עוזר לשתף משאבי GPU בקוברנטיס. זו בדיקת ההפעלה.']){
+for(const question of ['קולומבוס מה כל שבעת הreleaseים האחרונים שנכנסו לפלטפורמה?']){
  const id=await sendWhatsApp(question,{target,executable:'/opt/node/bin/openclaw'});
  const entry={question_id:id,status:'sent_to_group'};report.questions.push(entry);writeFileSync(path,JSON.stringify(report));
  let found=false;
@@ -25,6 +25,5 @@ for(const question of ['Columbus, explain briefly how KAI Scheduler helps share 
  }
  if(!found)throw Error('No automatic group answer receipt');
  writeFileSync(path,JSON.stringify(report));
- await pause(31000); // Respect per-sender throttling even on a warm model.
 }
 report.status='sent';writeFileSync(path,JSON.stringify(report));console.log(JSON.stringify(report));
