@@ -2,6 +2,30 @@
 
 ## [Unreleased]
 
+## [0.3.2] - 2026-10-18
+
+- Use English-first replies for the installed local model after an isolated
+  bilingual audit reproduced poor Hebrew. Both Hebrew name spellings receive
+  a maintained English-language recommendation; English prefixes answer directly.
+- Keep general Columbus questions free of unrelated article context and answer
+  identity questions from maintained platform facts.
+- Reject sentence fragments, avoid grammar-forced mid-word string closure and
+  require qualified technical claims in deployment samples.
+- Structure generated replies into a direct answer, useful points and optional
+  limitations; prioritize correct language over forced sarcasm and retry invalid
+  final output once within a bounded deadline.
+- Add semantic local-model deployment checks and an encrypted synthetic bilingual
+  audit without reading real chats or sending test messages.
+
+- Preserve the pinned WhatsApp ignored-packet acknowledgement protocol at the
+  pre-decryption boundary; acknowledge metadata only and count rejected frames
+  without reading personal ciphertext or sending private chat replies.
+
+- Answer exact capabilities questions deterministically in Hebrew and English,
+  and recognize name prefixes preceded by mobile RTL direction marks.
+- Record bounded receive-stage counters so incoming group frames, local send
+  echoes and rejected messages can be distinguished without storing chat text.
+
 ## [0.3.1] - 2026-10-18
 
 - Fix the Administration page crashing when the database returns a null job
