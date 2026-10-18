@@ -1,5 +1,4 @@
 """Read-only runtime diagnostics. Never return messages, addresses or credentials."""
-import hashlib
 import json
 from pathlib import Path
 import sqlite3
@@ -13,6 +12,8 @@ needles=['columbus_group_boundary_ready','failed to decrypt message','error in h
 report={'status':'ready','log_counts':{s:log.lower().count(s.lower()) for s in needles},'runtime_sha':Path('/etc/stacksignal/runtime-source').read_text().strip()}
 with sqlite3.connect((base/'columbus.sqlite').as_uri()+'?mode=ro',uri=True) as db:
  report['questions']=[dict(zip(['status','created_at','error_code'],row)) for row in db.execute('select status,created_at,error_code from questions order by created_at desc limit 15')]
+ if db.execute("select 1 from sqlite_master where name='receive_counters'").fetchone():
+  report['receive_counters']=[dict(zip(['code','n','last_seen'],row)) for row in db.execute('select code,n,last_seen from receive_counters order by code')]
 creds=json.loads((base/'openclaw/credentials/whatsapp/default/creds.json').read_text())
 report['identity']={'registered':bool(creds.get('registered')),'has_id':bool(creds.get('me',{}).get('id')),'has_lid':bool(creds.get('me',{}).get('lid'))}
 report['services']={name:subprocess.run(['systemctl','is-active','--quiet',name]).returncode==0 for name in ('stacksignal-openclaw','stacksignal-bot','ollama','caddy')}

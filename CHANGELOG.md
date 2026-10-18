@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+- Answer exact capabilities questions deterministically in Hebrew and English,
+  and recognize name prefixes preceded by mobile RTL direction marks.
+- Record bounded receive-stage counters so incoming group frames, local send
+  echoes and rejected messages can be distinguished without storing chat text.
+
 ## [0.3.1] - 2026-10-18
 
 - Fix the Administration page crashing when the database returns a null job
