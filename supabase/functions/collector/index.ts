@@ -337,7 +337,7 @@ async function evaluateSweep(profile: any) {
   }
   await rpc("ss_finish_evaluation_request",{request:reservation.request_id,outcome:parsed.invalid.length ? "partial" : "success",reviewed,error:parsed.invalid.length ? "Evidence validation failed for some sources" : null});
   const previous=await db("ss_settings?key=eq.evaluation_health&select=value");
-  await evaluationHealth({configured:true,mode,model:EVALUATION_MODEL,resolved_model,state:parsed.invalid.length ? "partial_batch" : "active",next_attempt_at:null,last_success:new Date().toISOString(),last_error:parsed.invalid.length ? "Some batch results failed evidence validation; those links withheld" : null,cooldown_until:null,
+  await evaluationHealth({configured:true,mode,model:EVALUATION_MODEL,resolved_model,state:parsed.invalid.length ? "partial_batch" : "active",configuration_detail:null,next_attempt_at:null,last_success:new Date().toISOString(),last_error:parsed.invalid.length ? "Some batch results failed evidence validation; those links withheld" : null,cooldown_until:null,
     daily_ceiling:limit,monthly_ceiling:monthly,target_batch_size:parsed.invalid.length ? Math.max(1,Math.floor(targetSize/2)) : Math.min(MAX_BATCH_SIZE,targetSize+3),batch_size:batch.length,last_batch_reviewed:reviewed,last_request_tokens:tokens,usage:await rpc("ss_evaluation_usage"),comparisons:[...comparisons,...(previous[0]?.value?.comparisons||[])].slice(0,12)});
   try { await evaluationHealth({coverage:await evaluationCoverage(),pipeline:await rpc("ss_evaluation_pipeline")}); } catch { /* Non-critical health snapshot. */ }
 }
