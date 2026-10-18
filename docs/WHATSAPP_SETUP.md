@@ -29,15 +29,16 @@ flowchart TD
 | Caddy | 2.11.7; public HTTPS health and signed event endpoint only |
 | Services | `ollama`, `stacksignal-openclaw`, `stacksignal-bot`, `caddy` |
 
-The model receives bounded reviewed public metadata, never private notes,
-credentials or incoming chats. It has no tools. The message formatter fixes the
+The alert model receives bounded reviewed public metadata, never private notes
+or credentials. It has no tools. The message formatter fixes the title,
 original discovery/evaluation timestamps and authenticated StackSignal link;
 the model cannot invent destination URLs. Notification generation uses no
 Gemini quota. A shared group means every actual member receives the same stream.
 
-OpenClaw, Ollama and receiver administration are loopback-only. Inbound DMs,
-group conversations and agent tools are disabled. Only the fixed group is a
-notification target. The bot holds no database service key. One queue worker
+OpenClaw, Ollama and receiver administration are loopback-only. Generic inbound
+DM/group agents and tools stay disabled. The separate Columbus handler accepts
+fresh text questions only from the verified group, with a socket boundary before
+chat-body decryption. Only that group is a send target. The bot holds no database service key. One queue worker
 and one linked session run on the host; never duplicate these onto a concurrent
 replacement host.
 
@@ -47,7 +48,8 @@ replacement host.
 | --- | --- |
 | `/etc/stacksignal/bot.env` | Root-owned, group-readable 0640: shared webhook signing secret, exact platform origin, local model, fixed private group JID |
 | `/var/lib/stacksignal-bot/openclaw/` | Service-owned private account state and paired credentials |
-| `/var/lib/stacksignal-bot/deliveries.sqlite` | Durable delivery/deduplication ledger; retain associated WAL safely |
+| `/var/lib/stacksignal-bot/deliveries.sqlite` | Durable delivery ledger and public article context; retain associated WAL safely |
+| `/var/lib/stacksignal-bot/columbus.sqlite` | Question IDs, hashed sender, status and reply receipts; no question/answer bodies |
 | `/var/lib/stacksignal-bot/activation/` | Private verified destination and one-time announcement receipt |
 | Supabase Vault | Separate dispatcher invocation secret, webhook secret, endpoint and platform origin |
 | `ss_private.whatsapp_configuration` | Global enabled flag, activation watermark, origin and canonical private group invite |
@@ -75,7 +77,10 @@ Activation requires successful real article/release delivery, signed receipts,
 replay/restart checks, passing CI and the owner's private-preview approval.
 Then run the guarded operator transaction in
 `bot/deploy/activate-notifications.sql` to set a fresh activation watermark and
-activate only the named WhatsApp dispatch cron. The new watermark prevents historical backfill.
+activate only the named WhatsApp dispatch cron. Both discovery and first-review
+timestamps must be at or after the new watermark. Historical pending links,
+reevaluations and metadata refreshes never create alerts. Each alert includes
+the source title so a member can search for it in StackSignal.
 Verify a newly evaluated qualifying event, the provider receipt and the group's
 actual message. Main promotion follows [the branch convention](BRANCHING.md).
 
@@ -117,6 +122,34 @@ feature integration; the current feature branch is also allowed during rollout.
   only an empty or identical fixed destination and checks all services. It
   refuses outstanding deliveries and any destination replacement. Repeating it
   after confirmed sends verifies restart persistence without another message.
+- `columbus_deploy`: preserves paired credentials, re-verifies the fixed group,
+  installs reviewed runtime files and the hash-guarded socket adapter, checks
+  real English/Hebrew questions and restart persistence. Failure restores the
+  previous runtime and environment. Read the encrypted report: a green runner
+  alone does not mean deployment succeeded.
+
+## Columbus questions and privacy
+
+Start a StackSignal-group message with `Columbus` or `קולומבוס`, followed by a
+question. English is case-insensitive. Replies use the question's language and
+a sarcastic engineering persona. Quote a delivered alert to bind the explanation
+to that article; without a quote, the latest retained alert supplies context.
+Only public title, summary, value, evidence and platform URL from the outbound
+ledger are used. Context expires after 30 days. Arbitrary quoted chat bodies,
+personal chats, contacts and URLs are not read or fetched.
+
+The local model has no shell, tools, browsing or external-action permission.
+Questions have a 3,000-character bound, a ten-minute freshness window, durable
+ID deduplication, a 30-second per-sender interval and a 12-question hourly group
+limit. One answer generates at a time; busy/limited requests are not replayed.
+Interrupted sends become uncertain and require reconciliation.
+
+The adapter is pinned to the exact OpenClaw WhatsApp 2026.10.3 session chunk.
+Unknown vendor hashes fail closed. It filters routing metadata before Baileys
+message handling, disables history/init-directory queries and restricts both
+send/relay methods to the fixed group. The generic agent policies remain off.
+Do not upgrade OpenClaw/plugin independently: review the new socket contract,
+update the expected hash and rerun boundary and live question tests first.
 
 Delete the short-lived Actions request after each operation. Keep QR/SSH
 recovery available without asking the owner to repeat installation. WhatsApp

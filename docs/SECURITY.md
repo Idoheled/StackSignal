@@ -82,5 +82,23 @@ empty search path and tested authorization, consistent with the existing
 preferences API. The advisor reports these intentional endpoints and private
 tables without client policies; no new blanket grants or policies were added.
 Leaked-password protection remains the previously documented provider-tier
-limitation. The bot still has no database service credential and cannot process
-inbound personal or group messages.
+limitation. The bot has no database service credential.
+
+### Columbus group boundary
+
+The reviewed socket adapter filters exact group routing metadata before the
+Baileys message receive/decrypt handler. Personal/other-group bodies cannot
+reach the model or generic OpenClaw agents. History sync, directory queries and
+history-fetch APIs are disabled; send/relay targets are independently fixed.
+Protocol routing/session traffic is still necessary for a linked WhatsApp
+device. This boundary is not a claim that the connection receives no encrypted
+network traffic for the linked account.
+
+Generic OpenClaw DM/group policies and all agent tools remain disabled. The
+separate Columbus handler uses loopback Ollama with no tools, credentials or
+external actions. Only bounded fresh group questions and public metadata from
+confirmed outbound alerts enter its prompt. Raw quoted messages are ignored.
+The private question ledger retains IDs, hashed senders, status and receipts,
+not conversation bodies. Request limits and uncertain-send holds bound replies.
+Vendor-version/hash guards refuse unreviewed adapter upgrades. Live deployment
+must pass English/Hebrew and restart checks before automatic alerts activate.

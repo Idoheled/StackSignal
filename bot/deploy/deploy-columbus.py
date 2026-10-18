@@ -107,6 +107,7 @@ except Exception as error:
    if prior is None:dest.unlink(missing_ok=True)
    else:dest.write_bytes(prior)
   if plugin_path and plugin_previous is not None:plugin_path.write_bytes(plugin_previous)
+  if plugin_path:os.chown(plugin_path,user.pw_uid,user.pw_gid)
   subprocess.run(['systemctl','start','stacksignal-openclaw','stacksignal-bot'])
   report['rolled_back']=True
 finally:publish()

@@ -215,14 +215,24 @@ The `openshift` source type reads approved amd64 OpenShift 4/5 release-stream AP
 
 ## WhatsApp group notifications
 
-Newly qualifying reviewed content creates one private outbox event after the
-activation watermark. Its classification follows source/repository/release
+Newly discovered content creates one private outbox event on its first useful
+review only when both timestamps follow the activation watermark. Old pending
+links, reevaluations and metadata repairs are excluded. Its classification follows source/repository/release
 policies. The independently scheduled Edge dispatcher leases events, signs
 immutable IDs and verifies signed responses. The Oracle loopback receiver
 persists acceptance in SQLite before returning; local Ollama generates bounded
 text and OpenClaw sends only to the verified fixed group. A provider message ID
 is required before PostgreSQL records delivery and clears copied text.
 Interrupted sends are held for reconciliation, not blindly replayed.
+
+Columbus is a separate text-only question path on the same paired socket. An
+exact group routing check precedes chat-body decryption; send and relay are
+restricted to that destination. Generic OpenClaw DM/group agents remain off.
+Only fresh messages starting with `Columbus` or `קולומבוס` reach local Ollama.
+Quoted receipt IDs resolve to trusted public outbound article metadata, never
+arbitrary quoted conversation text. The model has no tools or external actions.
+Question IDs and hashed senders provide restart deduplication and rate limits;
+the ledger stores no question or answer bodies.
 
 Registration is a separate member-owned state machine. Signup and settings can
 record Pending; opening the invite hands off to WhatsApp. Explicit confirmation

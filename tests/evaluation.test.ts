@@ -91,6 +91,8 @@ test('Gemini diagnostics retain only fixed error categories, never raw keys or p
  const {geminiFailureDetail}=await import('../supabase/functions/_shared/evaluation.ts');
  assert.equal(geminiFailureDetail(JSON.stringify({error:{message:'API key expired. Please renew.'}})),'key_expired');
  assert.equal(geminiFailureDetail(JSON.stringify({error:{message:'Invalid mimeType APPLICATION_JSON'}})),'response_format');
+ assert.equal(geminiFailureDetail(JSON.stringify({error:{message:'Unknown name "store": Cannot find field.'}})),'store_configuration');
+ assert.equal(geminiFailureDetail(JSON.stringify({error:{message:'Unknown name "responseJsonSchema"'}})),'json_schema_configuration');
  assert.equal(geminiFailureDetail(JSON.stringify({error:{message:'secret provider text AIza-synthetic'}})),'invalid_request');
  assert.equal(geminiFailureDetail(''),'empty_error_response');
 });

@@ -16,6 +16,8 @@ export function geminiFailureDetail(value:string) {
   if(/API[_ ]KEY[_ ]EXPIRED|API key expired/i.test(text))return "key_expired";
   if(/API[_ ]KEY[_ ]INVALID|API key not valid/i.test(text))return "key_invalid";
   if(/API_KEY_SERVICE_BLOCKED|referrer|referer|API key.*(?:blocked|restrict)|permission denied/i.test(text))return "key_restricted";
+  if(/Unknown name ["']store["']|store.*(?:not supported|unsupported|invalid)/i.test(text))return "store_configuration";
+  if(/response.?json.?schema|_responseJsonSchema/i.test(text))return "json_schema_configuration";
   if(/mimeType|response.?format|response.?schema|APPLICATION_JSON/i.test(text))return "response_format";
   if(/thinkingLevel|thinkingBudget|thinking_level/i.test(text))return "thinking_configuration";
   if(/quota|RESOURCE_EXHAUSTED/i.test(text))return "quota";
