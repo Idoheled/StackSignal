@@ -14,7 +14,12 @@ consistent headings and bullets. Each field is length-bounded and checked;
 malformed, empty, token-truncated, reasoning-tagged or wrong-language output is
 withheld. A single clean retry is permitted within a three-minute total deadline.
 Raw generation text and Ollama's separate `thinking` field are never forwarded.
-Clarity and accurate technical content take priority over the optional dry wit.
+The JSON grammar deliberately has no string-length cap: grammar-forced closure
+can produce syntactically valid JSON ending mid-word. The server separately
+checks lengths and sentence endings, and retries incomplete replies. Prompt
+budgets ask for short sentences. Clarity and qualified technical content take
+priority over optional dry wit; automated semantic fixtures plus human review
+are release gates.
 Validation does not guarantee that every model claim is correct.
 
 For a reply-only update, the encrypted `columbus_deploy` request can set
