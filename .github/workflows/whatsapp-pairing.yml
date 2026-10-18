@@ -1,4 +1,4 @@
-name: Manual WhatsApp phone-code handoff
+name: Manual WhatsApp maintenance
 on:
   workflow_call:
 permissions:
@@ -19,7 +19,7 @@ jobs:
         run: |
           python3 -m venv "$RUNNER_TEMP/oci-venv"
           "$RUNNER_TEMP/oci-venv/bin/pip" install --disable-pip-version-check 'oci==2.187.2'
-      - name: Request pairing on the existing host without provisioning
+      - name: Operate only on the existing host; never provision resources
         run: '"$RUNNER_TEMP/oci-venv/bin/python" scripts/whatsapp-pairing-runner.py'
         env:
           OCI_USER: ${{ secrets.OCI_USER }}

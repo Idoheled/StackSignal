@@ -16,7 +16,7 @@ STAGE="request_validation"
 def validate_request(request,sha,now=None):
     now=time.time()*1000 if now is None else now
     if (request.get("sha")!=sha or not re.fullmatch(r"[1-9][0-9]{7,14}",request.get("phone",""))
-        or request.get("operation","pair") not in ("pair","activation_test")
+        or request.get("operation","pair") not in ("pair","activation_test","delivery_readiness")
         or not re.fullmatch(r"[0-9a-f]{64}",request.get("key",""))
         or not re.fullmatch(r"[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}",request.get("session",""))
         or not isinstance(request.get("expires_at"),int) or not now<request["expires_at"]<=now+900000):
@@ -86,13 +86,13 @@ def main():
             run(["git","archive","--format=tar","-o",str(archive),sha,"bot/deploy/pair-phone.mjs",
                 "bot/deploy/verify-whatsapp-plugin.mjs","bot/deploy/start-phone-pairing.py",
                 "bot/deploy/verify-whatsapp-group.mjs","bot/deploy/send-activation.mjs","bot/deploy/activation-test.py",
-                "bot/deploy/group-identity.mjs","bot/deploy/activation-ledger.mjs"])
+                "bot/deploy/group-identity.mjs","bot/deploy/activation-ledger.mjs","bot/deploy/delivery-config.py"])
             run(["scp",*ssh_options,str(archive),"ubuntu@"+public_ip+":stacksignal-pairing.tar"])
             run(ssh+["sudo install -d -m 0755 /opt/stacksignal-pairing && sudo tar -xf stacksignal-pairing.tar -C /opt/stacksignal-pairing && rm stacksignal-pairing.tar"])
             private={k:request[k] for k in ("phone","key","session","expires_at")}
-            if request.get("operation")=="activation_test":
+            if request.get("operation") in ("activation_test","delivery_readiness"):
                 STAGE="verify_group_and_test"
-                private.update(invite_url=request["invite_url"],group_name=request["group_name"])
+                private.update(invite_url=request["invite_url"],group_name=request["group_name"],operation=request["operation"])
                 raw=run(ssh+["sudo python3 /opt/stacksignal-pairing/bot/deploy/activation-test.py"],json.dumps(private).encode(),timeout=360)
                 result=json.loads(raw)
                 if result.get("session")!=request["session"] or result.get("status")!="private_result":raise RuntimeError("Invalid private activation result")

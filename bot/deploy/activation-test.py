@@ -47,5 +47,30 @@ for attempt in range(12):
     except Exception:pass
     if attempt==11:raise SystemExit('Gateway WhatsApp listener is not connected')
     time.sleep(5)
-raw=command(run_as+['/opt/node/bin/node',str(source/'send-activation.mjs')],json.dumps(request).encode(),timeout=90)
-print(raw.decode().strip())
+if request.get('operation')=='delivery_readiness':
+    import importlib.util
+    import urllib.request
+    spec=importlib.util.spec_from_file_location('delivery_config',source/'delivery-config.py')
+    delivery_config=importlib.util.module_from_spec(spec);spec.loader.exec_module(delivery_config)
+    stage='configure_delivery'
+    subprocess.run(['systemctl','stop','stacksignal-bot'],check=True)
+    try:
+        report=delivery_config.configure_delivery(Path('/etc/stacksignal/bot.env'),base/'deliveries.sqlite',destination['group_jid'])
+    finally:
+        subprocess.run(['systemctl','start','stacksignal-bot'],check=True)
+    for attempt in range(15):
+        try:
+            with urllib.request.urlopen('http://127.0.0.1:8787/healthz',timeout=3) as response:
+                health=json.load(response)
+            if health.get('ok') and health.get('delivery_enabled'):break
+        except Exception:pass
+        if attempt==14:raise SystemExit('Configured delivery health failed')
+        time.sleep(1)
+    report.update(health=health,gateway_connected=True,services={name:subprocess.run(['systemctl','is-active','--quiet',name]).returncode==0
+        for name in ('stacksignal-bot','stacksignal-openclaw','ollama','caddy')})
+    script="import {readFileSync} from 'node:fs';import {encryptPrivateResult} from '/opt/stacksignal-pairing/bot/deploy/pair-phone.mjs';const x=JSON.parse(readFileSync(0,'utf8'));console.log(JSON.stringify(encryptPrivateResult(x.result,x.request)));"
+    encoded=subprocess.run(['/opt/node/bin/node','--input-type=module','-e',script],input=json.dumps({'request':request,'result':report}).encode(),capture_output=True,check=True)
+    print(encoded.stdout.decode().strip())
+else:
+    raw=command(run_as+['/opt/node/bin/node',str(source/'send-activation.mjs')],json.dumps(request).encode(),timeout=90)
+    print(raw.decode().strip())
