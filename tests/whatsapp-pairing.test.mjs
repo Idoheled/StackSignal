@@ -2,6 +2,11 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createDecipheriv } from "node:crypto";
 import { encryptPairCode, validatePairRequest } from "../bot/deploy/pair-phone.mjs";
+import { verifiedGroup } from "../bot/deploy/group-identity.mjs";
+import { sendAnnouncementOnce } from "../bot/deploy/activation-ledger.mjs";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 test("phone linking requests expire, and the code is authenticated/encrypted per session", () => {
   const now = 1_800_000_000_000;
@@ -23,4 +28,30 @@ test("phone linking requests expire, and the code is authenticated/encrypted per
   assert.throws(() => decrypt({ ...result, session: "00000000-0000-4000-8000-000000000002" }));
   const tampered = Buffer.from(result.encrypted, "base64"); tampered[0] ^= 1;
   assert.throws(() => decrypt({ ...result, encrypted: tampered.toString("base64") }));
+});
+
+test("invite/name/membership must all identify the same group before an announcement", () => {
+  const invite = { id: "123456789@g.us", subject: "StackSignal" };
+  const group = { ...invite, participants: [{ id: "owner@lid", phoneNumber: "15555550123@s.whatsapp.net" }] };
+  const identities = new Set(["15555550123@s.whatsapp.net"]), normalize = value => value || "";
+  assert.equal(verifiedGroup(invite, group, identities, normalize).group_verified, true);
+  for (const changed of [{ id: "999999999@g.us" }, { subject: "Other group" }, { participants: [{ id: "someone@lid" }] }])
+    assert.throws(() => verifiedGroup(invite, { ...group, ...changed }, identities, normalize));
+});
+
+test("a confirmed or uncertain announcement is never automatically sent twice", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "wa-announcement-")); let sends = 0;
+  const destination = { paired: true, group_verified: true, group_name: "StackSignal", group_jid: "123456789@g.us" };
+  try {
+    const args = { directory, destination, deliver: async () => { sends++; return "provider-1"; } };
+    const first = await sendAnnouncementOnce(args);
+    assert.equal(first.status, "sent"); assert.deepEqual(await sendAnnouncementOnce(args), first); assert.equal(sends, 1);
+    await assert.rejects(sendAnnouncementOnce({ ...args, destination: { ...destination, group_jid: "999999999@g.us" } }));
+  } finally { rmSync(directory, { recursive: true, force: true }); }
+  const uncertain = mkdtempSync(join(tmpdir(), "wa-uncertain-")); sends = 0;
+  try {
+    const args = { directory: uncertain, destination, deliver: async () => { sends++; throw new Error("reply lost after acceptance"); } };
+    assert.equal((await sendAnnouncementOnce(args)).status, "uncertain");
+    await assert.rejects(sendAnnouncementOnce(args), /reconcile/); assert.equal(sends, 1);
+  } finally { rmSync(uncertain, { recursive: true, force: true }); }
 });

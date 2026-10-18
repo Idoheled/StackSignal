@@ -18,10 +18,14 @@ export function validatePairRequest(value, now = Date.now()) {
 
 export function encryptPairCode(code, request) {
   if (!/^[A-Z0-9]{8}$/.test(code)) throw new Error("invalid_pair_code");
+  return { ...encryptPrivateResult({ code, session: request.session }, request), status: "code_ready" };
+}
+
+export function encryptPrivateResult(payload, request) {
   const nonce = randomBytes(12), cipher = createCipheriv("aes-256-gcm", Buffer.from(request.key, "hex"), nonce);
   cipher.setAAD(Buffer.from(request.session));
-  const encrypted = Buffer.concat([cipher.update(JSON.stringify({ code, session: request.session }), "utf8"), cipher.final()]);
-  return { status: "code_ready", session: request.session, nonce: nonce.toString("base64"),
+  const encrypted = Buffer.concat([cipher.update(JSON.stringify(payload), "utf8"), cipher.final()]);
+  return { status: "private_result", session: request.session, nonce: nonce.toString("base64"),
     encrypted: encrypted.toString("base64"), tag: cipher.getAuthTag().toString("base64") };
 }
 
