@@ -10,6 +10,8 @@
   explicit bounded replies for busy, rate-limited and failed requests.
 - Handle authenticated linked-phone group routing while blocking personal
   ciphertext, and pass the private host environment to signed catalog canaries.
+- Cap review batches at the verified size and isolate rejected multi-item
+  request shapes through smaller retries, preserving every quota reservation.
 - Recover obsolete provider-configuration retries and superseded source failures
   without resetting quota accounting, historical evaluations or alert cutoffs.
 
