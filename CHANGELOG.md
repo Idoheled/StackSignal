@@ -2,19 +2,21 @@
 
 ## [Unreleased]
 
-### Notification preparation
+### WhatsApp registration and delivery preparation
 
-- Add invitation opt-in, per-user WhatsApp notification settings, protected group
-  handoff cards and authenticated article deep links on the feature branch.
-- Add a private reviewed-content outbox with duplicate protection, leased claims,
-  delivery receipts and reconciliation for uncertain sends. Delivery remains
-  disabled until Oracle/OpenClaw hosting and real group checks succeed.
-- Add a read-only Oracle Cloud Shell onboarding check and setup/progress guides
-  plus bounded, resumable Always Free ARM provisioning with free-budget guards.
-- Implement signed webhook dispatch and receipts, a durable SQLite receiver,
-  immutable event deduplication, local-only Ollama message generation and fixed
-  group delivery through OpenClaw. Deployment and actual group verification
-  remain pending; production notifications are disabled.
+- Add optional signup registration, authenticated join/confirmation dialogs,
+  Registered/Pending/Unregistered tracking, administrator visibility and an
+  explicit WhatsApp exit reminder when unregistering.
+- Record confirmation source, timestamps and audited transitions; preserve
+  invitation atomicity, session/MFA authorization and old preference callers.
+- Add signed webhook dispatch, a private reviewed-content outbox, SQLite
+  duplicate protection, delivery receipts and reconciliation for uncertain sends.
+- Pair the existing Oracle ARM host and verify a real StackSignal-group
+  announcement through OpenClaw; use local Ollama for message generation.
+- Retire resource polling and preserve its dormant toolkit outside active
+  workflows. Document `main`/`dev`/feature conventions and dependency maintenance.
+- Keep automatic dispatch and the production UI release gated by final delivery
+  verification and owner approval of the private preview.
 
 ## [0.1.1] - 2026-10-13
 

@@ -75,6 +75,9 @@ flowchart TD
   Collector --> Review["Durable reviews · Gemini for new links"]
   Review --> Data
   Collector --> Data
+  Data --> Outbox["Reviewed-event outbox · signed dispatch"]
+  Outbox --> Bot["Oracle ARM · Ollama and OpenClaw"]
+  Bot --> Group["Private WhatsApp group"]
   Admin["Administrator · watches and profile"] --> Web
 ```
 
@@ -105,7 +108,7 @@ StackSignal has several complementary discovery lanes:
 
 Ranking uses concrete technical terms, topic priorities, administrator interests, release signals and bounded feedback. Cards explain the match; scores express **relevance**, not truth or production readiness. There is no mandatory LLM in the default collection path. Read [how discovery and scoring work](docs/DISCOVERY.md) for the exact rules, a worked example, personalization and known limits.
 
-The five-minute collector tick handles due queued work. Individual watches have their own intervals, and source outages or provider quotas can delay results. Alerts appear **inside StackSignal**; they are polling-based, not email/push notifications. See [how the feed works](docs/PRODUCT.md#the-five-feed-views).
+The five-minute collector tick handles due queued work. Individual watches have their own intervals, and source outages or provider quotas can delay results. The feed updates inside StackSignal. Optional WhatsApp group alerts add reviewed-link and followed-release notifications through a signed outbox, a self-hosted OpenClaw transport and local Ollama. See [registration](docs/WHATSAPP_REGISTRATION.md) and the [rollout checkpoint](docs/WHATSAPP_PROGRESS.md); registration does not automatically change WhatsApp group membership. See [how the feed works](docs/PRODUCT.md#the-five-feed-views).
 
 ## Guiding principles and guardrails
 
@@ -204,3 +207,5 @@ Every eligible push to `main` deploys automatically after checks pass. A new pac
 ---
 
 **Next:** [Onboarding](docs/ONBOARDING.md) · [Product guide](docs/PRODUCT.md) · [Design decisions](docs/DESIGN.md) · [All documentation](docs/README.md) · [Changelog](CHANGELOG.md)
+
+Branching: `main` is production, `dev` integrates reviewed work and `feat/*` branches isolate features. See [branch and maintenance rules](docs/BRANCHING.md).

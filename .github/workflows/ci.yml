@@ -2,13 +2,13 @@ name: CI and Cloudflare
 
 on:
   push:
-    branches: [main]
+    branches: [main, dev]
   pull_request:
-    branches: [main]
+    branches: [main, dev]
   workflow_dispatch:
     inputs:
       operation:
-        description: Manual operation; pairing requires a short-lived encrypted request
+        description: Manual quality or guarded WhatsApp maintenance; no provisioning
         type: choice
         default: quality
         options: [quality, whatsapp_pairing]
@@ -49,6 +49,7 @@ jobs:
       - run: python3 tests/oci-host.test.py
       - run: python3 tests/oci-runner.test.py
       - run: python3 tests/whatsapp-pairing-runner.test.py
+      - run: python3 tests/whatsapp-delivery-config.test.py
       - run: pnpm build:standalone
       - run: node scripts/verify-client-boundary.mjs
       - run: pnpm exec playwright install --with-deps chromium firefox webkit

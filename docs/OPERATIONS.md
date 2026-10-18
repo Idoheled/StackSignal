@@ -201,3 +201,16 @@ The owner supplied a Tavily API key. It was installed using the existing Supabas
 An authorized production collector invocation returned HTTP 200 and completed eight jobs, including four genuine Tavily search jobs that stored 21 references. An unauthenticated collector invocation returned HTTP 401. Subsequent scheduled ticks completed all 20 first-day web queries, storing 86 references; search health reported `active`, configured key, no last error and last success at `2026-10-11T07:35:03.563Z`. The 61 active watches and five-minute Cron remained in place. These checks establish real provider access and persistence, not accuracy of every result or complete internet coverage.
 
 Administrators edit queries/interests/priorities/thresholds in Coverage and inspect search status in Health. Source of truth for the live profile is PostgreSQL, not the immutable seed batch. [DISCOVERY.md](DISCOVERY.md) records query selection, filtering, exact scores, feedback behavior and current limits; [ARCHITECTURE.md](ARCHITECTURE.md#active-web-search-architecture) describes runtime boundaries. Runtime secrets remain outside Git.
+
+## 2026-10-18 — WhatsApp registration staging
+
+- Applied additive registration-state migration after the full migration-chain
+  tests passed. The old opt-in API remains compatible.
+- Marked only the owner, Eilon and Roi as administrator-confirmed registered
+  members at the owner's request, using exact identity guards and an audited
+  transaction. Other members remain unregistered.
+- Added signup-to-login group handoff, explicit self-confirmation, a settings
+  switch and an exit-group reminder. No automatic WhatsApp join/removal claim.
+- Production UI/main remain unchanged while the private version is reviewed.
+  The notification dispatcher cron remains paused; resource polling remains
+  retired. See the checkpoint for later delivery verification results.

@@ -50,3 +50,6 @@ Start with the purpose and your role, then follow the system into the source. Th
 - Explain incomplete verification precisely. A relevance score is not a benchmark validation; a source watch is not proof that its next fetch will succeed.
 
 - [Repository maintenance, Trending and OpenShift release probes](REPOSITORY_DISCOVERY.md): thresholds, public metadata, preview channels and the second reading batch.
+
+- [WhatsApp registration and membership](WHATSAPP_REGISTRATION.md)
+- [Branching and repository maintenance](BRANCHING.md)

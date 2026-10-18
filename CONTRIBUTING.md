@@ -2,7 +2,7 @@
 
 Start with [developer onboarding](docs/ONBOARDING.md#developers), the [architecture](docs/ARCHITECTURE.md) and [design decisions](docs/DESIGN.md). The [documentation hub](docs/README.md) maps the product and operating guides.
 
-Preserve accounts, saved content, source preferences and privacy boundaries. Branch from current `main` with a descriptive name. Describe the trigger, user impact and resulting behavior; keep unrelated changes separate.
+Preserve accounts, saved content, source preferences and privacy boundaries. Branch from current `dev` using `feat/<topic>`, `fix/<topic>` or `docs/<topic>`. Feature PRs target `dev`; tested release PRs promote `dev` to `main` after owner approval. See [branching and maintenance](docs/BRANCHING.md). Describe the trigger, user impact and resulting behavior; keep unrelated changes separate.
 
 Add changes under the changelog’s `[Unreleased]` section. For a named release, follow [repository releases](docs/RELEASES.md); use `pnpm release:prepare <version>` to keep package metadata and release notes together.
 

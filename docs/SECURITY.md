@@ -69,3 +69,18 @@ Gemini's free-tier activation requires a verified Free API project. The evaluato
 The saved evaluation mode survives deploys because preferences and the usage ledger remain in PostgreSQL. On-demand batches of up to five links supplement atomic 16-request rolling/Pacific-day and 496-request/month caps. Coverage snapshots distinguish reviewed, queued and failed public inputs; ordinary collection continues independently; release alerts require review. Free-tier provider capacity is project/model-specific and cannot be established from an API key. Quota errors retain rules, flag the input and stop further generation for 24 hours; transient HTTP 5xx capacity errors back off for 15 minutes. Never enable billing to resolve free-tier capacity errors automatically.
 
 Repository maintenance and OpenShift probes use bounded approved-host fetches. Only public GitHub metadata enters health snapshots; private repositories are not evaluation candidates. New AI candidate RPC is service-only. Current-policy SQL admission prevents unqualified GitHub content from appearing or spending model quota. Popularity and model review are relevance controls, not security audits.
+
+## WhatsApp registration review — October 18, 2026
+
+The additive registration RPCs use the existing active-session/member/MFA gate,
+lock only the caller's member row and never accept a target user ID. Direct
+member updates and anonymous execution remain denied. Confirmation records a
+member declaration; it does not assert an automated WhatsApp membership check.
+Only opted-in members receive the private invite. The new confirmation RPC is
+an intentional authenticated security-definer API with explicit grants, an
+empty search path and tested authorization, consistent with the existing
+preferences API. The advisor reports these intentional endpoints and private
+tables without client policies; no new blanket grants or policies were added.
+Leaked-password protection remains the previously documented provider-tier
+limitation. The bot still has no database service credential and cannot process
+inbound personal or group messages.
