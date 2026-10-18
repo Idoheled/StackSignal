@@ -17,7 +17,8 @@ def validate_request(request,sha,now=None):
     now=time.time()*1000 if now is None else now
     if (request.get("sha")!=sha or not re.fullmatch(r"[1-9][0-9]{7,14}",request.get("phone",""))
         or request.get("operation","pair") not in ("pair","activation_test","delivery_readiness","columbus_deploy","columbus_diagnostics")
-        or request.get("verification_mode") not in (None,"answer_only")
+        or request.get("verification_mode") not in (None,"answer_only","quality_audit")
+        or(request.get("verification_mode")=="quality_audit" and request.get("operation")!="columbus_diagnostics")
         or not re.fullmatch(r"[0-9a-f]{64}",request.get("key",""))
         or not re.fullmatch(r"[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}",request.get("session",""))
         or not isinstance(request.get("expires_at"),int) or not now<request["expires_at"]<=now+900000):
@@ -90,7 +91,8 @@ def main():
             private={k:request[k] for k in ("phone","key","session","expires_at")}
             if request.get("operation")=="columbus_diagnostics":
                 STAGE="read_group_runtime_diagnostics"
-                raw=run(ssh+["sudo python3 /opt/stacksignal-pairing/bot/deploy/columbus-diagnostics.py"],json.dumps(private).encode(),timeout=60)
+                if request.get("verification_mode")=="quality_audit":private["quality_audit"]=True
+                raw=run(ssh+["sudo python3 /opt/stacksignal-pairing/bot/deploy/columbus-diagnostics.py"],json.dumps(private).encode(),timeout=500 if private.get("quality_audit") else 60)
                 result=json.loads(raw)
                 if result.get("session")!=request["session"] or result.get("status")!="private_result":raise RuntimeError("Invalid private diagnostic result")
                 print("MAINTENANCE_ENCRYPTED:"+json.dumps({k:result[k] for k in ("status","session","nonce","encrypted","tag")},separators=(",",":")),flush=True)
