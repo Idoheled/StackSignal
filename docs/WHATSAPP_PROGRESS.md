@@ -36,18 +36,25 @@ still denied its identity in Hebrew and produced a confused Hebrew RDMA/TCP
 explanation. English samples were coherent. The correction therefore adopts
 English-first replies with a maintained Hebrew notice for both Hebrew aliases,
 maintained identity answers, strict structured output and context only when an
-article is explicitly referenced. The [guarded runtime check](https://github.com/Idoheled/StackSignal/actions/runs/39170009675)
-records real English model answers about Kubernetes scheduling and RDMA/TCP,
-Hebrew identity/language routing, signed catalog lookup and pairing-preserving
-restart. Its synthetic answers are reviewed in the encrypted owner report;
-no group test messages are sent. Source runtime:
-`b3a0181cce62da64ed9624b1c72d01253c541079`.
+article is explicitly referenced. The [first revised runtime check](https://github.com/Idoheled/StackSignal/actions/runs/39170009675)
+verified pairing, service recovery and the signed catalog, but manual sample
+review rejected its answer quality. A JSON grammar string cap could close a
+valid field mid-word; technical samples also overstated scheduling enforcement
+and CPU bypass. This run's automatic semantic flag is **not** release approval.
+The follow-up removes grammar string caps, retains server-side length checks,
+rejects incomplete sentences and strengthens qualified-answer prompts and
+technical fixtures. See [the correction and checks](https://github.com/Idoheled/StackSignal/pull/27).
 
-[Source CI](https://github.com/Idoheled/StackSignal/actions/runs/39169721779)
+[Initial source CI](https://github.com/Idoheled/StackSignal/actions/runs/39169721779)
 passed 126 application/bot tests and 42 browser checks across three engines.
-The `dev` → `main` release PR is [#23](https://github.com/Idoheled/StackSignal/pull/23);
-its merged commit must pass Quality, production smoke and Release before the
-frontend version is considered published.
+Subsequent code must pass those checks plus another real-model sample review,
+language/identity routing, signed catalog access and pairing-preserving restart.
+These checks send no group test messages. The exact accepted runtime SHA, run ID
+and manual review result belong in the private deployment checkpoint and the
+[release PR](https://github.com/Idoheled/StackSignal/pull/23). Production additionally
+requires the merged main commit's Quality, deployment smoke and Release jobs.
+A valid JSON reply, green maintenance runner or HTTP health alone is not proof
+of a coherent or factually qualified model answer.
 
 Production v0.2.0 passed [main rollout and security smoke checks](https://github.com/Idoheled/StackSignal/actions/runs/39115889435).
 Alerts were enabled at **2026-10-18 09:38:15.509511 UTC (12:38:15 Israel)**. The
