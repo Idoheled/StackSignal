@@ -36,3 +36,12 @@ test("followed releases may use a concrete component change without accepting ba
  const bare={...r,input:{...input,text:"Release v26.10.0-beta.4. Version v26.10.0-beta.4 published. This release is a new preview version; no actual changes are included in this captured public source."}};
  assert.notEqual(internalReview(bare,{},now).assessment.decision,"useful");
 });
+
+test("public evidence never splits a Unicode character at PostgreSQL JSON boundaries",async()=>{
+ const {publicFragment}=await import('../supabase/functions/_shared/internal-review.ts');
+ for(const [text,start,end] of [['a'.repeat(139)+'🚀 technical',0,140],['🚀 technical',1,10]] as [string,number,number][]){
+  const quote=publicFragment(text,start,end);assert(quote.isWellFormed());assert(text.includes(quote));
+ }
+ const value=internalReview(row('a'.repeat(139)+'🚀 irrelevant text with no engineering evidence'));
+ assert(value.assessment.evidence.isWellFormed());assert(value.assessment.summary.isWellFormed());
+});

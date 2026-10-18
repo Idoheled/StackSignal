@@ -1,0 +1,20 @@
+# Set WHATSAPP_BOT_HOST to a stable DNS name resolving to the VM.
+# Only this listener is public. Keep Ollama/OpenClaw/Node on loopback.
+{$WHATSAPP_BOT_HOST} {
+  request_body {
+    max_size 24KB
+  }
+  @events {
+    method POST
+    path /v1/events
+  }
+  handle @events {
+    reverse_proxy 127.0.0.1:8787
+  }
+  handle /healthz {
+    reverse_proxy 127.0.0.1:8787
+  }
+  handle {
+    respond "Not found" 404
+  }
+}

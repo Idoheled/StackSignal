@@ -31,6 +31,9 @@ Start with the purpose and your role, then follow the system into the source. Th
 | [Repository releases](RELEASES.md) | How are versions prepared, validated, published and recovered? |
 | [Deployment](DEPLOYMENT.md) | What does CI deploy, what remains separate, and how do I roll back? |
 | [Operations](OPERATIONS.md) | What was configured and verified at each historical checkpoint? |
+| [WhatsApp host onboarding](WHATSAPP_SETUP.md) | How do I pair the prepared host, verify its group and activate notifications? |
+| [WhatsApp progress](WHATSAPP_PROGRESS.md) | What notification work is complete and what is still pending? |
+| [Dormant OCI toolkit](../ops/oci/README.md) | How did full VM provisioning/bootstrap work, what did we learn and how is recovery explicitly restored? |
 | [Independent setup](SETUP.md) | How would an operator provision a separate installation? |
 | [Security controls](SECURITY.md) | What protects access and collection, and what verification remains outstanding? |
 | [Security policy](../SECURITY.md) | How should vulnerabilities and credential exposures be reported? |
@@ -47,3 +50,6 @@ Start with the purpose and your role, then follow the system into the source. Th
 - Explain incomplete verification precisely. A relevance score is not a benchmark validation; a source watch is not proof that its next fetch will succeed.
 
 - [Repository maintenance, Trending and OpenShift release probes](REPOSITORY_DISCOVERY.md): thresholds, public metadata, preview channels and the second reading batch.
+
+- [WhatsApp registration and membership](WHATSAPP_REGISTRATION.md)
+- [Branching and repository maintenance](BRANCHING.md)

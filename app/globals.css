@@ -227,6 +227,31 @@ a:focus-visible {
   font-weight: 620;
   margin: 0 0 7px;
 }
+.whatsapp-opt-in { display: flex !important; align-items: flex-start; gap: 12px; padding: 14px; border: 1px solid #2b5146; border-radius: 12px; background: #16352d33; font-size: 13px; cursor: pointer; }
+.whatsapp-opt-in input[type="checkbox"] { width: 18px; height: 18px; min-width: 18px; margin: 2px 0 0; accent-color: #48c899; padding: 0; }
+.whatsapp-opt-in span { line-height: 1.6; }
+.whatsapp-opt-in small { display: block; font-size: 12px; color: #93a5b9; margin-top: 4px; }
+.whatsapp-signup-help, .whatsapp-leave { color: #93a5b9; font-size: 12px; line-height: 1.7; }
+.whatsapp-invite { position: relative; padding: 24px; border: 1px solid #33785e; border-radius: 18px; background: radial-gradient(ellipse at top right, #258f5f33, transparent 80%), #12241f; overflow-wrap: anywhere; }
+.whatsapp-invite-icon { display: grid; place-items: center; width: 49px; height: 49px; margin-bottom: 18px; border: 1px solid #387259; border-radius: 14px; color: #8fe2b9; background: #28624644; }
+.whatsapp-invite .eyebrow { font-size: 10px; color: #8fe2b9; }
+.whatsapp-invite h3 { font-size: 24px; margin: 12px 0; letter-spacing: -.6px; }
+.whatsapp-invite p { color: #c0d0c9; font-size: 13px; line-height: 1.8; margin-bottom: 18px; }
+.whatsapp-invite small { display: block; color: #94b7a6; font-size: 11px; line-height: 1.7; margin-top: 18px; }
+.whatsapp-join { display: flex; justify-content: space-between; align-items: center; min-height: 46px; gap: 10px; padding: 12px 16px; background: #9ae6bc; color: #12261b; border-radius: 10px; font-size: 13px; font-weight: 650; text-decoration: none; }
+.whatsapp-join:hover { background: #b9f5d4; }
+.whatsapp-join:focus-visible { outline: 2px solid #fff; outline-offset: 4px; }
+.whatsapp-loading, .whatsapp-saved { display: flex; align-items: center; gap: 8px; font-size: 12px; }
+.whatsapp-saved { color: #83ceaa; }
+.whatsapp-registration { display: grid; gap: 8px; padding: 16px 0; }
+.whatsapp-registration strong { display: flex; align-items: center; gap: 6px; font-size: 20px; }
+.whatsapp-registration[data-state="registered"] strong { color: #83ceaa; }
+.whatsapp-registration small { color: var(--muted-foreground); font-size: 12px; }
+.whatsapp-confirm { width: 100%; margin-top: 12px; }
+.whatsapp-invite .whatsapp-pending { font-size: 12px; margin: 14px 0 0; }
+.light .whatsapp-invite { background: #ebf8f0; }
+.light .whatsapp-invite h3 { color: #123825; }
+.light .whatsapp-invite p, .light .whatsapp-invite small, .light .whatsapp-invite .eyebrow { color: #325944; }
 .login-card > p {
   color: var(--muted-foreground);
   margin: 0 0 32px;

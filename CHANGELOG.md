@@ -2,6 +2,30 @@
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-18
+
+### WhatsApp registration, alerts and Columbus
+
+- Add optional signup registration, authenticated join/confirmation dialogs,
+  Registered/Pending/Unregistered tracking, administrator visibility and an
+  explicit WhatsApp exit reminder when unregistering.
+- Record confirmation source, timestamps and audited transitions; preserve
+  invitation atomicity, session/MFA authorization and old preference callers.
+- Add signed webhook dispatch, a private reviewed-content outbox, SQLite
+  duplicate protection, delivery receipts and reconciliation for uncertain sends.
+- Pair the existing Oracle ARM host and verify a real StackSignal-group
+  announcement through OpenClaw; use local Ollama for message generation.
+- Retire resource polling and preserve its dormant toolkit outside active
+  workflows. Document `main`/`dev`/feature conventions and dependency maintenance.
+- Add English/Hebrew Columbus questions with local Ollama, a fixed-group socket
+  boundary, no tools, trusted alert context and persistent reply deduplication.
+- Require new discovery plus first evaluation after activation; exclude old
+  pending links and reevaluations, and include searchable titles in alerts.
+- Repair Unicode excerpt slicing so scheduled internal reviews cannot fail an
+  entire batch on a split emoji; diagnose provider configuration failures safely.
+- Gate activation on owner approval, verified production rollout and live bot
+  tests. Operational evidence and activation state live in the rollout checkpoint.
+
 ## [0.1.1] - 2026-10-13
 
 ### Release management
