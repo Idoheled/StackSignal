@@ -5,7 +5,7 @@ import {mkdtempSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {questionFrom,restrictSocket} from '../bot/columbus-policy.mjs';
-import {answerQuestion,ColumbusLedger,installColumbusBoundary,articleContext,capabilitiesReply} from '../bot/columbus-runtime.mjs';
+import {answerQuestion,ColumbusLedger,installColumbusBoundary,articleContext,capabilitiesReply,responseForQuestion,languageGuidance,referencesArticle} from '../bot/columbus-runtime.mjs';
 import {DeliveryStore} from '../bot/store.mjs';
 import {runtimeStatus} from '../bot/operations.mjs';
 const target='123456789012345678@g.us',now=Date.now(),activatedAt=now-60000;
@@ -14,6 +14,8 @@ function socket(){const calls=[],acks=[];const ws=new EventEmitter(),ev=new Even
 test('English and Hebrew prefix requests are exact, fresh, text-only and group-bound',()=>{
  for(const text of ['Columbus explain KAI','columbus: explain KAI','קולומבוס תסביר על KAI'])assert(questionFrom(message(text),'notify',target,{now,activatedAt}));
  for(const mark of ['\u200f','\u200e','\u2067'])assert(questionFrom(message(mark+'קולומבוס מה אתה יכול לעשות?'),'notify',target,{now,activatedAt}));
+ for(const alias of ['קולומבוס','קולמבוס'])assert.equal(questionFrom(message(alias+' מה אתה?'),'notify',target,{now,activatedAt}).prefixLanguage,'he');
+ assert.equal(questionFrom(message('Columbus מה אתה?'),'notify',target,{now,activatedAt}).prefixLanguage,'en');
  for(const text of ['hey Columbus explain','Columbusian task','קולומבוסי תסביר','🤖 Columbus replied'])assert.equal(questionFrom(message(text),'notify',target,{now,activatedAt}),null);
  assert.equal(questionFrom(message('Columbus hi',{messageTimestamp:(now-700000)/1000}),'notify',target,{now,activatedAt}),null);
  assert.equal(questionFrom(message('Columbus hi'),'append',target,{now,activatedAt}),null);
@@ -31,7 +33,7 @@ test('the exact mobile Hebrew capabilities question gets an honest answer withou
    generateAnswer:async()=>{throw Error('Capabilities must not depend on generation');},getContext:async()=>{throw Error('Capabilities must not depend on catalog');}});
   sock.ev.emit('messages.upsert',{type:'notify',messages:[message('\u200fקולומבוס מה אתה יכול לעשות?')]});
   await new Promise(setImmediate);assert.equal(sock.calls.length,1);assert.equal(sock.calls[0].jid,target);
-  assert(sock.calls[0].body.text.includes('מודל מקומי'));assert(sock.calls[0].body.text.includes('אין לי גישה לשיחות פרטיות'));
+  assert(sock.calls[0].body.text.includes('לתשובות טובות יותר'));assert(sock.calls[0].body.text.includes('no personal chats'));assert(sock.calls[0].body.text.includes('in English using a local model'));
   assert(capabilitiesReply('what can you do?').includes('approved releases'));
   assert.equal(capabilitiesReply('What can you do about KAI scheduling?'),null);
   const ledger=new ColumbusLedger(join(root,'columbus.sqlite'));
@@ -80,28 +82,71 @@ test('blocked packets are acknowledged without reading ciphertext, so filtering 
 });
 test('answers use only local Ollama and bounded text, without tools or configurable destinations',async()=>{
  let request;
- const text=await answerQuestion('קולומבוס תסביר KAI',{title:'KAI Scheduler'}, {send:async(url,init)=>{assert.equal(url,'http://127.0.0.1:11434/api/generate');request=JSON.parse(init.body);return Response.json({done:true,thinking:'PRIVATE MODEL REASONING',response:JSON.stringify({answer:'קודם נותנים ל-GPU עבודה, גאון. KAI מתזמן עומסי GPU.'})});}});
+ const text=await answerQuestion('תסביר KAI',{title:'KAI Scheduler'}, {language:'en',send:async(url,init)=>{assert.equal(url,'http://127.0.0.1:11434/api/generate');request=JSON.parse(init.body);return Response.json({done:true,thinking:'PRIVATE MODEL REASONING',response:JSON.stringify({answer:'KAI schedules GPU workloads.',details:['It considers resource availability and placement policy.'],caveat:''})});}});
  assert(text.startsWith('🤖'));assert(text.includes('KAI'));assert.equal(request.think,false);assert.equal('tools' in request,false);
- assert(request.system.includes('Hebrew'));assert(request.system.includes('no tools'));assert.equal(request.model,'qwen3:4b');
- assert.deepEqual(request.format.required,['answer']);assert.equal(request.format.additionalProperties,false);
+ assert(request.system.includes('English'));assert(request.system.includes('no tools'));assert.equal(request.model,'qwen3:4b');
+ assert.deepEqual(request.format.required,['answer','details','caveat']);assert.equal(request.format.additionalProperties,false);assert.equal(request.options.temperature,0);
+ assert.deepEqual(JSON.parse(request.prompt.split('\n/no_think')[0]).response_schema,request.format);
+ assert(text.includes('*Answer*'));assert(text.includes('*Key points*\n• '));
  assert(request.prompt.endsWith('/no_think'));assert(!text.includes('PRIVATE MODEL REASONING'));assert(!text.includes('"answer"'));
  await assert.rejects(answerQuestion('hi',null,{model:'a-cloud-model'}),/Local/);
 });
 test('reasoning, malformed output and truncated generations never become WhatsApp replies',async()=>{
  const ask=payload=>answerQuestion('Explain GPU scheduling',null,{send:async()=>Response.json({done:true,...payload})});
+ const pack=answer=>JSON.stringify({answer,details:[],caveat:''});
  for(const response of [
   'Okay, let me think about how to answer the user. The final answer is GPU scheduling.',
   '<think>private thought</think>{"answer":"GPU scheduling"}',
   '<think>unfinished private thought',
-  JSON.stringify({answer:'<think>private thought</think>GPU scheduling'}),
-  JSON.stringify({answer:'private thought</think>GPU scheduling'}),
-  JSON.stringify({answer:'<analysis>private thought'}),
-  JSON.stringify({answer:'<|channel|>analysis private thought'}),
+  pack('<think>private thought</think>GPU scheduling'),
+  pack('private thought</think>GPU scheduling'),
+  pack('<analysis>private thought'),
+  pack('<|channel|>analysis private thought'),
+  pack('The user wants a technical answer, so I should explain scheduling.'),
+  JSON.stringify({answer:'GPU scheduling',details:['<think>private thought</think>'],caveat:''}),
+  JSON.stringify({answer:'GPU scheduling',details:[],caveat:'<analysis>private thought'}),
   JSON.stringify({thinking:'private thought',answer:'GPU scheduling'}),
-  JSON.stringify({answer:''}), JSON.stringify({answer:42}), 'null', '[]'
+  pack(''), pack('x'.repeat(481)), JSON.stringify({answer:42,details:[],caveat:''}), 'null', '[]'
  ])await assert.rejects(ask({response}));
  await assert.rejects(ask({done_reason:'length',response:'{"answer":"A truncated explanation"}'}));
- assert((await ask({thinking:'PRIVATE',response:'{"answer":"Fine, genius. GPU scheduling assigns work to available GPUs."}'})).endsWith('Fine, genius. GPU scheduling assigns work to available GPUs.'));
+ assert((await ask({thinking:'PRIVATE',response:pack('GPU scheduling assigns work to available GPUs.')})).endsWith('GPU scheduling assigns work to available GPUs.'));
+});
+test('invalid output receives one bounded clean retry; English mode rejects a generated Hebrew paragraph',async()=>{
+ let calls=0;
+ const text=await answerQuestion('Explain RDMA',null,{language:'en',send:async()=>{
+  calls++;return Response.json({done:true,response:JSON.stringify({answer:calls===1?'העברית הזו אינה התשובה באנגלית שביקשנו.':'RDMA permits direct memory access between systems.',details:[],caveat:''})});
+ }});
+ assert.equal(calls,2);assert(text.includes('RDMA permits'));assert(!text.includes('העברית הזו'));
+ calls=0;await assert.rejects(answerQuestion('Explain RDMA',null,{send:async()=>{calls++;return Response.json({done:true,response:'unfinished output'});}}));assert.equal(calls,2);
+});
+test('identity questions remain truthful and general questions do not inherit the latest KAI release',async()=>{
+ const root=mkdtempSync(join(tmpdir(),'columbus-relevance-')),store=new DeliveryStore(join(root,'deliveries.sqlite'));let generated=0;
+ try{
+  store.accept({id:'event',payload:{title:'KAI Scheduler v0.16.12',summary:'An unrelated retained release',ui_url:'https://stacksignal.example/?article=one'}},now);store.claim(now);store.prepareSend('event','alert',now);store.confirm('event','sent-alert',now);
+  const generateAnswer=async(q,article,opts)=>{generated++;assert.equal(opts.language,'en');assert.equal(article,null);return 'A clear English answer.';};
+  const identity=await responseForQuestion({question:'מה אתה?',prefixLanguage:'he',quotedID:null},{base:root,preferEnglish:true,generateAnswer});
+  assert(identity.includes('I’m Columbus'));assert(!identity.includes('KAI'));assert.equal(generated,0);
+  await responseForQuestion({question:'What is TCP?',prefixLanguage:'en',quotedID:null},{base:root,preferEnglish:true,generateAnswer});assert.equal(generated,1);
+  let title;
+  await responseForQuestion({question:'How does KAI relate to this article?',prefixLanguage:'en',quotedID:null},{base:root,generateAnswer:async(q,a)=>{title=a.title;return 'Related explanation.';}});assert.equal(title,'KAI Scheduler v0.16.12');
+  assert(referencesArticle('איך KAI קשור לכתבה הזו?'));assert(!referencesArticle('מה אתה?'));
+  const guided=languageGuidance(identity,{prefixLanguage:'he'},true);assert(guided.includes('לתשובות טובות יותר'));assert(guided.includes('I’m Columbus'));
+  assert.equal(languageGuidance(identity,{prefixLanguage:'en'},true),identity);
+ }finally{store.close();rmSync(root,{recursive:true,force:true});}
+});
+test('both Hebrew aliases always get English guidance; the English prefix goes straight to a structured English reply',async()=>{
+ for(const prefix of ['קולומבוס','קולמבוס','Columbus']){
+  const root=mkdtempSync(join(tmpdir(),'columbus-language-')),sock=socket();let calls=0;
+  try{
+   installColumbusBoundary(sock,{target,enabled:true,activatedAt,base:root,preferEnglish:true,
+    generateAnswer:async(question,article,{language})=>{calls++;assert.equal(language,'en');assert.equal(article,null);return '🤖 *Columbus · קולומבוס*\n\n*Answer*\nTCP provides reliable, ordered byte delivery.';}});
+   sock.ev.emit('messages.upsert',{type:'notify',messages:[message(prefix+' הסבר מה זה TCP')]});
+   await new Promise(setImmediate);assert.equal(calls,1);assert.equal(sock.calls.length,1);
+   const text=sock.calls[0].body.text;
+   assert(text.includes('*Answer*'));assert.equal(text.includes('לתשובות טובות יותר'),prefix!=='Columbus');
+   assert.equal(text.match(/🤖/g).length,1);assert.equal(sock.calls[0].jid,target);
+  }finally{sock.ev.emit('connection.update',{connection:'close'});rmSync(root,{recursive:true,force:true});}
+ }
 });
 test('trusted article context comes from sent public alerts, never arbitrary quoted content',()=>{
  const root=mkdtempSync(join(tmpdir(),'columbus-context-'));const store=new DeliveryStore(join(root,'deliveries.sqlite'));

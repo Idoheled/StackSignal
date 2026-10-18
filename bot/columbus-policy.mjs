@@ -38,11 +38,11 @@ export function questionFrom(envelope, type, target, { now = Date.now(), activat
   if (typeof text !== 'string' || text.length > 4000) return reject(envelope.messageStubType?'ciphertext_stub':'nontext');
   // Mobile RTL composition can prepend invisible direction marks.
   const normalized=text.replace(/^[\s\u200e\u200f\u202a-\u202e\u2066-\u2069]+/u,'');
-  const match = normalized.match(/^(?:columbus|קולומבוס)(?=$|[\s,:;.!?־–—-])[\s,:;.!?־–—-]*([\s\S]*)$/iu);
-  if (!match || match[1].length > 3000) return reject('unmatched_prefix');
+  const match = normalized.match(/^(columbus|קולומבוס|קולמבוס)(?=$|[\s,:;.!?־–—-])[\s,:;.!?־–—-]*([\s\S]*)$/iu);
+  if (!match || match[2].length > 3000) return reject('unmatched_prefix');
   const context = message?.extendedTextMessage?.contextInfo;
   const quotedID = (!context?.remoteJid || context.remoteJid === target) && typeof context?.stanzaId === 'string' ? context.stanzaId.slice(0,128) : null;
-  return { id: key.id, sender: key.participant || (key.fromMe ? 'linked-owner' : ''), question: match[1].trim(), quotedID };
+  return { id: key.id, sender: key.participant || (key.fromMe ? 'linked-owner' : ''), question: match[2].trim(), quotedID, prefixLanguage:/^columbus$/i.test(match[1])?'en':'he' };
 }
 export function restrictSocket(sock, target, observe = () => {}) {
   requireGroup(target);

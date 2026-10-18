@@ -1,10 +1,9 @@
 # WhatsApp rollout checkpoint
 
-**Current checkpoint: the Administration empty-queue hotfix is live in v0.3.1.
-Columbus is paired and connected; model, catalog, local-send reply and restart
-checks passed. Phone-originated incoming questions still need live verification.
-An outbound echo canary is not proof of that incoming path.** The owner approved
-the registration UI and authorized production promotion.
+**Current checkpoint: Administration is live in v0.3.1. The owner has now
+confirmed fresh phone-originated Columbus replies. The receive-path repair is
+verified; a separate answer-quality update is being checked before v0.3.2
+promotion.** The registration UI and production promotion are owner-authorized.
 
 ## October 19 (Israel) — Administration and receive-path follow-up
 
@@ -22,12 +21,21 @@ Signed aggregate receive counters separate wire frames from local upserts;
 they showed only the local canary at this checkpoint. No phone-originated reply
 is claimed from that test.
 
-The next guarded receive update preserves Baileys's metadata-only ignored-packet
+The guarded receive update preserves Baileys's metadata-only ignored-packet
 acknowledgement and records every blocked frame. Personal ciphertext remains
-blocked before receive handlers; chat sends remain fixed to StackSignal. Keep
-the prepared v0.3.2 release on `dev` until an actual fresh phone question is
-confirmed. See [health operations](PLATFORM_HEALTH.md) for the protocol and
+blocked before receive handlers; chat sends remain fixed to StackSignal. The owner subsequently confirmed both capabilities and generated identity
+replies from the phone; the identity reply exposed a separate answer-quality
+problem. Keep prepared v0.3.2 on `dev` until that correction passes its gates. See [health operations](PLATFORM_HEALTH.md) for the protocol and
 diagnostic boundaries. Private state is the current deployment checkpoint.
+
+The read-only [synthetic quality audit](https://github.com/Idoheled/StackSignal/actions/runs/39169268450)
+sent no group messages. With article context removed, the installed 4B model
+still denied its identity in Hebrew and produced a confused Hebrew RDMA/TCP
+explanation. English samples were coherent. The correction therefore adopts
+English-first replies with a maintained Hebrew notice for both Hebrew aliases,
+maintained identity answers, strict structured output and context only when an
+article is explicitly referenced. Actual model deployment verification remains
+the promotion gate.
 
 Production v0.2.0 passed [main rollout and security smoke checks](https://github.com/Idoheled/StackSignal/actions/runs/39115889435).
 Alerts were enabled at **2026-10-18 09:38:15.509511 UTC (12:38:15 Israel)**. The

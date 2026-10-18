@@ -36,7 +36,9 @@ aggregate bot telemetry; public `/healthz` remains a liveness endpoint.
 Expected quota, pacing, batching and reservation waits are displayed as waits.
 They do not bypass the existing Gemini limits or imply a stuck evaluation.
 Missing public evidence remains withheld. Ollama HTTP health does not certify
-answer quality; deployment separately runs actual English/Hebrew generations.
+answer quality; deployment separately checks actual technical generations and
+identity/language routing. Synthetic samples are reviewed inside the encrypted
+maintenance report; automated checks alone cannot certify every answer.
 
 ## Incident delivery and recovery
 
@@ -70,7 +72,7 @@ external uptime guarantee.
 
 ## Columbus release questions
 
-English `Columbus` and Hebrew `קולומבוס` prefixes retain the fixed-group boundary.
+English `Columbus` and Hebrew `קולומבוס` / `קולמבוס` prefixes retain the fixed-group boundary.
 Messages sent by the paired phone can arrive with the account as sender and
 StackSignal as the recipient. The pre-decryption boundary verifies both the
 socket's own identity and the fixed group recipient for this route. A scoped
@@ -99,8 +101,11 @@ metadata stores hashed senders, status, timestamps and fixed error codes, never
 question or model thinking text. Old installations lack those error codes, so a
 historical failed status alone cannot identify the exact underlying exception.
 
-Exact English/Hebrew capabilities questions use a bounded, maintained description
-of real capabilities rather than depending on model availability. Leading mobile
+Exact English/Hebrew identity and capabilities questions use a bounded, maintained description
+of real capabilities rather than depending on model availability. The current
+local 4B model uses English-first answers after failing isolated Hebrew checks.
+Both Hebrew prefixes include a maintained Hebrew English-language recommendation;
+English prefixes answer directly in English. See [language policy](WHATSAPP_SETUP.md#columbus-questions-and-privacy). Leading mobile
 RTL direction marks are ignored when matching the name; other name/prefix and
 fixed-group checks still apply.
 
@@ -112,6 +117,11 @@ addresses or credentials. Receive counters distinguish permitted group wire
 frames from decoded upserts and local send echoes. A local-send canary proves
 generation and delivery, **not** receipt of a real message from a phone; verify
 that path with an actual group question and matching wire/upsert counters.
+A sealed `quality_audit` verification mode is permitted only for this read-only
+operation. It runs four fixed synthetic prompts against the installed local
+model with no article context. Its answers are encrypted with the report, never
+posted to the group; it collects no real questions and does not restart services.
+
 Baileys normally uses a silent logger here, so an absence of journal errors
 cannot establish that an incoming message was decrypted successfully.
 
