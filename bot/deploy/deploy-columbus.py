@@ -116,7 +116,7 @@ try:
  if 'columbus_group_boundary_ready' not in log:raise RuntimeError('Group boundary did not initialize')
  report['stage']='final_answer_tests'
  smoke=json.loads(command(run_as+['/opt/node/bin/node',str(source/'bot/deploy/columbus-answer-smoke.mjs')],timeout=400,extra_env=canary_env))
- if smoke.get('status')!='ready' or smoke.get('languages')!=['en','he'] or smoke.get('final_answer_only') is not True or smoke.get('catalog_verified') is not True or not 1<=smoke.get('catalog_rows',0)<=7 or smoke.get('group_messages_sent')!=0:raise RuntimeError('Final answer verification failed')
+ if smoke.get('status')!='ready' or smoke.get('languages')!=['en','he'] or smoke.get('final_answer_only') is not True or smoke.get('semantic_verified') is not True or smoke.get('language_policy') not in ('english_first','bilingual') or smoke.get('catalog_verified') is not True or not 1<=smoke.get('catalog_rows',0)<=7 or smoke.get('group_messages_sent')!=0:raise RuntimeError('Final answer verification failed')
  report['answer_verification']=smoke
  if request.get('verification_mode')!='answer_only':
   report['stage']='automatic_question_tests'

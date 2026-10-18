@@ -23,8 +23,8 @@ export function releaseRequest(question){
  const requested=number?Number(number):/שבעת|שבע|seven/i.test(question)?7:/חמש|five/i.test(question)?5:/שלוש|three/i.test(question)?3:7;
  return Math.max(1,Math.min(10,requested));
 }
-export function formatReleases(context,question){
- const he=/[\u0590-\u05ff]/.test(question);
+export function formatReleases(context,question,{language}={}){
+ const he=language?language==='he':/[\u0590-\u05ff]/.test(question);
  const intro=he?'הנה, חסכתי לך כמה קליקים, עצלן מוכשר. אלה ה־releases המאושרים האחרונים לפי מועד כניסתם לפלטפורמה:':'Fine, I did the clicking for you, genius. Latest approved releases by discovery time:';
  if(!context.releases.length)return '🤖 *Columbus · קולומבוס*\n\n'+(he?'כרגע אין releases מאושרים להצגה. אני לא אמציא גרסאות בשביל הרושם.':'No approved releases are available. I refuse to invent versions for dramatic effect.');
  const rows=context.releases.map((a,i)=>`${i+1}. *${a.title.replace(/[*_~`@]/g,'').replace(/[\r\n]/g,' ')}*\n${he?'נכנס':'Discovered'}: ${a.discovered_at}\n${a.ui_url}`);

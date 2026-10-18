@@ -8,20 +8,23 @@ explains signup, settings and the distinction from actual group membership.
 
 ## Final-answer replies
 
-Columbus question generation requests non-thinking output and a JSON schema
-containing only `answer`. The send boundary accepts that final field alone;
-Ollama's separate `thinking` field and raw generation text are never forwarded.
-Malformed, empty, token-truncated or reasoning-tagged answers are withheld.
-English/Hebrew language selection, personality and group restrictions still
-apply. This is an output validation boundary, not an instruction to log model
-reasoning or users' questions.
+Columbus requests non-thinking generation with a strict JSON schema for the
+direct `answer`, up to three `details`, and an optional `caveat`. The server adds
+consistent headings and bullets. Each field is length-bounded and checked;
+malformed, empty, token-truncated, reasoning-tagged or wrong-language output is
+withheld. A single clean retry is permitted within a three-minute total deadline.
+Raw generation text and Ollama's separate `thinking` field are never forwarded.
+Clarity and accurate technical content take priority over the optional dry wit.
+Validation does not guarantee that every model claim is correct.
 
-For a reply-format-only update, the encrypted `columbus_deploy` request can set
-`verification_mode: "answer_only"`. The existing-host installer tests the
-installed parser against real local Ollama in English and Hebrew, records only
-pass metadata, restarts and verifies reconnection. This mode sends no group
-test messages and does not relink, provision or alter notification activation.
-Normal full setup verification retains its explicit group delivery tests.
+For a reply-only update, the encrypted `columbus_deploy` request can set
+`verification_mode: "answer_only"`. The existing-host installer exercises actual
+English model answers about scheduling and networking, verifies identity/language
+routing and the signed release catalog, then verifies reconnection after restart.
+Synthetic model samples stay inside the encrypted owner report for human review;
+no real conversation bodies are collected. This mode sends no group test messages
+and does not relink, provision or alter notification activation. Full setup
+verification retains its explicit group delivery tests.
 
 ## Runtime and trust boundaries
 
@@ -141,25 +144,41 @@ feature integration; the current feature branch is also allowed during rollout.
   after confirmed sends verifies restart persistence without another message.
 - `columbus_deploy`: preserves paired credentials, re-verifies the fixed group,
   installs reviewed runtime files and the hash-guarded socket adapter, checks
-  real English/Hebrew questions and restart persistence. Failure restores the
+  real local-model answers, language policy and restart persistence. Failure restores the
   previous runtime and environment. Read the encrypted report: a green runner
   alone does not mean deployment succeeded.
 
 ## Columbus questions and privacy
 
-Start a StackSignal-group message with `Columbus` or `קולומבוס`, followed by a
-question. English is case-insensitive. Replies use the question's language and
-a sarcastic engineering persona. Quote a delivered alert to bind the explanation
-to that article; without a quote, the latest retained alert supplies context.
-Only public title, summary, value, evidence and platform URL from the outbound
-ledger are used. Context expires after 30 days. Arbitrary quoted chat bodies,
-personal chats, contacts and URLs are not read or fetched.
+Start a StackSignal-group message with `Columbus`, `קולומבוס` or `קולמבוס`,
+followed by a question. English prefixes are case-insensitive. Exact identity and
+capabilities questions use maintained answers; recent-release requests read the
+signed platform catalog. General technical questions go to the local model.
+
+The current `qwen3:4b` deployment uses **English-first replies**. Both Hebrew
+prefixes add a short, maintained Hebrew notice recommending an English question
+starting with `Columbus`, then provide the answer in English. An English prefix
+requests an English answer directly, without that notice. This also applies to
+identity, capabilities, catalog and failure replies. The owner reported broken
+Hebrew; an isolated four-prompt audit reproduced confused Hebrew identity and
+technical answers without article context, while English samples were coherent.
+This is a policy for the installed model, not a claim about every Hebrew-capable
+model. Reassess through a reviewed bilingual audit before enabling generated
+Hebrew. No external inference provider or additional Gemini usage is introduced.
+
+Quote a delivered alert to bind an explanation to that article. An explicit
+reference such as “this article” or “the latest article” can select the last
+retained alert. A general question receives no article context. Only public title,
+summary, value, evidence and platform URL from the outbound ledger are used.
+Context expires after 30 days. Arbitrary quoted chat bodies, personal chats,
+contacts and URLs are not read or fetched.
 
 The local model has no shell, tools, browsing or external-action permission.
 Questions have a 3,000-character bound, a ten-minute freshness window, durable
-ID deduplication, a 30-second per-sender interval and a 12-question hourly group
-limit. One answer generates at a time; busy/limited requests are not replayed.
-Interrupted sends become uncertain and require reconciliation.
+ID deduplication, a ten-second per-sender interval and a 24-question hourly group
+limit. One answer generates at a time; busy/limited requests receive a bounded
+notice and are not replayed. Interrupted sends become uncertain and require
+reconciliation.
 
 The adapter is pinned to the exact OpenClaw WhatsApp 2026.10.3 session chunk.
 Unknown vendor hashes fail closed. It filters routing metadata before Baileys
