@@ -1,5 +1,46 @@
 # StackSignal operations checkpoint — October 11, 2026
 
+## WhatsApp pairing and announcement — October 18, 2026
+
+Phone-code linking succeeded. At 07:26 UTC the verified StackSignal group
+received a guarded announcement through the actual OpenClaw transport with a
+confirmed provider ID. The private manifest records pairing/destination/receipt
+proof. Temporary maintenance ingress and the Actions request secret are removed.
+No further owner pairing steps are required. Automatic content dispatch remains
+paused pending article/release pipeline tests and rollout. Main is unchanged.
+
+## WhatsApp host preparation — October 14, 2026
+
+Latest checkpoint (October 17, 20:50 UTC): the allocated Jerusalem ARM host,
+2 OCPU / 12 GB with a 50 GB boot volume, is `AWAITING_WHATSAPP_QR`.
+All four services passed active checks, local Qwen3 generated a real alert in
+70.7 seconds, and public HTTPS health returned 200 with delivery disabled.
+The provisioning cron stopped and removed its own schedule automatically;
+existing collector/evaluator/internal-review schedules remain active. Owner
+handoff instructions are on PR #4. Phone pairing, exact group verification and
+real delivery receipts remain release gates. See
+[WhatsApp progress](WHATSAPP_PROGRESS.md) for dated evidence and the historical
+preparation snapshots below.
+
+Post-bootstrap cleanup: the resource-claim schedule is absent and its control
+flag is false. The private dispatch helper returns null without queuing HTTP.
+Normal CI no longer contains an OCI job/input, and the workflow template is
+archived outside GitHub's active workflow directory. The
+[dormant toolkit](../ops/oci/README.md) preserves the complete provisioning flow,
+safety boundaries, lessons and explicit recovery procedure. Existing VM/private
+configuration and owner SSH recovery are preserved for the next QR session.
+
+Historical October 14 preparation: work is isolated on `feat/whatsapp-notifications`, based on release
+`v0.1.1`. The owner has an OCI account and a WhatsApp group, and selected local
+Ollama to preserve Gemini evaluation quotas. Draft PR #4 contains opt-in UI,
+an additive private outbox, signed webhook dispatch/receipts, a durable SQLite
+receiver and Ollama/OpenClaw adapters. No Oracle VM, production schema, message
+or main deployment was created. All 86 automated tests, ten OCI checks and both
+TypeScript checks passed locally. Direct OCI authentication works; home-region
+ARM capacity is unavailable. Hosted browser checks and actual host installation,
+pairing and delivery remain release gates. Follow [WhatsApp progress](WHATSAPP_PROGRESS.md) and
+[host onboarding](WHATSAPP_SETUP.md); do not treat this as an enabled feature.
+
 ## Preserve this deployment
 
 - Team website: https://stacksignal.stacksignal-idoheled.workers.dev — deployed on the owner's existing Cloudflare account `49c94d7ba2a9124b3e0ddea7a329ad05`, Worker `stacksignal`.
@@ -160,3 +201,67 @@ The owner supplied a Tavily API key. It was installed using the existing Supabas
 An authorized production collector invocation returned HTTP 200 and completed eight jobs, including four genuine Tavily search jobs that stored 21 references. An unauthenticated collector invocation returned HTTP 401. Subsequent scheduled ticks completed all 20 first-day web queries, storing 86 references; search health reported `active`, configured key, no last error and last success at `2026-10-11T07:35:03.563Z`. The 61 active watches and five-minute Cron remained in place. These checks establish real provider access and persistence, not accuracy of every result or complete internet coverage.
 
 Administrators edit queries/interests/priorities/thresholds in Coverage and inspect search status in Health. Source of truth for the live profile is PostgreSQL, not the immutable seed batch. [DISCOVERY.md](DISCOVERY.md) records query selection, filtering, exact scores, feedback behavior and current limits; [ARCHITECTURE.md](ARCHITECTURE.md#active-web-search-architecture) describes runtime boundaries. Runtime secrets remain outside Git.
+
+## 2026-10-18 — WhatsApp registration staging
+
+- Applied additive registration-state migration after the full migration-chain
+  tests passed. The old opt-in API remains compatible.
+- Marked only the owner, Eilon and Roi as administrator-confirmed registered
+  members at the owner's request, using exact identity guards and an audited
+  transaction. Other members remain unregistered.
+- Added signup-to-login group handoff, explicit self-confirmation, a settings
+  switch and an exit-group reminder. No automatic WhatsApp join/removal claim.
+- Production UI/main remain unchanged while the private version is reviewed.
+  The notification dispatcher cron remains paused; resource polling remains
+  retired. See the checkpoint for later delivery verification results.
+
+Live registration migration history version: `20261018074942` (management-tool
+application); its CLI-created source file was reconciled to that returned
+version. Earlier hosted/local timestamp differences predate this change and
+must not cause migrations to be replayed. The named registration update and
+schema were verified by live reads and the advisor; production dependencies
+have no reported advisories. The full development-tool audit retains the three
+previously documented advisory paths; no blanket suppression was added.
+
+At 08:00:12 and 08:01:37 UTC, explicitly labeled real release/article tests
+completed through the deployed dispatcher, signed HTTPS receiver, SQLite queue,
+local Ollama and OpenClaw. Both outbox records are Sent, have provider receipts,
+zero webhook failures and cleared payloads. Signed replay returned the same
+receipts; unsigned requests returned 401. The tests used two already-reviewed
+public articles with valid platform deep links, without altering their content
+or review history. Cron stayed paused; a temporary future admission watermark
+blocked ordinary new admissions during the manual test. Global enablement was
+then restored to false and the watermark to its prior null value. Receipt IDs
+remain in the protected database and host ledger.
+
+## 2026-10-18 — Columbus rollout and scheduled-review repair
+
+Owner approval of the private registration UI authorizes promotion through dev
+to main. The additive first-review/new-discovery admission migration is applied
+as `20261018084521`; activation still uses a fresh timestamp rather than a backlog
+replay. The guarded activation transaction additionally requires recorded live
+Columbus verification. Resource claiming stays disabled and has no cron job.
+
+Scheduled discovery remained active (37 discoveries over the audited 24-hour
+window). Internal-review HTTP calls were failing despite successful cron SQL
+submission. A contiguous-evidence slice split a Unicode surrogate pair, causing
+PostgreSQL JSONB to reject the whole review batch. Unicode-safe slicing restored
+success and processed 563 pending inputs, with 154 useful approvals. Historical
+items were not broadcast because notification admission stayed paused.
+
+Columbus uses the existing paired socket and local qwen3:4b, with a hash-pinned
+pre-decryption group filter, fixed outbound destinations, no generic agents or
+tools, and durable question IDs. Initial live installs rolled back on reconnect
+failure. Encrypted startup reports exposed service-file ownership and plugin
+source-capture constraints, which the reproducible installer now preserves.
+Final rollout evidence belongs in the current WhatsApp checkpoint; a successful
+maintenance workflow alone is not evidence of a successful runtime update.
+
+Collector version 32 deploys the canonical Gemini JSON-schema request repair
+and clears stale configuration state on success. A real request completed at
+09:19:18 UTC against resolved `gemini-3.8-flash`; one assessment passed and an
+invalid-evidence assessment remained withheld. Temporary provider diagnostics
+were removed from the deployed source and health record. Existing free-tier
+quotas, reservations and five-minute spacing were not reset or relaxed. At
+09:20 UTC, 88 source watches were active, collection recorded a fresh discovery
+and 156 retained links had review timestamps within the audited 24-hour window.

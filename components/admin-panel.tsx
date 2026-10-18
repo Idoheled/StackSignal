@@ -163,6 +163,7 @@ export default function AdminPanel({
                   <th>Username</th>
                   <th>Role</th>
                   <th>Status</th>
+                  <th>WhatsApp</th>
                   <th>Actions</th>
                 </tr>
               </thead>
@@ -215,6 +216,7 @@ export default function AdminPanel({
                         {m.active ? "Active" : "Disabled"}
                       </span>
                     </td>
+                    <td><span className="state-pill">{m.whatsapp_registration === "registered" ? "Registered" : m.whatsapp_opt_in ? "Waiting to join" : "Unregistered"}</span></td>
                     <td>
                       {m.role === "admin" ? (
                         <span className="subtle">Protected owner</span>

@@ -212,6 +212,35 @@ test("web discovery health is read only after the administrator RPC authorizes a
   const response=await handler(request());assert.equal(response.status,200);
   assert.equal((await response.json()).web_discovery_health.state,"active");assert.equal(healthReads,2);
 });
+test("WhatsApp preference requests use the verified user's token and ignore foreign user IDs", async () => {
+  const token = "test." + Buffer.from(JSON.stringify({aal:"aal1",session_id:"10000000-0000-4000-8000-000000000001"})).toString("base64url") + ".test";
+  const cookie = await seal({access_token:token,refresh_token:"test-refresh",expires_at:Date.now()/1000+3600},config.SESSION_SECRET);
+  const preferenceCalls: unknown[] = [];
+  const handler = createService(config, async (input, init) => {
+    const path = new URL(String(input)).pathname;
+    const body = init?.body ? JSON.parse(String(init.body)) : {};
+    if(path === "/auth/v1/user") return Response.json({id:"reader"});
+    if(path.endsWith("ss_rate_limit")) return Response.json(true);
+    if(path.endsWith("ss_api") && body.action === "me") return Response.json({id:"reader",role:"reader"});
+    if(path.endsWith("ss_whatsapp_preferences")) {
+      assert.equal(new Headers(init?.headers).get("Authorization"), "Bearer " + token);
+      assert.equal(new Headers(init?.headers).get("apikey"), "anon");
+      assert.deepEqual(body, { desired_opt_in: true });
+      preferenceCalls.push(body);
+      return Response.json({opt_in:true,enabled:false,invite_url:null});
+    }
+    throw new Error("Unexpected request");
+  });
+  const request = (opt_in: unknown) => new Request(origin+"/api/action", {
+    method:"POST",headers:{origin,"content-type":"application/json",cookie:"__Host-stacksignal="+cookie},
+    body:JSON.stringify({action:"whatsapp_preferences_save",payload:{opt_in,user_id:"another-member"}}),
+  });
+  assert.equal((await handler(request("true"))).status,400);
+  assert.equal(preferenceCalls.length,0);
+  assert.equal((await handler(request(true))).status,200);
+  assert.equal(preferenceCalls.length,1);
+});
+
 test("login delegates one CAPTCHA verification to Auth; failed credentials reveal nothing", async () => {
   const paths: string[] = [];
   const handler = createService(config, async (input) => {

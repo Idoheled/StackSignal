@@ -18,11 +18,18 @@ function meaningfulBody(text:string,title:string) {
  // arXiv RSS descriptors and documentation navigation are not evidence of a method.
  return text.replace(/^arXiv:[^:]+Announce Type:[^:]+Abstract:\s*/i,"");
 }
+// PostgreSQL JSONB rejects unpaired UTF-16 surrogates. Keep quotes contiguous
+// while moving either cut inward when it would split a non-BMP character.
+export function publicFragment(text:string,start:number,end:number) {
+ if(start>0 && /[\uDC00-\uDFFF]/.test(text[start]||"") && /[\uD800-\uDBFF]/.test(text[start-1]||""))start++;
+ if(end>0 && /[\uD800-\uDBFF]/.test(text[end-1]||"") && /[\uDC00-\uDFFF]/.test(text[end]||""))end--;
+ return text.slice(start,end);
+}
 function quote(text:string) {
  // A single contiguous public-source fragment; never combine different paragraphs as evidence.
  const units=text.match(/[^.!?\n]+[.!?]?/g)||[text];
  for(const unit of units){concepts.lastIndex=0;const matches=[...unit.matchAll(concepts)];if(!matches.length||!concrete.test(unit))continue;
-  const anchor=matches[0].index||0;const start=Math.max(0,anchor-30);const q=unit.slice(start,start+140).trim();if(q.length>=10)return q;
+  const anchor=matches[0].index||0;const start=Math.max(0,anchor-30);const q=publicFragment(unit,start,start+140).trim();if(q.length>=10)return q;
  }
  return "";
 }
@@ -35,7 +42,7 @@ export function internalReview(row:any,profile:any={},now=Date.now()) {
  const topic=Object.keys(TOPIC_TERMS).includes(row.topic) ? row.topic : basicRelevance(title+" "+text,profile.priorities||{}).topic;
  const decision=(decision:string,score:number,depth:string,reason:string,evidence="",facts:any={})=>({assessment:{topic,decision,score,depth,confidence:decision==="insufficient_evidence" ? "low" : "medium",summary:decision==="useful" ? ("Public-source fragment: "+evidence).slice(0,300) : decision==="tangential" ? "Not selected under the local evidence and relevance policy." : "Captured public material is insufficient for a supported relevance decision.",reason,action:decision==="useful" ? "Read the original source and validate its version, hardware and workload assumptions." : "Reconsider if better public evidence or repository metadata becomes available.",evidence},facts});
  if(!text||text.length<80)return decision("insufficient_evidence",0,"unknown","No sufficiently substantive public excerpt is available.");
- const body=meaningfulBody(text,title), evidence=quote(body)||text.slice(0,140).trim();
+ const body=meaningfulBody(text,title), evidence=quote(body)||publicFragment(text,0,140).trim();
  if(!articleRepositoryAdmitted(row.url,meta,profile,now))return decision("tangential",0,"unknown","Repository metadata does not pass the configured admission policy.",evidence,{repository_policy:"excluded"});
  if(excludedURL.test(row.url)||/\b(?:job advertisement|job description|we.re hiring|what you.ll need|required experience|principal solutions architect|network architect -)\b/i.test(title+" "+text))return decision("tangential",0,"unknown","Hiring, social collection or navigation content lacks an engineering knowledge result.",evidence);
  if(unrelated.test(title))return decision("tangential",15,"unknown","The source studies an application domain outside GPU infrastructure, serving and platform engineering.",evidence);

@@ -1,0 +1,30 @@
+[Unit]
+Description=Local-only Ollama inference for StackSignal
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ollama
+Group=ollama
+ExecStart=/usr/local/bin/ollama serve
+Environment=OLLAMA_HOST=127.0.0.1:11434
+Environment=OLLAMA_NO_CLOUD=1
+Environment=OLLAMA_MODELS=/var/lib/ollama/models
+Environment=OLLAMA_NUM_PARALLEL=1
+Environment=OLLAMA_MAX_LOADED_MODELS=1
+Restart=on-failure
+RestartSec=5
+UMask=0077
+StateDirectory=ollama
+StateDirectoryMode=0700
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/ollama
+RestrictSUIDSGID=true
+LimitCORE=0
+
+[Install]
+WantedBy=multi-user.target
