@@ -86,6 +86,7 @@ test('answers use only local Ollama and bounded text, without tools or configura
  assert(text.startsWith('🤖'));assert(text.includes('KAI'));assert.equal(request.think,false);assert.equal('tools' in request,false);
  assert(request.system.includes('English'));assert(request.system.includes('no tools'));assert.equal(request.model,'qwen3:4b');
  assert.deepEqual(request.format.required,['answer','details','caveat']);assert.equal(request.format.additionalProperties,false);assert.equal(request.options.temperature,0);
+ assert.equal(request.format.properties.answer.maxLength,undefined,'grammar must not force a valid JSON string closed mid-sentence');
  assert.deepEqual(JSON.parse(request.prompt.split('\n/no_think')[0]).response_schema,request.format);
  assert(text.includes('*Answer*'));assert(text.includes('*Key points*\n• '));
  assert(request.prompt.endsWith('/no_think'));assert(!text.includes('PRIVATE MODEL REASONING'));assert(!text.includes('"answer"'));
@@ -103,10 +104,12 @@ test('reasoning, malformed output and truncated generations never become WhatsAp
   pack('<analysis>private thought'),
   pack('<|channel|>analysis private thought'),
   pack('The user wants a technical answer, so I should explain scheduling.'),
+  pack('TCP, in contrast, handles end-to-end communication, re'),
+  JSON.stringify({answer:'TCP provides reliable delivery.',details:['This unfinished bullet is cut off mid'],caveat:''}),
   JSON.stringify({answer:'GPU scheduling',details:['<think>private thought</think>'],caveat:''}),
   JSON.stringify({answer:'GPU scheduling',details:[],caveat:'<analysis>private thought'}),
   JSON.stringify({thinking:'private thought',answer:'GPU scheduling'}),
-  pack(''), pack('x'.repeat(481)), JSON.stringify({answer:42,details:[],caveat:''}), 'null', '[]'
+  pack(''), pack('x'.repeat(801)), JSON.stringify({answer:42,details:[],caveat:''}), 'null', '[]'
  ])await assert.rejects(ask({response}));
  await assert.rejects(ask({done_reason:'length',response:'{"answer":"A truncated explanation"}'}));
  assert((await ask({thinking:'PRIVATE',response:pack('GPU scheduling assigns work to available GPUs.')})).endsWith('GPU scheduling assigns work to available GPUs.'));
