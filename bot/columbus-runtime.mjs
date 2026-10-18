@@ -7,7 +7,7 @@ import { questionFrom, restrictSocket, requireGroup } from './columbus-policy.mj
 import { platformContext,releaseRequest,formatReleases } from './operations.mjs';
 import { readBoundedBody } from '../supabase/functions/_shared/whatsapp-protocol.ts';
 
-const receiveCodes=new Set(['frame_group','frame_self_group','self_other_recipient','self_unrouted','upsert_notify','upsert_append','upsert_other','invalid_id','nonlive_upsert','stale_timestamp','ciphertext_stub','nontext','unmatched_prefix','question_accepted']);
+const receiveCodes=new Set(['frame_group','frame_self_group','frame_blocked','unrecognized_group_sender','blocked_ack_sent','blocked_ack_failed','self_other_recipient','self_unrouted','upsert_notify','upsert_append','upsert_other','invalid_id','nonlive_upsert','stale_timestamp','ciphertext_stub','nontext','unmatched_prefix','question_accepted']);
 export function capabilitiesReply(question) {
   const q=question.trim().replace(/[?？.!]+$/u,'').trim();
   const he=/^(?:מה אתה יכול לעשות|מה היכולות שלך|עזרה)$/u.test(q);

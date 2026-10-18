@@ -77,6 +77,12 @@ socket's own identity and the fixed group recipient for this route. A scoped
 async context permits the vendor's early sender filter only for that verified
 frame; it does not allow personal messages, other group recipients or unrelated
 self-sync traffic. Ordinary inbound group frames retain the same fixed target.
+Ignored message packets receive the pinned library's metadata-only transport
+NACK (`500`), preserving its normal ignored-message protocol without decrypting
+them. This is neither a chat reply nor a read receipt. Only routing attributes
+are passed to the acknowledgement method; private ciphertext never reaches a
+receive handler or logger. Signed counters expose blocked frames and failed
+acknowledgements without retaining identities or bodies.
 
 Requests for recent/latest releases use an authenticated, read-only catalog
 endpoint. It selects current approved releases per project using the same
