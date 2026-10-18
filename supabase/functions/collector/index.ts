@@ -14,7 +14,7 @@ import { githubItems, githubAPIForLink, isPrerelease } from "../_shared/github.t
 import { repositorySearchURL, DEFAULT_REPO_QUERIES } from "../../../lib/source-config.ts";
 import { relevance } from "../_shared/relevance.ts";
 import { webCandidate, webSearchRequest, lowValueDiscovery } from "../_shared/web-discovery.ts";
-import { EVALUATOR_VERSION, EVALUATION_MODEL, publicInput, publicTeam, evaluationRequest, parseEvaluation, effectiveScore, evaluationCandidates, candidateLane, nextEvaluationAt, samePublicInput, batchEvaluationRequest, parseBatchEvaluation, MAX_BATCH_SIZE, DAILY_REQUEST_CAP, MONTHLY_REQUEST_CAP, EVALUATION_TIMEOUT_MS, evaluationFailure, evaluationBatchSize, geminiFailureDetail } from "../_shared/evaluation.ts";
+import { EVALUATOR_VERSION, EVALUATION_MODEL, publicInput, publicTeam, evaluationRequest, parseEvaluation, effectiveScore, evaluationCandidates, candidateLane, nextEvaluationAt, samePublicInput, batchEvaluationRequest, parseBatchEvaluation, MAX_BATCH_SIZE, DAILY_REQUEST_CAP, MONTHLY_REQUEST_CAP, EVALUATION_TIMEOUT_MS, evaluationFailure, evaluationBatchSize, geminiFailureDetail, evaluationBatchRecovery } from "../_shared/evaluation.ts";
 import { repositoryHealth, repositoryAdmitted, articleRepositoryAdmitted, repositoryName, trendingProjects } from "../_shared/repository-health.ts";
 import { openshiftWatchURL, openshiftTags, openshiftItem } from "../_shared/openshift.ts";
 import { internalReview, immediateInternalReview, INTERNAL_REVIEW_DELAY_MS } from "../_shared/internal-review.ts";
@@ -207,10 +207,11 @@ async function articleCount(filter: string) {
 async function evaluationCoverage() {
   return await rpc("ss_review_coverage");
 }
-async function failedEvaluation(row: any, reason="Evaluation validation failed", status=0, retryAfter: string | null=null) {
+async function failedEvaluation(row: any, reason="Evaluation validation failed", status=0, retryAfter: string | null=null,retryDelayMs?:number) {
   const failures=Number(row.reference_meta?.evaluation_failures||0)+1;
   const validationFailures=Number(row.reference_meta?.evaluation_validation_failures||0)+1;
   const failure=evaluationFailure(reason,status ? failures : /timeout|timed out|network|fetch failed|connection/i.test(reason) ? failures : validationFailures,status,retryAfter);
+  if(retryDelayMs!==undefined)failure.retryAt=Math.min(failure.retryAt??Infinity,Date.now()+retryDelayMs);
   await db("ss_articles?id=eq."+row.id+"&content_hash=eq."+encodeURIComponent(row.content_hash)+"&deleted_at=is.null", "PATCH",
     {reference_meta:{...row.reference_meta,evaluation_failed_at:new Date().toISOString(),evaluation_failures:failures,
       evaluation_validation_failures:failure.kind==="validation" ? validationFailures : Number(row.reference_meta?.evaluation_validation_failures||0),
@@ -296,10 +297,11 @@ async function evaluateSweep(profile: any) {
     if(!response.ok) {
       const detail=geminiFailureDetail(await bodyText(response,8192).catch(()=>""));
       const reason="Gemini HTTP "+response.status+" ("+detail+")";
-      const failures=await Promise.all(batch.map(row=>failedEvaluation(row,reason,response.status,response.headers.get("retry-after"))));
+      const recovery=evaluationBatchRecovery(response.status,detail,batch.length);
+      const failures=await Promise.all(batch.map(row=>failedEvaluation(row,reason,response.status,response.headers.get("retry-after"),recovery&&!response.headers.has("retry-after")?recovery.retry_ms:undefined)));
       const retryAt=Math.max(...failures.map(f=>f.retryAt || Date.now()+3600000));
       await rpc("ss_finish_evaluation_request",{request:reservation.request_id,outcome:failures[0].kind,reviewed:0,error:reason});
-      await evaluationHealth({state:failures[0].kind==="configuration" ? "configuration_error" : "cooldown",configuration_detail:detail,next_attempt_at:new Date(retryAt).toISOString(),last_error:reason+"; queued links retained for retry",usage:await rpc("ss_evaluation_usage"),cooldown_until:new Date(retryAt).toISOString()}); return;
+      await evaluationHealth({state:failures[0].kind==="configuration" ? "configuration_error" : "cooldown",configuration_detail:detail,failed_batch_size:batch.length,...(recovery?{target_batch_size:recovery.batch_size}:{}),next_attempt_at:new Date(retryAt).toISOString(),last_error:reason+"; queued links retained for retry",usage:await rpc("ss_evaluation_usage"),cooldown_until:new Date(retryAt).toISOString()}); return;
     }
     const responseText=await bodyText(response); phase="validation";
     out=JSON.parse(responseText);parsed=parseBatchEvaluation(out,inputs);

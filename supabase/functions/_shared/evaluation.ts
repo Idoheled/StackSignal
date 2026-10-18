@@ -3,7 +3,8 @@ import { TOPIC_TERMS } from "../../../lib/domain.ts";
 
 export const EVALUATOR_VERSION = "semantic-batch-v5";
 export const EVALUATION_MODEL = "gemini-flash-latest";
-export const MAX_BATCH_SIZE = 12;
+// Seven-item batches passed live validation; larger adaptive batches were rejected.
+export const MAX_BATCH_SIZE = 7;
 export const EVALUATION_TIMEOUT_MS = 90000;
 export const DAILY_REQUEST_CAP = 16;
 export const MONTHLY_REQUEST_CAP = 496;
@@ -17,6 +18,8 @@ export function geminiFailureDetail(value:string) {
   if(/API[_ ]KEY[_ ]INVALID|API key not valid/i.test(text))return "key_invalid";
   if(/API_KEY_SERVICE_BLOCKED|referrer|referer|API key.*(?:blocked|restrict)|permission denied/i.test(text))return "key_restricted";
   if(/Unknown name ["']store["']|store.*(?:not supported|unsupported|invalid)/i.test(text))return "store_configuration";
+  if(/schema.*(?:complex|too many|constraint)|too many (?:states|constraints)/i.test(text))return "schema_complexity";
+  if(/max.?output.?tokens|output.*token.*limit/i.test(text))return "output_token_configuration";
   if(/response.?json.?schema|_responseJsonSchema/i.test(text))return "json_schema_configuration";
   if(/mimeType|response.?format|response.?schema|APPLICATION_JSON/i.test(text))return "response_format";
   if(/thinkingLevel|thinkingBudget|thinking_level/i.test(text))return "thinking_configuration";
@@ -146,4 +149,10 @@ export function nextEvaluationAt(usage: any, daily: number, monthly: number, now
   if (!Number.isFinite(last)) return 0;
   if (Number(usage.used_24h||0)>=daily || Number(usage.used_provider_day||0)>=daily) return Math.max(now+300000,last+86400000);
   return last + 300000;
+}
+
+/** Isolate a provider-rejected request shape without retrying bad keys or single inputs. */
+export function evaluationBatchRecovery(status:number,detail:string,size:number) {
+  return status===400&&['invalid_request','schema_complexity','output_token_configuration'].includes(detail)&&size>1
+    ? {batch_size:Math.max(1,Math.floor(size/2)),retry_ms:300000}:null;
 }

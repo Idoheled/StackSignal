@@ -29,7 +29,7 @@ Apply mode uses the existing 70% AI / 30% rules blend for high-confidence Gemini
 | Control | Enforcement |
 | --- | --- |
 | Model | `gemini-flash-latest`; last resolved model recorded in Health |
-| Batch size | Up to twelve links in one synchronous `generateContent` request |
+| Batch size | Up to seven links in one synchronous `generateContent` request |
 | Daily requests | At most 16 in a rolling 24 hours **and** the Pacific calendar day |
 | Monthly requests | At most 496 per UTC calendar month; administrator may lower it |
 | Spacing | At least five minutes globally, one request per independent evaluation tick |
@@ -42,7 +42,7 @@ Apply mode uses the existing 70% AI / 30% rules blend for high-confidence Gemini
 
 The owner's October 11, 2026 AI Studio screenshots show **5 RPM, 250,000 input TPM and 20 RPD** for Gemini 3.8 Flash on a Free-tier project. Sixteen daily requests leave four requests of daily headroom. These quotas are shared by every client in the Google project and can change when the latest alias changes. Keep the project dedicated to StackSignal and on the Free tier. Application ceilings cannot prove or control the project's billing tier. There is no paid fallback or alternate-model retry.
 
-**Sixteen requests × twelve links gives an upper bound of 192 link assessments/day, not a throughput guarantee.** Small/failed batches, insufficient excerpts, unavailable sources and arrivals above capacity can cause delays. A monthly request ceiling is an application safeguard, not a Google monthly free allowance. Do not claim exhaustive discovery or instant review regardless of volume.
+**Sixteen requests × seven links gives an upper bound of 112 link assessments/day, not a throughput guarantee.** Small/failed batches, insufficient excerpts, unavailable sources and arrivals above capacity can cause delays. A monthly request ceiling is an application safeguard, not a Google monthly free allowance. Do not claim exhaustive discovery or instant review regardless of volume.
 
 ## Durable queue and extraction
 
@@ -79,7 +79,7 @@ flowchart TD
   Existing -->|Yes| Retain["Retain assistant decision"]
   Existing -->|No| Queue["New-link review queue"]
   Queue --> Reserve["Atomic request budget and claims"]
-  Reserve --> Batch["Flash Latest: up to twelve links"]
+  Reserve --> Batch["Flash Latest: up to seven links"]
   Batch --> Validate["Per-link identity and evidence"]
   Validate --> Admission{"Useful and supported?"}
   Admission -->|Yes| Feed["Reviewed suggestions"]
@@ -95,7 +95,7 @@ References: [Google rate limits](https://ai.google.dev/gemini-api/docs/rate-limi
 
 The authenticated collector accepts `{ "mode": "evaluation" }` for a dedicated invocation. Apply `supabase/hosted/20261012215125_independent_evaluation.sql` after deploying the collector. Collection no longer waits on Gemini; both schedules run every five minutes with the existing Vault secret. Request accounting remains atomic, includes unsuccessful calls, and preserves all historical requests and reviews. No paid fallback, extra key, alternate model, or automatic quota increase is introduced.
 
-Fresh small queues wait up to an hour to fill a request; aged links and watched releases can proceed immediately. Links older than 24 hours precede releases, then FIFO ordering prevents starvation. Timeouts or malformed responses halve the target batch size; fully valid responses grow it by three up to twelve. Actual capacity may be below arrivals during an outage or reduced batches. The admin view reports arrivals, reviews, eligible backlog, scheduled retries, validation failures requiring attention, policy exclusions, and oldest pending discovery. Excluded repositories have an eligibility decision and do not occupy model slots; this is distinct from a semantic content review.
+Fresh small queues wait up to an hour to fill a request; aged links and watched releases can proceed immediately. Links older than 24 hours precede releases, then FIFO ordering prevents starvation. Timeouts or malformed responses halve the target batch size; fully valid responses grow it by three up to seven. Actual capacity may be below arrivals during an outage or reduced batches. The admin view reports arrivals, reviews, eligible backlog, scheduled retries, validation failures requiring attention, policy exclusions, and oldest pending discovery. Excluded repositories have an eligibility decision and do not occupy model slots; this is distinct from a semantic content review.
 
 The three explicit Mellanox NVIDIA operator watches (Network, NIC Configuration, Maintenance) run hourly, include release candidates, and bypass popularity/release-count thresholds. They still require current active/licensed repository metadata, an active matching watch in the database, a grounded assessment, and the normal feed relevance requirements. Ordinary discovered repositories retain the configured admission thresholds. Rejected reviews are permanently deleted.
 
@@ -130,3 +130,20 @@ Overdue `article` and `analyze` collection jobs are first moved into canonical a
 Any terminal decision that fails the strict content/repository policy is physically deleted in the same transaction. Cleanup includes article content, all private review snapshots, evaluation claims/legacy per-link attempts, URL-keyed cohort entries, queued job payloads, saved folder entries, notes/replies, feedback, related audit entries, recent comparison snapshots and unshared repository caches. No rejected-link tombstone, URL, title, hash or per-link decision is retained for suppression. Completed collection jobs are also deleted. Only aggregate discard counters and request-level quota accounting remain; deleting a link never refunds model quota.
 
 This replaces the earlier policy of retaining non-selected audit snapshots. Supabase's normal MVCC cleanup reuses freed database space; row deletion does not promise an immediate decrease in allocated disk size or erase provider-managed backups/log retention. Source watches, ETags and source-level baselines remain source configuration, not rejected article records. With no per-link tombstone, a changed source or a later search can rediscover an old rejected link; it must be evaluated again and removed if it still fails policy. Suppressing it forever would require retaining its identity, contrary to the requested storage policy.
+
+## Provider-rejected batch recovery (October 18, 2026)
+
+A seven-item production batch succeeded; a subsequent adaptive ten-item request
+returned HTTP 400 and incorrectly put the whole evaluator into a day-long
+configuration backoff. The collector now caps batches at seven. Unknown
+request-shape, schema-complexity and output-bound failures on multi-item batches
+halve the next target and schedule a five-minute retry. Each attempt still
+requires the existing atomic reservation and counts against all provider limits.
+Bad keys, billing/model errors and rejected single-item requests retain the
+conservative configuration backoff. Raw provider echoes are not stored.
+
+The model metadata advertised a 65,536-token output limit and a read-only
+countTokens check accepted the ten-item request. Therefore the generic 400 does
+not establish an 8,192-token model cap or prove one particular remote constraint.
+The smaller bound is an observed compatibility mitigation. Verify it through
+normal reserved production review rather than unaccounted generation probes.

@@ -58,7 +58,7 @@ test("batch judgments stay bound to their own source and fail closed on identiti
   assert.deepEqual(parseBatchEvaluation(output({results:[]}),sources).invalid,["one","two"]);
   assert.throws(()=>batchEvaluationRequest(Array.from({length:MAX_BATCH_SIZE+1},(_,i)=>({id:String(i),input})),publicTeam({})));
   const full=batchEvaluationRequest(Array.from({length:MAX_BATCH_SIZE},(_,i)=>({id:String(i),input})),publicTeam({}));
-  assert.equal(full.generationConfig.maxOutputTokens,10800);
+  assert.equal(full.generationConfig.maxOutputTokens,6300);
 });
 test("transient outages stay retryable beyond three failures, honor Retry-After and keep validation distinct",()=>{
   const now=Date.parse("2026-10-12T12:00:00Z");
@@ -68,7 +68,7 @@ test("transient outages stay retryable beyond three failures, honor Retry-After 
   assert.equal(evaluationFailure("HTTP 429",1,429,new Date(now+1200000).toUTCString(),now,0).retryAt,now+1200000);
   assert.equal(evaluationFailure("Unsupported evidence",3,0,null,now,0).retryAt,null);
   assert.equal(evaluationFailure("HTTP 403",1,403,null,now,0).kind,"configuration");
-  assert.equal(evaluationBatchSize({}),12);assert.equal(evaluationBatchSize({target_batch_size:99}),12);
+  assert.equal(evaluationBatchSize({}),7);assert.equal(evaluationBatchSize({target_batch_size:99}),7);
   assert.equal(evaluationBatchSize({target_batch_size:3}),3);
 });
 test("age prevents starvation and followed releases get attention before fresh generic discoveries",()=>{
@@ -95,4 +95,14 @@ test('Gemini diagnostics retain only fixed error categories, never raw keys or p
  assert.equal(geminiFailureDetail(JSON.stringify({error:{message:'Unknown name "responseJsonSchema"'}})),'json_schema_configuration');
  assert.equal(geminiFailureDetail(JSON.stringify({error:{message:'secret provider text AIza-synthetic'}})),'invalid_request');
  assert.equal(geminiFailureDetail(''),'empty_error_response');
+});
+
+test('provider-rejected batches shrink within quota while key failures and single inputs stop',async()=>{
+ const {evaluationBatchRecovery}=await import('../supabase/functions/_shared/evaluation.ts');
+ assert.equal(MAX_BATCH_SIZE,7);assert.equal(evaluationBatchSize({target_batch_size:12}),7);
+ assert.deepEqual(evaluationBatchRecovery(400,'invalid_request',7),{batch_size:3,retry_ms:300000});
+ assert.deepEqual(evaluationBatchRecovery(400,'schema_complexity',3),{batch_size:1,retry_ms:300000});
+ for(const detail of['key_invalid','key_expired','billing_restriction','model_configuration'])assert.equal(evaluationBatchRecovery(400,detail,7),null);
+ assert.equal(evaluationBatchRecovery(400,'invalid_request',1),null);assert.equal(evaluationBatchRecovery(429,'quota',7),null);
+ assert.throws(()=>batchEvaluationRequest(Array.from({length:10},(_,i)=>({id:String(i),input})),publicTeam({})),/Invalid batch/);
 });
