@@ -44,7 +44,9 @@ for (const width of [360, 1280]) {
     await page.getByRole("button", { name: "WhatsApp alerts", exact: true }).click();
     await expect(toggle).toBeChecked();
     await expect(dialog.getByText("Registered", { exact: true })).toBeVisible();
-    await toggle.uncheck();
+    // Saving off replaces this switch with the exit dialog. Assert the result
+    // there rather than asking setChecked to re-query a removed dialog.
+    await toggle.click();
     const leave = page.getByRole("dialog", { name: "You’re unregistered" });
     await expect(leave.getByRole("heading", { name: "One last step: leave the group." })).toBeVisible();
     expect(registration).toBe("unregistered");
