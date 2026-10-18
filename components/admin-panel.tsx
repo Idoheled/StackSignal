@@ -24,6 +24,7 @@ import {
 import { act, dateLabel } from "@/lib/client";
 import { DEFAULT_REPO_QUERIES } from "@/lib/source-config";
 import { Source, TOPICS } from "@/lib/domain";
+import AdminDashboard from './admin-dashboard';
 type Props = {
   preview: boolean;
   previewProfile?: unknown;
@@ -117,8 +118,9 @@ export default function AdminPanel({
           {error}
         </div>
       )}
-      <Tabs defaultValue="people">
+      <Tabs defaultValue="dashboard">
         <TabsList className="admin-tabs">
+          <TabsTrigger value="dashboard"><Activity size={14}/> Dashboard</TabsTrigger>
           <TabsTrigger value="people">
             <Users size={14} /> People & access
           </TabsTrigger>
@@ -129,6 +131,7 @@ export default function AdminPanel({
             <Activity size={14} /> Health & audit
           </TabsTrigger>
         </TabsList>
+        <TabsContent value="dashboard"><AdminDashboard preview={preview}/></TabsContent>
         <TabsContent value="people">
           <div className="section-line">
             <div>

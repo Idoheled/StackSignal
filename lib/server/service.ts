@@ -552,6 +552,7 @@ export function createService(c: Config, network: typeof fetch = fetch) {
         "trash",
         "restore",
         "admin",
+        "admin_dashboard",
         "invite",
         "invite_revoke",
         "member_update",
@@ -570,6 +571,7 @@ export function createService(c: Config, network: typeof fetch = fetch) {
       ];
       if (!allowed.includes(action))
         throw new HttpError(400, "Unknown action.");
+      if(action==='admin_dashboard')return respond(await rpc('ss_admin_dashboard',{window_days:payload.window_days===30?30:14},s.access_token));
       if (action === "whatsapp_confirm_joined")
         return respond(await rpc("ss_whatsapp_confirm_joined", {}, s.access_token));
       if (action === "whatsapp_preferences" || action === "whatsapp_preferences_save") {
