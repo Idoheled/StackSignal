@@ -2,6 +2,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { createHash } from 'node:crypto';
 import { chmodSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
+export { ignoreRoute } from './columbus-policy.mjs';
 import { questionFrom, restrictSocket, requireGroup } from './columbus-policy.mjs';
 import { platformContext,releaseRequest,formatReleases } from './operations.mjs';
 import { readBoundedBody } from '../supabase/functions/_shared/whatsapp-protocol.ts';

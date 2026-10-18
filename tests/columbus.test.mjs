@@ -120,3 +120,27 @@ test('a busy request gets an explicit bounded reply rather than disappearing',as
   resolveAnswer('Finished answer');await new Promise(setImmediate);assert.equal(sock.calls.length,2);
  }finally{sock.ev.emit('connection.update',{connection:'close'});rmSync(root,{recursive:true,force:true});}
 });
+
+test('linked-phone group frames pass vendor routing while personal ciphertext and spoofed recipients remain blocked',async()=>{
+ const {ignoreRoute}=await import('../bot/columbus-policy.mjs');
+ const sock=socket(),owner='55555:7@s.whatsapp.net',lid='88888@lid';sock.user={id:owner,lid};
+ sock.ws.removeAllListeners('CB:message');const accepted=[];
+ sock.ws.on('CB:message',node=>{
+  // The pinned Baileys early filter receives the raw from address, not recipient.
+  if(ignoreRoute(node.attrs.from,target))return;
+  accepted.push(node.content);
+  void Promise.resolve().then(()=>assert.equal(ignoreRoute(node.attrs.from,target),false));
+ });
+ restrictSocket(sock,target);
+ for(const attrs of[
+  {from:'55555:2@s.whatsapp.net',recipient:'99999@s.whatsapp.net'},
+  {from:'55555:2@s.whatsapp.net'},
+  {from:'55555:2@s.whatsapp.net',recipient:'99999@g.us'},
+  {from:'77777@s.whatsapp.net',recipient:target},
+  {from:'88888@lid',recipient:'99999@s.whatsapp.net'},
+ ])sock.ws.emit('CB:message',{attrs,get content(){throw Error('Outside ciphertext read');}});
+ assert.equal(accepted.length,0);assert.equal(ignoreRoute(owner,target),true);
+ for(const from of['55555:2@s.whatsapp.net',lid])sock.ws.emit('CB:message',{attrs:{from,recipient:target},content:'fixed-group ciphertext'});
+ await new Promise(setImmediate);assert.deepEqual(accepted,['fixed-group ciphertext','fixed-group ciphertext']);
+ assert.equal(ignoreRoute(owner,target),true,'a permitted frame must not widen subsequent routing');
+});

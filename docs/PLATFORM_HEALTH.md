@@ -71,6 +71,13 @@ external uptime guarantee.
 ## Columbus release questions
 
 English `Columbus` and Hebrew `קולומבוס` prefixes retain the fixed-group boundary.
+Messages sent by the paired phone can arrive with the account as sender and
+StackSignal as the recipient. The pre-decryption boundary verifies both the
+socket's own identity and the fixed group recipient for this route. A scoped
+async context permits the vendor's early sender filter only for that verified
+frame; it does not allow personal messages, other group recipients or unrelated
+self-sync traffic. Ordinary inbound group frames retain the same fixed target.
+
 Requests for recent/latest releases use an authenticated, read-only catalog
 endpoint. It selects current approved releases per project using the same
 release/channel/repository admission rules as the platform, ordered by discovery
