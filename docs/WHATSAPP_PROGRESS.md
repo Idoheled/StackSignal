@@ -1,8 +1,33 @@
 # WhatsApp rollout checkpoint
 
-**Columbus is verified on the existing paired VM. English and Hebrew replies,
-fixed-group delivery and restart persistence passed live tests. The owner
-approved the registration UI and authorized production promotion.**
+**Current checkpoint: the Administration empty-queue hotfix is live in v0.3.1.
+Columbus is paired and connected; model, catalog, local-send reply and restart
+checks passed. Phone-originated incoming questions still need live verification.
+An outbound echo canary is not proof of that incoming path.** The owner approved
+the registration UI and authorized production promotion.
+
+## October 19 (Israel) — Administration and receive-path follow-up
+
+The Administration render crash occurred when an empty job queue produced SQL
+`jobs: null`. Both pending/failed counters now handle that aggregate. Mobile and
+desktop tests use the real null shape, assert no uncaught page errors, and
+navigate Dashboard and Health & audit. Production v0.3.1 passed
+[release and security checks](https://github.com/Idoheled/StackSignal/actions/runs/39141657586).
+
+Runtime [39142135808](https://github.com/Idoheled/StackSignal/actions/runs/39142135808)
+verified exact capabilities replies, English/Hebrew final-only generations,
+seven signed catalog rows and preserved pairing/restart. The capabilities
+answer is deterministic and accepts leading mobile RTL direction marks.
+Signed aggregate receive counters separate wire frames from local upserts;
+they showed only the local canary at this checkpoint. No phone-originated reply
+is claimed from that test.
+
+The next guarded receive update preserves Baileys's metadata-only ignored-packet
+acknowledgement and records every blocked frame. Personal ciphertext remains
+blocked before receive handlers; chat sends remain fixed to StackSignal. Keep
+the prepared v0.3.2 release on `dev` until an actual fresh phone question is
+confirmed. See [health operations](PLATFORM_HEALTH.md) for the protocol and
+diagnostic boundaries. Private state is the current deployment checkpoint.
 
 Production v0.2.0 passed [main rollout and security smoke checks](https://github.com/Idoheled/StackSignal/actions/runs/39115889435).
 Alerts were enabled at **2026-10-18 09:38:15.509511 UTC (12:38:15 Israel)**. The
