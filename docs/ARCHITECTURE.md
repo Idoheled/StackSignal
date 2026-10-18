@@ -212,3 +212,22 @@ Administrator Apply/Compare/Off settings live in `ss_settings` and are read by e
 GitHub Search and daily/weekly Trending feed bounded public candidates into a cached maintenance gate (stars, real watchers, recent releases, push age, license and active state). The gate applies again inside service-only AI candidate/reservation RPCs and authenticated feed reads, under the current saved administrator policy. Weak or unknown projects cannot consume review slots or bypass admission through a followed release. Library access remains independent.
 
 The `openshift` source type reads approved amd64 OpenShift 4/5 release-stream APIs and per-tag changelogs, recording Accepted status, RC/preview channel and publisher dates. It never treats CI acceptance as supported GA. Existing administrator source controls edit these probes. See [repository and release probes](REPOSITORY_DISCOVERY.md).
+
+## WhatsApp group notifications
+
+Newly qualifying reviewed content creates one private outbox event after the
+activation watermark. Its classification follows source/repository/release
+policies. The independently scheduled Edge dispatcher leases events, signs
+immutable IDs and verifies signed responses. The Oracle loopback receiver
+persists acceptance in SQLite before returning; local Ollama generates bounded
+text and OpenClaw sends only to the verified fixed group. A provider message ID
+is required before PostgreSQL records delivery and clears copied text.
+Interrupted sends are held for reconciliation, not blindly replayed.
+
+Registration is a separate member-owned state machine. Signup and settings can
+record Pending; opening the invite hands off to WhatsApp. Explicit confirmation
+records Registered with source/time. Off records Unregistered and reminds the
+member to exit the actual group. Registration never automatically changes
+WhatsApp membership. See [registration](WHATSAPP_REGISTRATION.md) and the
+[operational topology and recovery](WHATSAPP_SETUP.md). The retired allocator is
+not part of the running notification path.

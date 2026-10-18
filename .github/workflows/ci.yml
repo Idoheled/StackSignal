@@ -75,8 +75,8 @@ jobs:
           include-hidden-files: true
 
   whatsapp_pairing:
-    if: github.event_name == 'workflow_dispatch' && inputs.operation == 'whatsapp_pairing' && github.actor == 'Idoheled' && github.ref == 'refs/heads/feat/whatsapp-notifications' && github.repository == 'Idoheled/StackSignal'
-    uses: ./.github/workflows/whatsapp-pairing.yml
+    if: github.event_name == 'workflow_dispatch' && inputs.operation == 'whatsapp_pairing' && github.actor == 'Idoheled' && (github.ref == 'refs/heads/feat/whatsapp-notifications' || github.ref == 'refs/heads/dev') && github.repository == 'Idoheled/StackSignal'
+    uses: ./.github/workflows/whatsapp-maintenance.yml
     secrets: inherit
 
   deploy:

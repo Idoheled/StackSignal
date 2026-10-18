@@ -8,7 +8,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   pair:
-    if: github.repository == 'Idoheled/StackSignal' && github.ref == 'refs/heads/feat/whatsapp-notifications' && github.actor == 'Idoheled'
+    if: github.repository == 'Idoheled/StackSignal' && (github.ref == 'refs/heads/feat/whatsapp-notifications' || github.ref == 'refs/heads/dev') && github.actor == 'Idoheled'
     runs-on: ubuntu-24.04
     timeout-minutes: 12
     steps:

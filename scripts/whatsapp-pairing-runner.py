@@ -32,9 +32,9 @@ def main():
     global STAGE
     os.umask(0o077)
     if (os.environ.get("GITHUB_REPOSITORY")!="Idoheled/StackSignal"
-        or os.environ.get("GITHUB_REF")!="refs/heads/feat/whatsapp-notifications"
+        or os.environ.get("GITHUB_REF") not in ("refs/heads/feat/whatsapp-notifications","refs/heads/dev")
         or os.environ.get("GITHUB_ACTOR")!="Idoheled"):
-        raise RuntimeError("Owner-only manual feature-branch operation")
+        raise RuntimeError("Owner-only manual integration maintenance")
     sha=os.environ["GITHUB_SHA"]
     request=json.loads(os.environ["WHATSAPP_PAIRING_REQUEST"]);validate_request(request,sha)
     state=control_runner.Control(os.environ["OCI_CRON_CONTROL_SECRET"]).call("status")
