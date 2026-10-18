@@ -4,11 +4,13 @@ import {answerQuestion,responseForQuestion,languageGuidance,englishFirst} from '
 
 const languages=['en','he'],samples=[];
 for(const [name,question,required] of [
- ['scheduler','What does a Kubernetes scheduler do? Give a concise technical answer.',[/pod/i,/node/i]],
- ['networking','Explain the difference between RDMA and TCP. Give two practical considerations.',[/RDMA/,/TCP/,/memory/i]],
+ ['scheduler','What does a Kubernetes scheduler do? Distinguish scheduling decisions from runtime resource enforcement.',[/pod/i,/node/i]],
+ ['networking','Explain RDMA versus TCP, including CPU use during setup and steady-state data transfer. Give two practical considerations.',[/RDMA/,/TCP/,/memory/i]],
 ]){
  const answer=await answerQuestion(question,null,{model:process.env.OLLAMA_MODEL||'qwen3:4b',language:'en'});
  if(!answer.startsWith('🤖 *Columbus · קולומבוס*\n\n*Answer*\n')||!required.every(pattern=>pattern.test(answer))||/KAI|v0\.16\.12|<think|<analysis/i.test(answer))throw Error('Semantic model check failed: '+name);
+ if(name==='scheduler'&&/(?:ensures|guarantees)[^.!?]*isolation|avoids overcommitment/i.test(answer))throw Error('Scheduler enforcement overclaim');
+ if(name==='networking'&&/RDMA operates at the network layer|without CPU involvement|bypassing the OS and CPU/i.test(answer))throw Error('Unqualified networking claim');
  samples.push({name,answer});
 }
 {

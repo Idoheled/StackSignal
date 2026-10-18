@@ -9,6 +9,8 @@
   a maintained English-language recommendation; English prefixes answer directly.
 - Keep general Columbus questions free of unrelated article context and answer
   identity questions from maintained platform facts.
+- Reject sentence fragments, avoid grammar-forced mid-word string closure and
+  require qualified technical claims in deployment samples.
 - Structure generated replies into a direct answer, useful points and optional
   limitations; prioritize correct language over forced sarcasm and retry invalid
   final output once within a bounded deadline.
