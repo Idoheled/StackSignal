@@ -46,6 +46,9 @@ export function WhatsAppPreferences({ open, onOpenChange, preview = false }: {
 
   async function save(opt_in: boolean, confirm = false) {
     if (!preferences || busy) return;
+    const previous = preferences;
+    if (!confirm) setPreferences({ ...previous, opt_in,
+      registration: opt_in ? "pending" : "unregistered" });
     setBusy(true); setError(""); setSaved(false);
     try {
       const value: Preferences = preview ? { ...demo, opt_in,
@@ -55,7 +58,7 @@ export function WhatsAppPreferences({ open, onOpenChange, preview = false }: {
       setPreferences(value); setSaved(true);
       if (preview) setDemo(value);
       setLeave(!opt_in);
-    } catch (e) { setError((e as Error).message); }
+    } catch (e) { setPreferences(previous); setError((e as Error).message); }
     finally { setBusy(false); }
   }
   const url = preferences?.opt_in ? inviteURL(preferences.invite_url) : null;
