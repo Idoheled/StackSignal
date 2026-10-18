@@ -90,7 +90,7 @@ def main():
             if request.get("operation")=="columbus_deploy":
                 STAGE="deploy_group_only_columbus"
                 private.update(invite_url=request["invite_url"],group_name=request["group_name"],operation=request["operation"],sha=sha)
-                raw=run(ssh+["sudo python3 /opt/stacksignal-pairing/bot/deploy/deploy-columbus.py"],json.dumps(private).encode(),timeout=650)
+                raw=run(ssh+["sudo python3 /opt/stacksignal-pairing/bot/deploy/deploy-columbus.py"],json.dumps(private).encode(),timeout=1000)
                 result=json.loads(raw)
                 if result.get("session")!=request["session"] or result.get("status")!="private_result":raise RuntimeError("Invalid private deployment result")
                 print("MAINTENANCE_ENCRYPTED:"+json.dumps({k:result[k] for k in ("status","session","nonce","encrypted","tag")},separators=(",",":")),flush=True)

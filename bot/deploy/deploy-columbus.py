@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import pwd
 import shutil
+import signal
 import sqlite3
 import subprocess
 import sys
@@ -21,6 +22,8 @@ user=pwd.getpwnam('stacksignal')
 run_as=['runuser','-u','stacksignal','--','env','HOME='+str(base),'PATH=/opt/node/bin:/usr/local/bin:/usr/bin:/bin',
  'OPENCLAW_STATE_DIR='+str(base/'openclaw'),'OPENCLAW_CONFIG_PATH='+str(base/'openclaw/openclaw.json')]
 report={'status':'incomplete','stage':'preflight'}
+def deadline_expired(signum,frame):raise TimeoutError('Bounded deployment deadline exceeded')
+signal.signal(signal.SIGALRM,deadline_expired);signal.alarm(660)
 def command(args,data=None,timeout=120):
  result=subprocess.run(args,input=data,stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=timeout,cwd=base)
  if result.returncode:raise RuntimeError('Private command failed: '+str(result.returncode)+' '+result.stderr[-4000:].decode(errors='replace'))
@@ -33,13 +36,15 @@ def publish():
  print(json.dumps(envelope))
 
 def connected():
+ last='No connected WhatsApp account'
  for attempt in range(15):
   try:
    value=json.loads(command(run_as+['/opt/node/bin/openclaw','channels','status','--json'],timeout=25))
    if any(a.get('connected') is True for a in value.get('channelAccounts',{}).get('whatsapp',[])):return
-  except Exception:pass
+   last=json.dumps({'accounts':[{k:a.get(k) for k in ('enabled','configured','running','connected','lastError')} for a in value.get('channelAccounts',{}).get('whatsapp',[])]})
+  except Exception as error:last=str(error)[-1500:]
   time.sleep(3)
- raise RuntimeError('WhatsApp did not reconnect')
+ raise RuntimeError('WhatsApp did not reconnect: '+last)
 
 backup=Path('/var/backups/stacksignal')/('columbus-'+request['sha']);saved=[];plugin_path=None;plugin_previous=None;modified=False
 try:
@@ -112,12 +117,14 @@ except Exception as error:
    report['startup_diagnostic']='\n'.join(line for line in startup.splitlines() if any(token in line.lower() for token in ('error','columbus','failed','exception','socket-close','at file:','at /')))[-12000:]
   except Exception:report['startup_diagnostic']='Startup diagnostics unavailable'
  if modified:
-  subprocess.run(['systemctl','stop','stacksignal-bot','stacksignal-openclaw'])
+  subprocess.run(['systemctl','stop','stacksignal-bot','stacksignal-openclaw'],timeout=70)
   for dest,prior in reversed(saved):
    if prior is None:dest.unlink(missing_ok=True)
    else:dest.write_bytes(prior)
   if plugin_path and plugin_previous is not None:plugin_path.write_bytes(plugin_previous)
   if plugin_path:os.chown(plugin_path,user.pw_uid,user.pw_gid)
-  subprocess.run(['systemctl','start','stacksignal-openclaw','stacksignal-bot'])
+  subprocess.run(['systemctl','start','stacksignal-openclaw','stacksignal-bot'],timeout=30)
   report['rolled_back']=True
-finally:publish()
+finally:
+ signal.alarm(0)
+ publish()
