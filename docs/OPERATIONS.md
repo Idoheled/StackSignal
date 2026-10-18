@@ -256,3 +256,12 @@ failure. Encrypted startup reports exposed service-file ownership and plugin
 source-capture constraints, which the reproducible installer now preserves.
 Final rollout evidence belongs in the current WhatsApp checkpoint; a successful
 maintenance workflow alone is not evidence of a successful runtime update.
+
+Collector version 32 deploys the canonical Gemini JSON-schema request repair
+and clears stale configuration state on success. A real request completed at
+09:19:18 UTC against resolved `gemini-3.8-flash`; one assessment passed and an
+invalid-evidence assessment remained withheld. Temporary provider diagnostics
+were removed from the deployed source and health record. Existing free-tier
+quotas, reservations and five-minute spacing were not reset or relaxed. At
+09:20 UTC, 88 source watches were active, collection recorded a fresh discovery
+and 156 retained links had review timestamps within the audited 24-hour window.

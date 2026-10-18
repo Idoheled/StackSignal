@@ -96,6 +96,9 @@ The scheduled internal reviewer was blocked by evidence slicing through a
 UTF-16 surrogate pair. Unicode-safe contiguous slicing restored actual HTTP
 success and processed 563 pending links, including 154 useful approvals. These
 historical approvals were not broadcast. Discovery recorded 37 new links over
-the preceding 24 hours. Gemini is reachable but currently returns configuration
-errors; its request repair is being verified under existing quota/pacing caps.
-Do not infer provider success from a successful scheduler invocation.
+the preceding 24 hours. Gemini completed a real repaired REST request at 09:19:18 UTC using the resolved
+`gemini-3.8-flash` model. One result passed validation; another was withheld for
+invalid evidence, preserving the admission gate. Collector version 32 contains
+the clean repair; temporary provider diagnostics were removed. Existing request
+quotas and pacing remain enforced. Do not infer provider success from a green
+scheduler invocation.
