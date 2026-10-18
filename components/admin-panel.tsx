@@ -513,11 +513,11 @@ export default function AdminPanel({
         <TabsContent value="health">
           <div className="source-summary">
             <div>
-              <strong>{data.jobs.pending || 0}</strong>
+              <strong>{data.jobs?.pending || 0}</strong>
               <span>queued jobs</span>
             </div>
             <div>
-              <strong>{data.jobs.failed || 0}</strong>
+              <strong>{data.jobs?.failed || 0}</strong>
               <span>failed jobs</span>
             </div>
             <div>
