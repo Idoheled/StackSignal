@@ -379,7 +379,7 @@ test("official OpenShift detail payloads allow bounded large changelogs and stil
   } finally {globalThis.fetch=originalFetch;}
 });
 
-test("independent evaluator recovers twelve-link provider failures without abandoning inputs or spending from collection",async()=>{
+test("independent evaluator isolates rejected batches without abandoning pending inputs or resetting quota",async()=>{
   const previous=globalThis.fetch;environment.GEMINI_API_KEY="test-recovery-key";
   const excerpt="A reproducible inference benchmark configures KV cache offloading under controlled concurrency.";
   const rows=Array.from({length:12},(_,i)=>({id:String(i),url:"https://kubernetes.io/recovery-"+i,score:75,kind:"Article",discovered_at:"2026-10-10T00:00:00Z",content_hash:String(i),reference_meta:{public_evaluation_input:{title:"Public benchmark",text:excerpt,scope:"publisher_excerpt"},evaluation_failures:8} as any}));
@@ -389,9 +389,10 @@ test("independent evaluator recovers twelve-link provider failures without aband
     const u=new URL(String(input)),body=init?.body?JSON.parse(String(init.body)):undefined;
     if(u.hostname==="generativelanguage.googleapis.com") {
       calls++;const sources=JSON.parse(body.contents[0].parts[0].text).public_sources;
-      if(provider==="503") {assert.equal(sources.length,12);return new Response("",{status:503,headers:{"retry-after":"600"}});}
+      if(provider==="503") {assert.equal(sources.length,7);return new Response("",{status:503,headers:{"retry-after":"600"}});}
+      if(provider==="400")return Response.json({error:{message:"Request contains an invalid argument."}},{status:400});
       if(provider==="timeout") throw new DOMException("Signal timed out.","TimeoutError");
-      assert.equal(sources.length,6);
+      assert.equal(sources.length,1);
       return Response.json({candidates:[{finishReason:"STOP",content:{parts:[{text:JSON.stringify({results:sources.map((x:any)=>({id:x.id,assessment:{topic:"Inference",score:90,confidence:"high",depth:"advanced",decision:"useful",summary:"Controlled cache benchmark.",reason:"Relevant cache engineering.",action:"Compare concurrency settings.",evidence:"configures KV cache offloading"}}))})}]}}]});
     }
     if(u.pathname.endsWith("ss_settings")) {
@@ -418,13 +419,16 @@ test("independent evaluator recovers twelve-link provider failures without aband
   try {
     assert.equal((await run("collection")).status,200);assert.equal(calls,0);assert.equal(used,0);
     assert.equal((await run("evaluation")).status,200);assert.equal(calls,1);
-    assert(rows.every(r=>r.reference_meta.evaluation_failures===9 && r.reference_meta.evaluation_retry_at && r.reference_meta.evaluation_error_kind==="transient"));
+    assert(rows.slice(0,7).every(r=>r.reference_meta.evaluation_failures===9 && r.reference_meta.evaluation_retry_at && r.reference_meta.evaluation_error_kind==="transient"));
+    assert(rows.slice(7).every(r=>r.reference_meta.evaluation_failures===8),"unreserved inputs are untouched");
     await run("evaluation");assert.equal(calls,1,"persisted cooldown prevents an immediate retry");
-    health.cooldown_until=null;provider="timeout";await run("evaluation");assert.equal(health.target_batch_size,6);assert.equal(finishes[1].outcome,"transient");
-    assert(rows.every(r=>r.reference_meta.evaluation_retry_at),"ten outages never exhaust per-link retries");
+    health.cooldown_until=null;provider="400";await run("evaluation");assert.equal(health.target_batch_size,3);assert.equal(finishes[1].outcome,"configuration");
+    assert(Date.parse(health.cooldown_until)<=Date.now()+301000,"rejected multi-item requests retry after five minutes rather than a day");
+    health.cooldown_until=null;provider="timeout";await run("evaluation");assert.equal(health.target_batch_size,1);assert.equal(finishes[2].outcome,"transient");
+    assert(rows.slice(0,7).every(r=>r.reference_meta.evaluation_retry_at),"repeated outages retain pending inputs");
     health.cooldown_until=null;provider="ok";await run("evaluation");
-    assert.equal(finishes[2].reviewed,6);assert.equal(finishes[2].outcome,"success");assert.equal(health.target_batch_size,9);
-    assert.equal(rows.filter(r=>r.reference_meta.evaluation).length,6);assert.equal(used,3,"failed calls stay in request accounting");
+    assert.equal(finishes[3].reviewed,1);assert.equal(finishes[3].outcome,"success");assert.equal(health.target_batch_size,4);
+    assert.equal(rows.filter(r=>r.reference_meta.evaluation).length,1);assert.equal(used,4,"failed calls stay in request accounting");
   } finally {globalThis.fetch=previous;delete environment.GEMINI_API_KEY;}
 });
 

@@ -24,8 +24,8 @@ run_as=['runuser','-u','stacksignal','--','env','HOME='+str(base),'PATH=/opt/nod
 report={'status':'incomplete','stage':'preflight'}
 def deadline_expired(signum,frame):raise TimeoutError('Bounded deployment deadline exceeded')
 signal.signal(signal.SIGALRM,deadline_expired);signal.alarm(660)
-def command(args,data=None,timeout=120):
- result=subprocess.run(args,input=data,stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=timeout,cwd=base)
+def command(args,data=None,timeout=120,extra_env=None):
+ result=subprocess.run(args,input=data,stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=timeout,cwd=base,env={**os.environ,**(extra_env or {})})
  if result.returncode:raise RuntimeError('Private command failed: '+str(result.returncode)+' '+result.stderr[-4000:].decode(errors='replace'))
  return result.stdout
 
@@ -48,6 +48,10 @@ def connected():
 
 backup=Path('/var/backups/stacksignal')/('columbus-'+request['sha']);saved=[];plugin_path=None;plugin_previous=None;modified=False
 try:
+ question_db=base/'columbus.sqlite'
+ if question_db.exists():
+  with sqlite3.connect(question_db.as_uri()+'?mode=ro',uri=True) as db:
+   report['prior_questions']={'counts':dict(db.execute('select status,count(*) from questions group by status').fetchall()),'recent':[{'status':r[0],'created_at_ms':r[1]} for r in db.execute('select status,created_at from questions order by created_at desc limit 15')]}
  with sqlite3.connect((base/'deliveries.sqlite').as_uri()+'?mode=ro',uri=True) as db:
   if db.execute("select count(*) from deliveries where phase<>'sent'").fetchone()[0]:raise RuntimeError('Outstanding deliveries require reconciliation')
  identity=base/'openclaw/credentials/whatsapp/default/creds.json'
@@ -66,14 +70,21 @@ try:
  finally:command(['systemctl','start','stacksignal-openclaw'])
  request['destination']=destination
  env=Path('/etc/stacksignal/bot.env');env_text=env.read_text()
+ host_env=dict(line.split('=',1) for line in env_text.splitlines() if '=' in line and not line.startswith('#'))
+ canary_env={k:host_env[k] for k in ('WHATSAPP_WEBHOOK_SECRET','WHATSAPP_APP_ORIGIN','OLLAMA_MODEL') if k in host_env}
  target_lines=[line for line in env_text.splitlines() if line.startswith('WHATSAPP_GROUP_JID=')]
  if target_lines!=['WHATSAPP_GROUP_JID='+destination['group_jid']]:raise RuntimeError('Fixed group differs from verified destination')
  report['stage']='install_runtime'
+ # Planned maintenance grants unnotified watchdog observations a fresh grace window.
+ # Confirmed incident IDs and all delivery/pairing history remain untouched.
+ with sqlite3.connect(base/'deliveries.sqlite') as db:
+  if db.execute("select 1 from sqlite_master where name='watchdog'").fetchone():
+   db.execute("update watchdog set first_seen=? where notified=0",(int(time.time()*1000),))
  command(['systemctl','stop','stacksignal-bot','stacksignal-openclaw'])
  backup.mkdir(parents=True,mode=0o700,exist_ok=True)
  saved.append((env,env_text.encode()));(backup/'bot.env').write_text(env_text)
  modified=True
- files=['bot/server.mjs','bot/store.mjs','bot/webhook.mjs','bot/worker.mjs','bot/transport.mjs','bot/message.mjs','bot/columbus-policy.mjs','bot/columbus-runtime.mjs','supabase/functions/_shared/whatsapp-protocol.ts']
+ files=['bot/server.mjs','bot/store.mjs','bot/webhook.mjs','bot/worker.mjs','bot/transport.mjs','bot/message.mjs','bot/operations.mjs','bot/columbus-policy.mjs','bot/columbus-runtime.mjs','supabase/functions/_shared/whatsapp-protocol.ts']
  for name in files:
   dest=runtime/name;prior=dest.read_bytes() if dest.exists() else None;saved.append((dest,prior))
   if prior is not None:
@@ -81,7 +92,7 @@ try:
   dest.parent.mkdir(parents=True,exist_ok=True);shutil.copyfile(source/name,dest);dest.chmod(0o644)
  # Keep adapter imports inside the managed plugin's source-capture boundary.
  # They are reviewed source, not an external loader exception or extra agent.
- for name in ('bot/columbus-policy.mjs','bot/columbus-runtime.mjs','supabase/functions/_shared/whatsapp-protocol.ts'):
+ for name in ('bot/columbus-policy.mjs','bot/columbus-runtime.mjs','bot/operations.mjs','supabase/functions/_shared/whatsapp-protocol.ts'):
   dest=plugin_root/'stacksignal'/name;prior=dest.read_bytes() if dest.exists() else None;saved.append((dest,prior))
   dest.parent.mkdir(parents=True,exist_ok=True)
   for parent in [dest.parent,*dest.parents]:
@@ -94,21 +105,23 @@ try:
  temp=env.with_name('.columbus-env');temp.write_text('\n'.join(lines)+'\n');os.chown(temp,0,user.pw_gid);temp.chmod(0o640);temp.replace(env)
  spec=importlib.util.spec_from_file_location('boundary_patch',source/'bot/deploy/patch-whatsapp-boundary.py');module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
  module.patch(plugin_path)
+ caddy=Path('/etc/caddy/Caddyfile');saved.append((caddy,caddy.read_bytes()))
+ shutil.copyfile(source/'bot/deploy/Caddyfile',caddy);caddy.chmod(0o644)
+ command(['systemctl','reload','caddy'])
  command(['/opt/node/bin/node','--check',str(plugin_path)])
  command(['systemctl','start','stacksignal-openclaw','stacksignal-bot']);connected()
  with urllib.request.urlopen('http://127.0.0.1:8787/healthz',timeout=5) as response:health=json.load(response)
  if health!={'ok':True,'delivery_enabled':True}:raise RuntimeError('Receiver unhealthy')
  log=command(['journalctl','-u','stacksignal-openclaw','--since',stamp,'--no-pager','-o','cat']).decode(errors='replace')
  if 'columbus_group_boundary_ready' not in log:raise RuntimeError('Group boundary did not initialize')
- if request.get('verification_mode')=='answer_only':
-  report['stage']='final_answer_tests'
-  smoke=json.loads(command(run_as+['/opt/node/bin/node',str(source/'bot/deploy/columbus-answer-smoke.mjs')],timeout=400))
-  if smoke!={'status':'ready','languages':['en','he'],'final_answer_only':True,'group_messages_sent':0}:raise RuntimeError('Final answer verification failed')
-  report['answer_verification']=smoke
- else:
+ report['stage']='final_answer_tests'
+ smoke=json.loads(command(run_as+['/opt/node/bin/node',str(source/'bot/deploy/columbus-answer-smoke.mjs')],timeout=400,extra_env=canary_env))
+ if smoke.get('status')!='ready' or smoke.get('languages')!=['en','he'] or smoke.get('final_answer_only') is not True or smoke.get('catalog_verified') is not True or not 1<=smoke.get('catalog_rows',0)<=7 or smoke.get('group_messages_sent')!=0:raise RuntimeError('Final answer verification failed')
+ report['answer_verification']=smoke
+ if request.get('verification_mode')!='answer_only':
   report['stage']='automatic_question_tests'
   smoke=json.loads(command(run_as+['/opt/node/bin/node',str(source/'bot/deploy/columbus-smoke.mjs')],json.dumps(request).encode(),timeout=500))
-  if smoke.get('status')!='sent' or len(smoke.get('questions',[]))!=2:raise RuntimeError('Question test did not complete')
+  if smoke.get('status')!='sent' or len(smoke.get('questions',[]))!=1:raise RuntimeError('Question test did not complete')
   report['questions']=smoke['questions']
  report['stage']='restart_verification';command(['systemctl','restart','stacksignal-openclaw','stacksignal-bot']);connected()
  report.update(status='ready',stage='complete',group_only=True,personal_chats=False,history=False,tools=False,paired_preserved=True,receiver=health,
@@ -129,6 +142,7 @@ except Exception as error:
    else:dest.write_bytes(prior)
   if plugin_path and plugin_previous is not None:plugin_path.write_bytes(plugin_previous)
   if plugin_path:os.chown(plugin_path,user.pw_uid,user.pw_gid)
+  subprocess.run(['systemctl','reload','caddy'],timeout=30)
   subprocess.run(['systemctl','start','stacksignal-openclaw','stacksignal-bot'],timeout=30)
   report['rolled_back']=True
 finally:

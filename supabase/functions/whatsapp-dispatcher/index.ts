@@ -1,4 +1,5 @@
 import { dispatchEvents } from "../_shared/whatsapp-dispatch.ts";
+import { monitorOperations } from "../_shared/operations.ts";
 
 const headers = { "content-type": "application/json", "cache-control": "no-store" };
 const env = (name: string) => Deno.env.get(name) || "";
@@ -28,6 +29,11 @@ Deno.serve(async request => {
     const secret = env("WHATSAPP_WEBHOOK_SECRET") || configuration.whatsapp_webhook_secret;
     const appOrigin = env("WHATSAPP_APP_ORIGIN") || configuration.whatsapp_app_origin;
     if (!webhookURL || !secret || !appOrigin) return new Response('{"error":"Dispatcher not configured"}', { status: 503, headers });
-    return new Response(JSON.stringify({ ok: true, ...await dispatchEvents({ webhookURL, secret, appOrigin }, rpc) }), { headers });
+    const config={webhookURL,secret,appOrigin};
+    const deliveries=await dispatchEvents(config,rpc);
+    let operations:unknown;
+    try { operations=await monitorOperations(config,rpc); }
+    catch { operations={ok:false,error:'Health observation failed; durable state retained'}; }
+    return new Response(JSON.stringify({ ok: true, ...deliveries, operations }), { headers });
   } catch { return new Response('{"error":"Dispatch failed; pending events retained"}', { status: 503, headers }); }
 });

@@ -93,3 +93,12 @@ Columbus verification. Provisioning control remains false with no active lease
 and zero resource-claim cron jobs. The dormant workflow lives outside GitHub's
 active workflow directory. [The toolkit](../ops/oci/README.md) and
 [archive](archive/OCI_BOOTSTRAP_2026_10.md) preserve recovery knowledge.
+
+## October 18 — platform observability implementation
+
+Added signed read-only catalog replies for recent-release questions, explicit
+busy/failure responses, private durable health incidents and an administrator BI
+dashboard. Local authorization, delivery-ordering and exact Hebrew-request
+regressions pass. Hosted browser, VM canary and production deployment evidence
+remain release gates; see [health operations](PLATFORM_HEALTH.md). Existing
+pairing, group-only boundary and original no-backfill cutoff are preserved.

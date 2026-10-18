@@ -261,6 +261,7 @@ function Hub({
     [light, setLight] = useState(false);
   const detailOpener = useRef<HTMLElement | null>(null);
   const [whatsappOpen, setWhatsappOpen] = useState(false);
+  useEffect(()=>{if(!preview&&member.role==='admin'&&new URLSearchParams(location.search).get('view')==='admin')setView('admin');},[preview,member.role]);
   useEffect(() => {
     if (preview) return;
     let cancelled = false;

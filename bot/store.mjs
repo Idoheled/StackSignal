@@ -63,7 +63,8 @@ export class DeliveryStore {
     try {
       const row = this.get(id);
       if (!row || row.phase !== 'sending') { this.db.exec('COMMIT'); return false; }
-      this.db.prepare('INSERT OR IGNORE INTO article_context VALUES(?,?,?)').run(messageID,row.payload,now);
+      if(JSON.parse(row.payload).kind!=='platform_incident')
+        this.db.prepare('INSERT OR IGNORE INTO article_context VALUES(?,?,?)').run(messageID,row.payload,now);
       this.db.prepare('DELETE FROM article_context WHERE created_at<?').run(now-30*86400000);
       this.db.prepare("UPDATE deliveries SET phase='sent',message_id=?,payload=NULL,message=NULL,updated_at=? WHERE id=? AND phase='sending'").run(messageID, now, id);
       this.db.exec('COMMIT'); return true;

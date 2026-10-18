@@ -93,6 +93,54 @@ test('the listener withholds rejected model output instead of sending reasoning'
    generateAnswer:q=>answerQuestion(q,null,{send:async()=>Response.json({done:true,response:'Let me think about the user request...'})})});
   sock.ev.emit('messages.upsert',{type:'notify',messages:[message('Columbus explain scheduling')]});
   await new Promise(setImmediate);
-  assert.equal(sock.calls.length,0,'invalid model text must never reach the WhatsApp send boundary');
+  assert.equal(sock.calls.length,1,'a failed generation gets a safe explanatory reply');
+  assert(sock.calls[0].body.text.includes('Please retry shortly'));
+  assert(!sock.calls[0].body.text.includes('Let me think'));
  }finally{sock.ev.emit('connection.update',{connection:'close'});rmSync(root,{recursive:true,force:true});}
+});
+
+test('the installed listener answers the exact Hebrew seven-release request without model invention',async()=>{
+ const root=mkdtempSync(join(tmpdir(),'columbus-catalog-')),sock=socket();let lookedUp=0;
+ try{
+  installColumbusBoundary(sock,{target,enabled:true,activatedAt,base:root,
+   generateAnswer:async()=>{throw Error('Catalog requests must bypass the LLM');},
+   getContext:async(operation,count)=>{assert.equal(operation,'latest_releases');assert.equal(count,7);lookedUp++;return{releases:Array.from({length:7},(_,i)=>({title:'Real project '+i,discovered_at:new Date(now).toISOString(),ui_url:'https://stacksignal.example/?article='+i}))};}});
+  sock.ev.emit('messages.upsert',{type:'notify',messages:[message('קולומבוס מה כל שבעת הreleaseים האחרונים שנכנסו לפלטפורמה?')]});
+  await new Promise(setImmediate);assert.equal(lookedUp,1);assert.equal(sock.calls.length,1);
+  for(let i=0;i<7;i++)assert(sock.calls[0].body.text.includes('Real project '+i));
+ }finally{sock.ev.emit('connection.update',{connection:'close'});rmSync(root,{recursive:true,force:true});}
+});
+test('a busy request gets an explicit bounded reply rather than disappearing',async()=>{
+ const root=mkdtempSync(join(tmpdir(),'columbus-busy-')),sock=socket();let resolveAnswer;
+ try{
+  installColumbusBoundary(sock,{target,enabled:true,activatedAt,base:root,generateAnswer:()=>new Promise(r=>{resolveAnswer=r;})});
+  sock.ev.emit('messages.upsert',{type:'notify',messages:[message('Columbus explain KAI')]});
+  sock.ev.emit('messages.upsert',{type:'notify',messages:[message('Columbus explain GPUs',{key:{remoteJid:target,id:'SECONDQUESTION',participant:'66666@s.whatsapp.net'}})]});
+  await new Promise(setImmediate);assert(sock.calls[0].body.text.includes('one question at a time'));
+  resolveAnswer('Finished answer');await new Promise(setImmediate);assert.equal(sock.calls.length,2);
+ }finally{sock.ev.emit('connection.update',{connection:'close'});rmSync(root,{recursive:true,force:true});}
+});
+
+test('linked-phone group frames pass vendor routing while personal ciphertext and spoofed recipients remain blocked',async()=>{
+ const {ignoreRoute}=await import('../bot/columbus-policy.mjs');
+ const sock=socket(),owner='55555:7@s.whatsapp.net',lid='88888@lid';sock.user={id:owner,lid};
+ sock.ws.removeAllListeners('CB:message');const accepted=[];
+ sock.ws.on('CB:message',node=>{
+  // The pinned Baileys early filter receives the raw from address, not recipient.
+  if(ignoreRoute(node.attrs.from,target))return;
+  accepted.push(node.content);
+  void Promise.resolve().then(()=>assert.equal(ignoreRoute(node.attrs.from,target),false));
+ });
+ restrictSocket(sock,target);
+ for(const attrs of[
+  {from:'55555:2@s.whatsapp.net',recipient:'99999@s.whatsapp.net'},
+  {from:'55555:2@s.whatsapp.net'},
+  {from:'55555:2@s.whatsapp.net',recipient:'99999@g.us'},
+  {from:'77777@s.whatsapp.net',recipient:target},
+  {from:'88888@lid',recipient:'99999@s.whatsapp.net'},
+ ])sock.ws.emit('CB:message',{attrs,get content(){throw Error('Outside ciphertext read');}});
+ assert.equal(accepted.length,0);assert.equal(ignoreRoute(owner,target),true);
+ for(const from of['55555:2@s.whatsapp.net',lid])sock.ws.emit('CB:message',{attrs:{from,recipient:target},content:'fixed-group ciphertext'});
+ await new Promise(setImmediate);assert.deepEqual(accepted,['fixed-group ciphertext','fixed-group ciphertext']);
+ assert.equal(ignoreRoute(owner,target),true,'a permitted frame must not widen subsequent routing');
 });

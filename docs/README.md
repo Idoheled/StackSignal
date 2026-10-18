@@ -30,6 +30,7 @@ Start with the purpose and your role, then follow the system into the source. Th
 | [Web discovery](WEB_DISCOVERY.md) | How do genuine internet searches, activation, query rotation, noise filtering, provenance and free usage limits work? |
 | [Repository releases](RELEASES.md) | How are versions prepared, validated, published and recovered? |
 | [Deployment](DEPLOYMENT.md) | What does CI deploy, what remains separate, and how do I roll back? |
+| [Platform health](PLATFORM_HEALTH.md) | How do the administrator dashboard, incident alerts and Columbus catalog replies work? |
 | [Operations](OPERATIONS.md) | What was configured and verified at each historical checkpoint? |
 | [WhatsApp host onboarding](WHATSAPP_SETUP.md) | How do I pair the prepared host, verify its group and activate notifications? |
 | [WhatsApp progress](WHATSAPP_PROGRESS.md) | What notification work is complete and what is still pending? |
