@@ -1,10 +1,27 @@
+import { AsyncLocalStorage } from 'node:async_hooks';
+const inboundRoute = new AsyncLocalStorage();
 // Fail-closed policy. Inspect routing metadata before touching message content.
 export function requireGroup(target) {
   if (typeof target !== 'string' || !/^\d{5,30}(?:-\d{5,20})?@g\.us$/.test(target)) throw new Error('Verified fixed group required');
   return target;
 }
-export function allowedFrame(node, target) {
-  return typeof node?.attrs?.from === 'string' && node.attrs.from === requireGroup(target);
+function accountJid(jid) {
+  return typeof jid==='string' ? jid.match(/^(\d+)(?::\d+)?@(s\.whatsapp\.net|lid|hosted|hosted\.lid)$/)?.slice(1).join('@') : undefined;
+}
+export function allowedFrame(node, target, identities=[]) {
+  requireGroup(target);
+  const from=node?.attrs?.from;
+  if(from===target)return true;
+  const account=accountJid(from);
+  return Boolean(account&&node?.attrs?.recipient===target&&identities.some(jid=>accountJid(jid)===account));
+}
+// The vendor's early ignore callback sees `from`, before decoding `recipient`.
+// Permit a self address only inside the verified fixed-group frame's async scope.
+export function ignoreRoute(jid,target) {
+  requireGroup(target);
+  if(jid===target)return false;
+  const route=inboundRoute.getStore();
+  return !(route?.target===target&&route.from===jid);
 }
 export function questionFrom(envelope, type, target, { now = Date.now(), activatedAt } = {}) {
   requireGroup(target);
@@ -30,8 +47,11 @@ export function restrictSocket(sock, target) {
   if (!original.length) throw new Error('Pinned WhatsApp message boundary unavailable');
   sock.ws.removeAllListeners('CB:message');
   sock.ws.on('CB:message', function(node, ...rest) {
-    if (!allowedFrame(node, target)) return;
-    for (const listener of original) listener.call(this, node, ...rest);
+    const me=sock.user||sock.authState?.creds?.me;
+    if (!allowedFrame(node, target,[me?.id,me?.lid])) return;
+    inboundRoute.run({target,from:node.attrs.from},()=>{
+      for (const listener of original) listener.call(this, node, ...rest);
+    });
   });
   for (const name of ['sendMessage', 'relayMessage']) {
     const send = sock[name].bind(sock);

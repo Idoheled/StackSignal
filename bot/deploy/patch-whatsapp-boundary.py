@@ -6,13 +6,13 @@ import os
 from pathlib import Path
 
 ORIGINAL_SHA256='c54b159b54b59812995e90a02bcd38f543fe54a82ccc0dcd43c988bc2eeb6c93'
-IMPORT="import { installColumbusBoundary } from '../../stacksignal/bot/columbus-runtime.mjs';\n"
+IMPORT="import { installColumbusBoundary, ignoreRoute } from '../../stacksignal/bot/columbus-runtime.mjs';\n"
 
 def patched_source(original):
     if hashlib.sha256(original.encode()).hexdigest()!=ORIGINAL_SHA256:
         raise RuntimeError('Pinned WhatsApp session source differs; refuse unsafe patch')
     replacements={
-        '\t\tsyncFullHistory: false,':'\t\tsyncFullHistory: false,\n\t\tshouldSyncHistoryMessage: () => false,\n\t\tshouldIgnoreJid: (jid) => jid !== process.env.WHATSAPP_GROUP_JID,',
+        '\t\tsyncFullHistory: false,':'\t\tsyncFullHistory: false,\n\t\tshouldSyncHistoryMessage: () => false,\n\t\tshouldIgnoreJid: (jid) => ignoreRoute(jid, process.env.WHATSAPP_GROUP_JID),',
         '\t\tfireInitQueries: receiveMode !== "directory",':'\t\tfireInitQueries: false,',
         '\tif (receiveMode === "directory") for (const event of [':'\tinstallColumbusBoundary(sock, { enabled: receiveMode !== "directory" && process.env.COLUMBUS_ENABLED === "true" });\n\tif (receiveMode === "directory") for (const event of [',
     }
@@ -36,7 +36,8 @@ def patch(path):
         readable(backup)
         expected=patched_source(backup.read_text())
         if current==expected:return False
-        if current!=backup.read_text():raise RuntimeError('Installed boundary differs from reviewed source')
+        legacy=expected.replace('installColumbusBoundary, ignoreRoute','installColumbusBoundary').replace('ignoreRoute(jid, process.env.WHATSAPP_GROUP_JID)','jid !== process.env.WHATSAPP_GROUP_JID')
+        if current not in (backup.read_text(),legacy):raise RuntimeError('Installed boundary differs from reviewed source')
         path.write_text(expected);return True
     expected=patched_source(current)
     with backup.open('x') as output:output.write(current)

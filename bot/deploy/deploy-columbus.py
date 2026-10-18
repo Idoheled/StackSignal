@@ -24,8 +24,8 @@ run_as=['runuser','-u','stacksignal','--','env','HOME='+str(base),'PATH=/opt/nod
 report={'status':'incomplete','stage':'preflight'}
 def deadline_expired(signum,frame):raise TimeoutError('Bounded deployment deadline exceeded')
 signal.signal(signal.SIGALRM,deadline_expired);signal.alarm(660)
-def command(args,data=None,timeout=120):
- result=subprocess.run(args,input=data,stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=timeout,cwd=base)
+def command(args,data=None,timeout=120,extra_env=None):
+ result=subprocess.run(args,input=data,stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=timeout,cwd=base,env={**os.environ,**(extra_env or {})})
  if result.returncode:raise RuntimeError('Private command failed: '+str(result.returncode)+' '+result.stderr[-4000:].decode(errors='replace'))
  return result.stdout
 
@@ -70,9 +70,16 @@ try:
  finally:command(['systemctl','start','stacksignal-openclaw'])
  request['destination']=destination
  env=Path('/etc/stacksignal/bot.env');env_text=env.read_text()
+ host_env=dict(line.split('=',1) for line in env_text.splitlines() if '=' in line and not line.startswith('#'))
+ canary_env={k:host_env[k] for k in ('WHATSAPP_WEBHOOK_SECRET','WHATSAPP_APP_ORIGIN','OLLAMA_MODEL') if k in host_env}
  target_lines=[line for line in env_text.splitlines() if line.startswith('WHATSAPP_GROUP_JID=')]
  if target_lines!=['WHATSAPP_GROUP_JID='+destination['group_jid']]:raise RuntimeError('Fixed group differs from verified destination')
  report['stage']='install_runtime'
+ # Planned maintenance grants unnotified watchdog observations a fresh grace window.
+ # Confirmed incident IDs and all delivery/pairing history remain untouched.
+ with sqlite3.connect(base/'deliveries.sqlite') as db:
+  if db.execute("select 1 from sqlite_master where name='watchdog'").fetchone():
+   db.execute("update watchdog set first_seen=? where notified=0",(int(time.time()*1000),))
  command(['systemctl','stop','stacksignal-bot','stacksignal-openclaw'])
  backup.mkdir(parents=True,mode=0o700,exist_ok=True)
  saved.append((env,env_text.encode()));(backup/'bot.env').write_text(env_text)
@@ -108,7 +115,7 @@ try:
  log=command(['journalctl','-u','stacksignal-openclaw','--since',stamp,'--no-pager','-o','cat']).decode(errors='replace')
  if 'columbus_group_boundary_ready' not in log:raise RuntimeError('Group boundary did not initialize')
  report['stage']='final_answer_tests'
- smoke=json.loads(command(run_as+['/opt/node/bin/node',str(source/'bot/deploy/columbus-answer-smoke.mjs')],timeout=400))
+ smoke=json.loads(command(run_as+['/opt/node/bin/node',str(source/'bot/deploy/columbus-answer-smoke.mjs')],timeout=400,extra_env=canary_env))
  if smoke.get('status')!='ready' or smoke.get('languages')!=['en','he'] or smoke.get('final_answer_only') is not True or smoke.get('catalog_verified') is not True or not 1<=smoke.get('catalog_rows',0)<=7 or smoke.get('group_messages_sent')!=0:raise RuntimeError('Final answer verification failed')
  report['answer_verification']=smoke
  if request.get('verification_mode')!='answer_only':

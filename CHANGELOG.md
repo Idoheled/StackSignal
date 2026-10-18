@@ -8,6 +8,8 @@
   durable problem/recovery notifications and independent VM watchdog checks.
 - Answer recent-release questions from the signed platform catalog; provide
   explicit bounded replies for busy, rate-limited and failed requests.
+- Handle authenticated linked-phone group routing while blocking personal
+  ciphertext, and pass the private host environment to signed catalog canaries.
 - Recover obsolete provider-configuration retries and superseded source failures
   without resetting quota accounting, historical evaluations or alert cutoffs.
 
