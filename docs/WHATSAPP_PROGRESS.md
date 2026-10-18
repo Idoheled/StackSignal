@@ -1,9 +1,11 @@
 # WhatsApp rollout checkpoint
 
-**Current checkpoint: Administration is live in v0.3.1. The owner has now
-confirmed fresh phone-originated Columbus replies. The receive-path repair is
-verified; a separate answer-quality update is being checked before v0.3.2
-promotion.** The registration UI and production promotion are owner-authorized.
+**Columbus receives fresh phone-originated questions, confirmed by the owner.
+The v0.3.2 correction keeps identity answers grounded, removes unrelated article
+context and uses the audited English-first language policy.** Administration's
+empty-queue fix shipped in v0.3.1. The owner authorized production promotion.
+Runtime and frontend deployment identities live in the private checkpoint;
+historical test receipts below do not replace a fresh signed health check.
 
 ## October 19 (Israel) — Administration and receive-path follow-up
 
@@ -25,7 +27,7 @@ The guarded receive update preserves Baileys's metadata-only ignored-packet
 acknowledgement and records every blocked frame. Personal ciphertext remains
 blocked before receive handlers; chat sends remain fixed to StackSignal. The owner subsequently confirmed both capabilities and generated identity
 replies from the phone; the identity reply exposed a separate answer-quality
-problem. Keep prepared v0.3.2 on `dev` until that correction passes its gates. See [health operations](PLATFORM_HEALTH.md) for the protocol and
+problem. Release promotion requires the answer-quality and restart gates below. See [health operations](PLATFORM_HEALTH.md) for the protocol and
 diagnostic boundaries. Private state is the current deployment checkpoint.
 
 The read-only [synthetic quality audit](https://github.com/Idoheled/StackSignal/actions/runs/39169268450)
@@ -34,8 +36,25 @@ still denied its identity in Hebrew and produced a confused Hebrew RDMA/TCP
 explanation. English samples were coherent. The correction therefore adopts
 English-first replies with a maintained Hebrew notice for both Hebrew aliases,
 maintained identity answers, strict structured output and context only when an
-article is explicitly referenced. Actual model deployment verification remains
-the promotion gate.
+article is explicitly referenced. The [first revised runtime check](https://github.com/Idoheled/StackSignal/actions/runs/39170009675)
+verified pairing, service recovery and the signed catalog, but manual sample
+review rejected its answer quality. A JSON grammar string cap could close a
+valid field mid-word; technical samples also overstated scheduling enforcement
+and CPU bypass. This run's automatic semantic flag is **not** release approval.
+The follow-up removes grammar string caps, retains server-side length checks,
+rejects incomplete sentences and strengthens qualified-answer prompts and
+technical fixtures. See [the correction and checks](https://github.com/Idoheled/StackSignal/pull/27).
+
+[Initial source CI](https://github.com/Idoheled/StackSignal/actions/runs/39169721779)
+passed 126 application/bot tests and 42 browser checks across three engines.
+Subsequent code must pass those checks plus another real-model sample review,
+language/identity routing, signed catalog access and pairing-preserving restart.
+These checks send no group test messages. The exact accepted runtime SHA, run ID
+and manual review result belong in the private deployment checkpoint and the
+[release PR](https://github.com/Idoheled/StackSignal/pull/23). Production additionally
+requires the merged main commit's Quality, deployment smoke and Release jobs.
+A valid JSON reply, green maintenance runner or HTTP health alone is not proof
+of a coherent or factually qualified model answer.
 
 Production v0.2.0 passed [main rollout and security smoke checks](https://github.com/Idoheled/StackSignal/actions/runs/39115889435).
 Alerts were enabled at **2026-10-18 09:38:15.509511 UTC (12:38:15 Israel)**. The
