@@ -206,9 +206,9 @@ Administrators edit queries/interests/priorities/thresholds in Coverage and insp
 
 - Applied additive registration-state migration after the full migration-chain
   tests passed. The old opt-in API remains compatible.
-- Marked only the owner, Eilon and Roi as administrator-confirmed registered
-  members at the owner's request, using exact identity guards and an audited
-  transaction. Other members remain unregistered.
+- Updated only the explicitly requested accounts through exact identity guards
+  and an audited private transaction. Account-level membership evidence remains
+  in the private database; public operations notes omit member identities.
 - Added signup-to-login group handoff, explicit self-confirmation, a settings
   switch and an exit-group reminder. No automatic WhatsApp join/removal claim.
 - Production UI/main remain unchanged while the private version is reviewed.
@@ -265,3 +265,12 @@ were removed from the deployed source and health record. Existing free-tier
 quotas, reservations and five-minute spacing were not reset or relaxed. At
 09:20 UTC, 88 source watches were active, collection recorded a fresh discovery
 and 156 retained links had review timestamps within the audited 24-hour window.
+
+At 09:38:15.509511 UTC, after production run `39115889435` passed deployment and
+security smoke checks, the guarded activation transaction enabled WhatsApp
+dispatch with a fresh discovery/first-evaluation cutoff. The 09:39 scheduled
+request returned actual HTTP 200 with no queued, sent, uncertain or retry events.
+Historical article/release replays returned their original signed receipts and
+unsigned requests remained HTTP 401. No historical link was admitted. Resource
+claiming remains disabled. Per-account registration evidence is private; public
+release notes and runbooks contain technical verification only.

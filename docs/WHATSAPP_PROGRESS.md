@@ -4,10 +4,15 @@
 fixed-group delivery and restart persistence passed live tests. The owner
 approved the registration UI and authorized production promotion.**
 
-Automatic alert state is controlled by the private database configuration and
-named dispatch cron. Release operators activate only after verified main
-rollout, using a fresh discovery/evaluation watermark. Never infer activation
-from this document, a green workflow or the historical provisioner status.
+Production v0.2.0 passed [main rollout and security smoke checks](https://github.com/Idoheled/StackSignal/actions/runs/39115889435).
+Alerts were enabled at **2026-10-18 09:38:15.509511 UTC (12:38:15 Israel)**. The
+09:39 scheduled dispatch returned actual HTTP 200 with zero queued/sent/retry/
+uncertain events. Historical receipts stayed unchanged. Both discovery and
+first useful evaluation must follow the cutoff.
+
+Current alert state remains controlled by the private database configuration
+and named dispatch cron. Future release operators must verify live state; a
+historical document or the allocator status is not a health check.
 
 ## Verified delivery — October 18, 2026
 
@@ -33,9 +38,9 @@ discovery and first evaluation after activation. Reevaluations are excluded.
 
 ## Registration and release
 
-Migration `20261018074942` is applied. The owner, Eilon and Roi are confirmed
-Registered per the owner's explicit membership confirmation. Other preferences
-are preserved. Optional signup and settings record Pending, provide the group
+Migration `20261018074942` is applied. The three explicitly requested accounts
+were confirmed privately in the database. Account identities and registration
+records are not part of the public runbook. Other preferences are preserved. Optional signup and settings record Pending, provide the group
 invite and require confirmation; unregistering explains how to leave the actual
 group. See [registration](WHATSAPP_REGISTRATION.md).
 

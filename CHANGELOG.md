@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+- Remove account identities and membership details from public operating notes;
+  retain private database audit records and technical deployment evidence.
+
 ## [0.2.0] - 2026-10-18
 
 ### WhatsApp registration, alerts and Columbus
