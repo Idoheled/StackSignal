@@ -6,6 +6,12 @@ on:
   pull_request:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      operation:
+        description: Manual operation; pairing requires a short-lived encrypted request
+        type: choice
+        default: quality
+        options: [quality, whatsapp_pairing]
 
 permissions:
   contents: read
@@ -18,6 +24,7 @@ env:
 jobs:
   quality:
     name: Quality
+    if: github.event_name != 'workflow_dispatch' || inputs.operation != 'whatsapp_pairing'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     concurrency:
@@ -41,6 +48,7 @@ jobs:
       - run: python3 tests/oci-preflight.test.py
       - run: python3 tests/oci-host.test.py
       - run: python3 tests/oci-runner.test.py
+      - run: python3 tests/whatsapp-pairing-runner.test.py
       - run: pnpm build:standalone
       - run: node scripts/verify-client-boundary.mjs
       - run: pnpm exec playwright install --with-deps chromium firefox webkit
@@ -64,6 +72,11 @@ jobs:
           retention-days: 1
           if-no-files-found: error
           include-hidden-files: true
+
+  whatsapp_pairing:
+    if: github.event_name == 'workflow_dispatch' && inputs.operation == 'whatsapp_pairing' && github.actor == 'Idoheled' && github.ref == 'refs/heads/feat/whatsapp-notifications' && github.repository == 'Idoheled/StackSignal'
+    uses: ./.github/workflows/whatsapp-pairing.yml
+    secrets: inherit
 
   deploy:
     name: Production

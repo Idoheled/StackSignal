@@ -1,0 +1,31 @@
+name: Manual WhatsApp phone-code handoff
+on:
+  workflow_call:
+permissions:
+  contents: read
+concurrency:
+  group: stacksignal-whatsapp-pairing
+  cancel-in-progress: false
+jobs:
+  pair:
+    if: github.repository == 'Idoheled/StackSignal' && github.ref == 'refs/heads/feat/whatsapp-notifications' && github.actor == 'Idoheled'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install pinned maintenance SDK
+        run: |
+          python3 -m venv "$RUNNER_TEMP/oci-venv"
+          "$RUNNER_TEMP/oci-venv/bin/pip" install --disable-pip-version-check 'oci==2.187.2'
+      - name: Request pairing on the existing host without provisioning
+        run: '"$RUNNER_TEMP/oci-venv/bin/python" scripts/whatsapp-pairing-runner.py'
+        env:
+          OCI_USER: ${{ secrets.OCI_USER }}
+          OCI_TENANCY: ${{ secrets.OCI_TENANCY }}
+          OCI_FINGERPRINT: ${{ secrets.OCI_FINGERPRINT }}
+          OCI_API_PRIVATE_KEY: ${{ secrets.OCI_API_PRIVATE_KEY }}
+          SSH_ADMIN_PRIVATE_KEY: ${{ secrets.SSH_ADMIN_PRIVATE_KEY }}
+          OCI_CRON_CONTROL_SECRET: ${{ secrets.OCI_CRON_CONTROL_SECRET }}
+          WHATSAPP_PAIRING_REQUEST: ${{ secrets.WHATSAPP_PAIRING_REQUEST }}

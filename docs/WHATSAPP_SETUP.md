@@ -176,6 +176,21 @@ health are exposed. OpenClaw admin and Ollama ports stay on loopback.
 
 For pairing, the implementer runs this in the secure SSH terminal:
 
+An alternative phone-only handoff is implemented in `pair-phone.mjs` and the
+manual `whatsapp_pairing` maintenance operation. It is owner-only, requires an
+exact-SHA short-lived encrypted Actions request, and never schedules provisioning
+or creates a VM. The operator requests a code using the installed pinned Baileys
+library after its QR-ready event; the owner enters it under **Linked devices →
+Link a device → Link with phone number instead**. This is a device-linking code,
+not an SMS registration code. The phone and encryption key arrive on private
+stdin; only an authenticated encrypted code envelope can enter Actions logs.
+Credentials stay in the existing private default account directory. The
+gateway is paused during linking and restarted on completion/timeout; incoming
+conversations and alert delivery stay disabled. The temporary runner /32 SSH
+rule is removed immediately after retrieving the encrypted code. Delete the
+short-lived Actions request after the operation. Registered accounts are never
+overwritten. The SSH/QR path remains available:
+
 ```sh
 sudo -u stacksignal -H /bin/sh -c 'cd /var/lib/stacksignal-bot && exec env \
   PATH=/opt/node/bin:/usr/local/bin:/usr/bin:/bin \
