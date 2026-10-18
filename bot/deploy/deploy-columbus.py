@@ -73,6 +73,15 @@ try:
   if prior is not None:
    path=backup/name;path.parent.mkdir(parents=True,exist_ok=True);path.write_bytes(prior)
   dest.parent.mkdir(parents=True,exist_ok=True);shutil.copyfile(source/name,dest);dest.chmod(0o644)
+ # Keep adapter imports inside the managed plugin's source-capture boundary.
+ # They are reviewed source, not an external loader exception or extra agent.
+ for name in ('bot/columbus-policy.mjs','bot/columbus-runtime.mjs','supabase/functions/_shared/whatsapp-protocol.ts'):
+  dest=plugin_root/'stacksignal'/name;prior=dest.read_bytes() if dest.exists() else None;saved.append((dest,prior))
+  dest.parent.mkdir(parents=True,exist_ok=True)
+  for parent in [dest.parent,*dest.parents]:
+   if parent==plugin_root:break
+   os.chown(parent,user.pw_uid,user.pw_gid);parent.chmod(0o755)
+  shutil.copyfile(source/name,dest);os.chown(dest,user.pw_uid,user.pw_gid);dest.chmod(0o644)
  lines=[line for line in env_text.splitlines() if not line.startswith(('COLUMBUS_ENABLED=','COLUMBUS_ACTIVATED_AT='))]
  stamp=datetime.datetime.now(datetime.timezone.utc).isoformat()
  lines.extend(['COLUMBUS_ENABLED=true','COLUMBUS_ACTIVATED_AT='+stamp])

@@ -6,7 +6,7 @@ import os
 from pathlib import Path
 
 ORIGINAL_SHA256='c54b159b54b59812995e90a02bcd38f543fe54a82ccc0dcd43c988bc2eeb6c93'
-IMPORT="import { installColumbusBoundary } from '/opt/stacksignal/bot/columbus-runtime.mjs';\n"
+IMPORT="import { installColumbusBoundary } from '../../stacksignal/bot/columbus-runtime.mjs';\n"
 
 def patched_source(original):
     if hashlib.sha256(original.encode()).hexdigest()!=ORIGINAL_SHA256:
