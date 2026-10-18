@@ -100,10 +100,16 @@ try:
  if health!={'ok':True,'delivery_enabled':True}:raise RuntimeError('Receiver unhealthy')
  log=command(['journalctl','-u','stacksignal-openclaw','--since',stamp,'--no-pager','-o','cat']).decode(errors='replace')
  if 'columbus_group_boundary_ready' not in log:raise RuntimeError('Group boundary did not initialize')
- report['stage']='automatic_question_tests'
- smoke=json.loads(command(run_as+['/opt/node/bin/node',str(source/'bot/deploy/columbus-smoke.mjs')],json.dumps(request).encode(),timeout=500))
- if smoke.get('status')!='sent' or len(smoke.get('questions',[]))!=2:raise RuntimeError('Question test did not complete')
- report['questions']=smoke['questions']
+ if request.get('verification_mode')=='answer_only':
+  report['stage']='final_answer_tests'
+  smoke=json.loads(command(run_as+['/opt/node/bin/node',str(source/'bot/deploy/columbus-answer-smoke.mjs')],timeout=400))
+  if smoke!={'status':'ready','languages':['en','he'],'final_answer_only':True,'group_messages_sent':0}:raise RuntimeError('Final answer verification failed')
+  report['answer_verification']=smoke
+ else:
+  report['stage']='automatic_question_tests'
+  smoke=json.loads(command(run_as+['/opt/node/bin/node',str(source/'bot/deploy/columbus-smoke.mjs')],json.dumps(request).encode(),timeout=500))
+  if smoke.get('status')!='sent' or len(smoke.get('questions',[]))!=2:raise RuntimeError('Question test did not complete')
+  report['questions']=smoke['questions']
  report['stage']='restart_verification';command(['systemctl','restart','stacksignal-openclaw','stacksignal-bot']);connected()
  report.update(status='ready',stage='complete',group_only=True,personal_chats=False,history=False,tools=False,paired_preserved=True,receiver=health,
    runtime_sha=request['sha'],boundary_sha256=hashlib.sha256(plugin_path.read_bytes()).hexdigest(),services={name:subprocess.run(['systemctl','is-active','--quiet',name]).returncode==0 for name in ('stacksignal-bot','stacksignal-openclaw','ollama','caddy')})

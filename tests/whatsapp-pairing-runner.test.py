@@ -10,7 +10,8 @@ class PairingGuards(unittest.TestCase):
         now=1800000000000;sha="a"*40
         request=dict(sha=sha,phone="15555550123",key="ab"*32,session="00000000-0000-4000-8000-000000000001",expires_at=now+600000)
         runner.validate_request(request,sha,now)
-        for change in ({"sha":"b"*40},{"expires_at":now},{"phone":"+15555550123"},{"session":"invalid"},{"key":"short"},{"operation":"provision"}):
+        runner.validate_request({**request,"operation":"columbus_deploy","verification_mode":"answer_only"},sha,now)
+        for change in ({"sha":"b"*40},{"expires_at":now},{"phone":"+15555550123"},{"session":"invalid"},{"key":"short"},{"operation":"provision"},{"verification_mode":"skip_checks"}):
             with self.assertRaises(RuntimeError):runner.validate_request({**request,**change},sha,now)
         state=dict(status="AWAITING_WHATSAPP_QR",cron_enabled=False,lease_id=None,instance_ocid="one",manifest={"instance":"one"})
         runner.validate_host(state)
