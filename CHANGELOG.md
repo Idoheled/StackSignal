@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## [0.3.2] - 2026-10-18
+
+- Preserve the pinned WhatsApp ignored-packet acknowledgement protocol at the
+  pre-decryption boundary; acknowledge metadata only and count rejected frames
+  without reading personal ciphertext or sending private chat replies.
+
 - Answer exact capabilities questions deterministically in Hebrew and English,
   and recognize name prefixes preceded by mobile RTL direction marks.
 - Record bounded receive-stage counters so incoming group frames, local send

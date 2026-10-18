@@ -46,6 +46,7 @@ export function questionFrom(envelope, type, target, { now = Date.now(), activat
 }
 export function restrictSocket(sock, target, observe = () => {}) {
   requireGroup(target);
+  if(typeof sock.sendMessageAck!=='function')throw new Error('Pinned WhatsApp acknowledgement API unavailable');
   const original = sock.ws.listeners('CB:message');
   if (!original.length) throw new Error('Pinned WhatsApp message boundary unavailable');
   sock.ws.removeAllListeners('CB:message');
@@ -53,7 +54,15 @@ export function restrictSocket(sock, target, observe = () => {}) {
     const me=sock.user||sock.authState?.creds?.me;
     const identities=[me?.id,me?.lid];
     if (!allowedFrame(node, target,identities)) {
+      observe('frame_blocked');
+      if(node?.attrs?.recipient===target)observe('unrecognized_group_sender');
       if(identities.some(jid=>accountJid(jid)&&accountJid(jid)===accountJid(node?.attrs?.from)))observe(node?.attrs?.recipient?'self_other_recipient':'self_unrouted');
+      // Match the pinned vendor's ignored-message NACK without passing the
+      // ciphertext or original node to any parser, logger or receive handler.
+      const attrs={};
+      for(const key of ['id','from','participant','recipient','type'])if(typeof node?.attrs?.[key]==='string'&&node.attrs[key].length<=256)attrs[key]=node.attrs[key];
+      if(attrs.id&&attrs.from)void Promise.resolve().then(()=>sock.sendMessageAck({tag:'message',attrs},500))
+        .then(()=>observe('blocked_ack_sent')).catch(()=>observe('blocked_ack_failed'));
       return;
     }
     observe(node.attrs.from===target?'frame_group':'frame_self_group');

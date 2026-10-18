@@ -10,7 +10,7 @@ import {DeliveryStore} from '../bot/store.mjs';
 import {runtimeStatus} from '../bot/operations.mjs';
 const target='123456789012345678@g.us',now=Date.now(),activatedAt=now-60000;
 const message=(text,change={})=>({key:{remoteJid:target,id:'SYNTHETIC12345',participant:'55555@s.whatsapp.net'},messageTimestamp:Math.floor(now/1000),message:{conversation:text},...change});
-function socket(){const calls=[];const ws=new EventEmitter(),ev=new EventEmitter();ws.on('CB:message',node=>calls.push(node));return{ws,ev,calls,sendMessage:async(jid,body)=>{calls.push({jid,body});return{key:{id:'PROVIDER12345'}};},relayMessage:async jid=>calls.push(jid),groupMetadata:async jid=>({id:jid}),groupFetchAllParticipating:async()=>{throw Error('cross-group fetch');},fetchMessageHistory:async()=>{throw Error('history fetch');}};}
+function socket(){const calls=[],acks=[];const ws=new EventEmitter(),ev=new EventEmitter();ws.on('CB:message',node=>calls.push(node));return{ws,ev,calls,acks,sendMessageAck:async(node,code)=>acks.push({node,code}),sendMessage:async(jid,body)=>{calls.push({jid,body});return{key:{id:'PROVIDER12345'}};},relayMessage:async jid=>calls.push(jid),groupMetadata:async jid=>({id:jid}),groupFetchAllParticipating:async()=>{throw Error('cross-group fetch');},fetchMessageHistory:async()=>{throw Error('history fetch');}};}
 test('English and Hebrew prefix requests are exact, fresh, text-only and group-bound',()=>{
  for(const text of ['Columbus explain KAI','columbus: explain KAI','קולומבוס תסביר על KAI'])assert(questionFrom(message(text),'notify',target,{now,activatedAt}));
  for(const mark of ['\u200f','\u200e','\u2067'])assert(questionFrom(message(mark+'קולומבוס מה אתה יכול לעשות?'),'notify',target,{now,activatedAt}));
@@ -63,6 +63,20 @@ test('request ledger deduplicates across restart, limits abuse and stores no que
   assert.equal(ledger.db.prepare('select status from questions where id=?').get('one').status,'uncertain');
   assert(!JSON.stringify(ledger.db.prepare('select * from questions').all()).includes(item.question));
  }finally{ledger.close();rmSync(root,{recursive:true,force:true});}
+});
+test('blocked packets are acknowledged without reading ciphertext, so filtering preserves the receive protocol',async()=>{
+ const sock=socket(),codes=[];restrictSocket(sock,target,code=>codes.push(code));
+ const attrs={id:'BLOCKED12345',from:'55555@s.whatsapp.net',recipient:'66666@s.whatsapp.net',type:'text'};
+ sock.ws.emit('CB:message',{tag:'message',attrs,get content(){throw Error('Private ciphertext read');},get message(){throw Error('Private body read');}});
+ await new Promise(setImmediate);
+ assert.equal(sock.calls.length,0);assert.equal(sock.acks.length,1);
+ assert.deepEqual(sock.acks[0],{node:{tag:'message',attrs},code:500});
+ assert(codes.includes('frame_blocked'));assert(codes.includes('blocked_ack_sent'));
+ const frame={attrs:{from:target},content:[]};sock.ws.emit('CB:message',frame);assert.equal(sock.calls[0],frame);
+ sock.sendMessageAck=async()=>{throw Error('Transport unavailable');};
+ sock.ws.emit('CB:message',{attrs,get content(){throw Error('Private ciphertext read');}});await new Promise(setImmediate);
+ assert(codes.includes('blocked_ack_failed'));assert.equal(sock.calls.length,1);
+ const missing=socket();delete missing.sendMessageAck;assert.throws(()=>restrictSocket(missing,target),/acknowledgement API/);
 });
 test('answers use only local Ollama and bounded text, without tools or configurable destinations',async()=>{
  let request;
