@@ -119,6 +119,25 @@ test("WhatsApp opt-in isolation, reviewed events, leases and delivery receipts",
       assert.equal((await db.query("select count(*)::int n from ss_private.whatsapp_outbox where article_id=$1",[row.id])).rows[0].n,0);
     });
 
+    await t.test("collector null and missing evaluations admit exactly one first-review alert",async()=>{
+      for (const [name, pending] of [["missing",{}],["json-null",{evaluation:null}]]) {
+        const id=await insert(`https://kubernetes.io/first-review-${name}`,pending);
+        const count=async()=> (await db.query("select count(*)::int n from ss_private.whatsapp_outbox where article_id=$1",[id])).rows[0].n;
+        await db.query("update ss_articles set reference_meta=reference_meta||'{\"checked\":true}' where id=$1",[id]);
+        assert.equal(await count(),0,"pending metadata changes never alert");
+        await db.query("update ss_articles set reference_meta=reference_meta||$2 where id=$1",[id,JSON.stringify(meta())]);
+        assert.equal(await count(),1,`${name} must not be mistaken for a completed review`);
+        const event=(await db.query("select payload from ss_private.whatsapp_outbox where article_id=$1",[id])).rows[0];
+        assert.equal(event.payload.title,"Notification regression");
+        await db.query("update ss_articles set reference_meta=reference_meta||'{\"refreshed\":true}' where id=$1",[id]);
+        assert.equal(await count(),1,"metadata refreshes preserve the single event");
+        await db.query("delete from ss_private.whatsapp_outbox where article_id=$1",[id]);
+        await db.query("update ss_articles set reference_meta=reference_meta||$2 where id=$1",[id,JSON.stringify(meta())]);
+        assert.equal(await count(),0,"an existing completed evaluation cannot be replayed even without an outbox row");
+        await db.query("delete from ss_articles where id=$1",[id]);
+      }
+    });
+
     await t.test("deep links require login and return no private notes",async()=>{
       await db.query("insert into ss_notes(article_id,user_id,body,visibility) values($1,$2,'Private test secret','private')",[article,owner]);
       await as(reader);

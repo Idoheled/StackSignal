@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-10-18
+
+- Fix first-review WhatsApp alerts for collector records containing JSON
+  `evaluation: null`; preserve the activation cutoff, no-backfill policy and
+  existing-review suppression. Add database regressions for both pending forms.
 - Remove account identities and membership details from public operating notes;
   retain private database audit records and technical deployment evidence.
 

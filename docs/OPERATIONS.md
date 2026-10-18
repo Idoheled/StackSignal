@@ -274,3 +274,25 @@ Historical article/release replays returned their original signed receipts and
 unsigned requests remained HTTP 401. No historical link was admitted. Resource
 claiming remains disabled. Per-account registration evidence is private; public
 release notes and runbooks contain technical verification only.
+
+## 2026-10-18 — First-evaluation notification correction
+
+The 10:45 UTC audit confirmed successful scheduled dispatch HTTP responses and
+fresh discovery, but found a newly reviewed release with no outbox event. The
+collector initializes new inputs with JSON `evaluation: null`; the first-review
+guard used JSON extraction, whose null value is distinct from SQL NULL. The
+trigger therefore skipped the normal collector-to-evaluation transition.
+
+Additive migration `20261018104839_whatsapp_null_first_evaluation` was applied
+at 10:48 UTC. Text extraction now treats missing and JSON-null evaluations as
+pending while preserving suppression of every existing non-null evaluation.
+The failing collector-shaped database regression passes with the correction;
+all 110 Node tests and the live application security smoke passed. Hosted
+function inspection confirms the corrected guard. The original activation
+timestamp and two historical confirmed receipts remained unchanged; no existing
+article was replayed, no destination changed and no host restart was needed.
+
+Gemini had completed a real evaluation at 10:16 UTC, then recorded a transport
+timeout at 10:30. Pending inputs and bounded retry/quota state are preserved.
+Such provider failures can delay fresh alerts; an HTTP 200 empty dispatch is
+evidence of an operational dispatcher, not evidence of a new WhatsApp delivery.
