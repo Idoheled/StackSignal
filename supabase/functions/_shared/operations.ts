@@ -5,7 +5,7 @@ export function assessHealth(s:any, bot:any, website:boolean, now=Date.now()): S
  const stale=(x:unknown,ms:number)=>typeof x!=='string'||!Number.isFinite(Date.parse(x))||now-Date.parse(x)>ms;
  const stages:Stage[]=[{key:'database',label:'Database',status:'healthy',detail:'Authenticated database query completed.'}];
  const add=(key:string,label:string,bad:boolean,detail:string,last_success?:string|null,wait=false)=>stages.push({key,label,status:bad?'degraded':wait?'waiting':'healthy',detail,last_success});
- add('discovery','Discovery',Number(s.sources?.overdue)>0,`${Number(s.sources?.active)||0} active watches; ${Number(s.sources?.overdue)||0} overdue checks.`,s.sources?.last_success);
+ add('discovery','Discovery',Number(s.sources?.overdue)>0||Number(s.sources?.errors)>0,`${Number(s.sources?.active)||0} active watches; ${Number(s.sources?.overdue)||0} overdue checks; ${Number(s.sources?.errors)||0} source errors.`,s.sources?.last_success);
  add('collection','Collection',Number(s.jobs?.stuck)>0||Number(s.jobs?.failed)>0,`${Number(s.jobs?.pending)||0} pending; ${Number(s.jobs?.stuck)||0} overdue; ${Number(s.jobs?.failed)||0} unresolved failed jobs.`);
  const e=s.evaluation||{},expected=['budget_wait','pacing_wait','cooldown','batching_wait','reservation_wait'].includes(e.state);
  const evalBad=Number(s.reviews?.overdue)>0||(['configuration_error','missing_key'].includes(e.state)&&s.profile?.gemini_mode!=='off')||(s.profile?.gemini_mode!=='off'&&stale(e.coverage?.checked_at,20*60000));

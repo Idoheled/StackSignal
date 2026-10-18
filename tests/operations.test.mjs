@@ -46,5 +46,10 @@ test('operations RPC authorization, catalog truth, incident deduplication and bo
   await db.exec('reset role');assert.equal((await db.query('select count(*)::int n from ss_private.evaluation_requests')).rows[0].n,before);
   assert.equal((await db.query("select count(*)::int n from ss_private.whatsapp_outbox")).rows[0].n,0,'recovering pending reviews must not broadcast old approved links');
   await db.exec('set role service_role');const snapshot=(await db.query('select ss_ops_snapshot() x')).rows[0].x;assert.equal(snapshot.reviews.pending,2);
+  await db.exec("reset role;update ss_private.whatsapp_configuration set active_from=now()-interval '10 minutes';update ss_private.ops_state set started_at=now()-interval '4 minutes'");
+  await db.query("insert into ss_articles(url,title,discovered_at,reference_meta) values('https://docs.example/delayed-review','Delayed first review',now()-interval '5 minutes',$1)",[JSON.stringify({evaluation:{...review,evaluated_at:new Date(Date.now()-180000).toISOString()}})]);
+  await db.exec("delete from ss_private.whatsapp_outbox where article_id=(select id from ss_articles where url='https://docs.example/delayed-review');set role service_role");
+  assert.equal((await db.query('select ss_ops_snapshot() x')).rows[0].x.notifications.admission_gaps,1,'monitor must cover earlier discoveries first evaluated after monitoring began');
+
  }finally{await db.close();}
 });

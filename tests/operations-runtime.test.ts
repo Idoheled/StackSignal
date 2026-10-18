@@ -8,7 +8,7 @@ test('expected quota waits stay distinct from stuck work and unreachable service
  const now=Date.now(),at=new Date(now).toISOString();
  const s={sources:{active:88,overdue:0},jobs:{pending:2,failed:0,stuck:0},reviews:{pending:30,overdue:0},evaluation:{state:'budget_wait',coverage:{checked_at:at},internal_review:{last_run:at}},profile:{gemini_mode:'rerank',repo_discovery:true,trending_discovery:true},discovery:{repository_last_success:at,trending_daily_success:at},notifications:{enabled:true,sent:2,pending:0,uncertain:0,stuck:0,admission_gaps:0}};
  const stages=assessHealth(s,{connected:true,heartbeat_at:now,ollama_ok:true,questions:{}},true,now);assert(stages.every(x=>['healthy','waiting'].includes(x.status)));assert.equal(stages.find(x=>x.key==='evaluation')?.status,'waiting');
- const broken=assessHealth({...s,jobs:{stuck:1},reviews:{overdue:1}},null,false,now);for(const key of['collection','evaluation','website','whatsapp','ollama'])assert(['down','degraded'].includes(broken.find(x=>x.key===key)!.status));
+ const broken=assessHealth({...s,sources:{active:88,errors:1},jobs:{stuck:1},reviews:{overdue:1}},null,false,now);for(const key of['discovery','collection','evaluation','website','whatsapp','ollama'])assert(['down','degraded'].includes(broken.find(x=>x.key===key)!.status));
 });
 test('signed health and incident paths reject cross-purpose requests and never enter article context',async()=>{
  const store=new DeliveryStore(':memory:');try{
