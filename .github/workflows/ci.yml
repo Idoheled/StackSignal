@@ -50,6 +50,7 @@ jobs:
       - run: python3 tests/oci-runner.test.py
       - run: python3 tests/whatsapp-pairing-runner.test.py
       - run: python3 tests/whatsapp-delivery-config.test.py
+      - run: python3 tests/columbus-deploy.test.py
       - run: pnpm build:standalone
       - run: node scripts/verify-client-boundary.mjs
       - run: pnpm exec playwright install --with-deps chromium firefox webkit
