@@ -6,8 +6,8 @@ Nothing here runs automatically. The workflow template is deliberately outside
 resource-claim cron. The retained private dispatch helper returns without HTTP
 when the control flag is false or the host is QR-ready.
 
-The current host is ready for phone pairing. **Do not restore provisioning for
-the QR handoff.** Use [WhatsApp setup](../../docs/WHATSAPP_SETUP.md) and the
+The current host is paired and its group announcement is confirmed. **Do not restore provisioning for
+normal operation.** Use [WhatsApp setup](../../docs/WHATSAPP_SETUP.md) and the
 [current checkpoint](../../docs/WHATSAPP_PROGRESS.md).
 
 ## Preserved implementation

@@ -1,14 +1,14 @@
 # WhatsApp notification host onboarding
 
-Status: the Oracle host, local Ollama/OpenClaw runtime and HTTPS receiver are
-installed and verified. State is `AWAITING_WHATSAPP_QR`; capacity provisioning
-is retired. Pairing and real group delivery remain pending. Invitation/settings
-UI and dispatcher rollout remain on the feature branch; delivery stays disabled.
-See the [current checkpoint](WHATSAPP_PROGRESS.md) and
-[owner handoff instructions](https://github.com/Idoheled/StackSignal/pull/4#issuecomment-6240842512).
-For tomorrow's handoff, go directly to the pairing command below; do not repeat
-VM creation or bootstrap. The following preflight sections describe independent
-installations and recovery only.
+Status: the host, local Ollama/OpenClaw runtime and HTTPS receiver are verified.
+Phone pairing, invite-based StackSignal group identity and a real announcement
+through OpenClaw are confirmed. Resource provisioning is retired. Automatic
+article/release delivery and opt-in UI rollout remain pending, with dispatch
+disabled. See the [current checkpoint](WHATSAPP_PROGRESS.md).
+
+No further owner pairing steps are required. The commands below are for
+independent installations or explicit future recovery. Do not repeat VM setup,
+bootstrap or linking on the working host.
 
 ## Decisions
 

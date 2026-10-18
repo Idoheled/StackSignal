@@ -1,6 +1,6 @@
 # Oracle provisioning — retired from automatic operation
 
-The VM completed bootstrap on October 17, 2026 and awaits WhatsApp QR pairing.
+The VM completed bootstrap on October 17, 2026 and is now paired, with a verified group announcement.
 There is **no resource-claim schedule**, no OCI job/input in normal CI.
 The retained private dispatch helper returns without sending HTTP in the disabled
 QR-ready state. The preserved template is outside

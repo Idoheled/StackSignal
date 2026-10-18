@@ -1,5 +1,14 @@
 # StackSignal operations checkpoint — October 11, 2026
 
+## WhatsApp pairing and announcement — October 18, 2026
+
+Phone-code linking succeeded. At 07:26 UTC the verified StackSignal group
+received a guarded announcement through the actual OpenClaw transport with a
+confirmed provider ID. The private manifest records pairing/destination/receipt
+proof. Temporary maintenance ingress and the Actions request secret are removed.
+No further owner pairing steps are required. Automatic content dispatch remains
+paused pending article/release pipeline tests and rollout. Main is unchanged.
+
 ## WhatsApp host preparation — October 14, 2026
 
 Latest checkpoint (October 17, 20:50 UTC): the allocated Jerusalem ARM host,
