@@ -261,6 +261,14 @@ function Hub({
     [light, setLight] = useState(false);
   const detailOpener = useRef<HTMLElement | null>(null);
   const [whatsappOpen, setWhatsappOpen] = useState(false);
+  useEffect(() => {
+    if (preview) return;
+    let cancelled = false;
+    act("whatsapp_preferences").then(value => {
+      if (!cancelled && value.registration === "pending") setWhatsappOpen(true);
+    }).catch(() => {}); // Settings keeps an explicit retry path on temporary failures.
+    return () => { cancelled = true; };
+  }, [preview, member.id]);
   const canWrite = member.role !== "reader";
   const notify = (s: string) => setToast(s);
   const reload = () => setRefresh((x) => x + 1);

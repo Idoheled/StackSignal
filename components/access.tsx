@@ -111,7 +111,7 @@ export function Access({
         setNotice(
           mode === "register"
             ? "Account created. Sign in with your new username and password." +
-              (whatsappOptIn ? " Open WhatsApp alerts in your settings to join the group." : "")
+              (whatsappOptIn ? " After signing in, your WhatsApp group invitation will appear." : "")
             : "Password updated. You can sign in now.",
         );
         setMode("login");
@@ -216,7 +216,8 @@ export function Access({
                 <input type="checkbox" checked={whatsappOptIn} onChange={e => setWhatsappOptIn(e.target.checked)} />
                 <span>Notify me about top-tier drops via WhatsApp.</span>
               </label>
-              {whatsappOptIn && <p className="whatsapp-signup-help">After signing in, open WhatsApp alerts to join the private group. Members may see your name and phone number. Leave the group to stop its messages.</p>}
+              <p className="whatsapp-signup-help">Optional. You can always register later in WhatsApp alerts.</p>
+              {whatsappOptIn && <p className="whatsapp-signup-help">After signing in, we’ll show a button to join the private group. Members may see your name and phone number. Leave the group to stop its messages.</p>}
             </>}
             {status.configured && status.site_key && (
               <Captcha

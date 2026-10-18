@@ -58,6 +58,28 @@ test("WhatsApp opt-in isolation, reviewed events, leases and delivery receipts",
       await db.query("update ss_sessions set revoked=false where user_id=$1",[reader]);
     });
 
+    await t.test("registration requires an explicit join declaration and preserves confirmation on repeated opt-in", async () => {
+      await as(other);
+      await assert.rejects(db.query("select ss_whatsapp_confirm_joined()"),/Choose WhatsApp/);
+      assert.equal((await preferences(true)).registration,"pending");
+      const confirmed=(await db.query("select ss_whatsapp_confirm_joined() result")).rows[0].result;
+      assert.equal(confirmed.registration,"registered");
+      assert.equal(confirmed.registration_source,"user_confirmed");
+      assert(confirmed.registered_at);
+      assert.equal((await preferences(true)).registered_at,confirmed.registered_at);
+      assert.equal((await db.query("select ss_whatsapp_confirm_joined() result")).rows[0].result.registered_at,confirmed.registered_at);
+      await as(reader);
+      assert.equal((await preferences(null)).registration,"pending");
+      await assert.rejects(db.query("update ss_members set whatsapp_registration='registered'"),/permission denied/);
+      await as(other);
+      const off=await preferences(false);
+      assert.equal(off.registration,"unregistered");assert.equal(off.registered_at,null);assert.equal(off.invite_url,null);
+      assert.equal((await preferences(true)).registration,"pending");
+      await db.exec("reset role;set role anon");
+      await assert.rejects(db.query("select ss_whatsapp_confirm_joined()"),/permission denied/);
+      await db.exec("reset role");
+    });
+
     await t.test("invitation opt-in is atomic and old invitation callers still work", async () => {
       await as(owner);
       const invitation=(await db.query("select ss_api('invite','{\"role\":\"reader\"}') result")).rows[0].result;
@@ -68,6 +90,7 @@ test("WhatsApp opt-in isolation, reviewed events, leases and delivery receipts",
       await db.query("insert into auth.users values($1)",[user]);
       await db.query("select ss_finish_invite_whatsapp($1,$2,$3,'whatsapp_new','WhatsApp new')",[invited.id,claim,user]);
       assert.equal((await db.query("select whatsapp_opt_in from ss_members where id=$1",[user])).rows[0].whatsapp_opt_in,true);
+      assert.equal((await db.query("select whatsapp_registration from ss_members where id=$1",[user])).rows[0].whatsapp_registration,"pending");
       await as(reader);
       await assert.rejects(db.query("select ss_finish_invite_whatsapp($1,$2,$3,'forged','Forged')",[invited.id,claim,user]),/permission denied/);
       await db.exec("reset role");

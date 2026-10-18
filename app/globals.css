@@ -243,6 +243,11 @@ a:focus-visible {
 .whatsapp-join:focus-visible { outline: 2px solid #fff; outline-offset: 4px; }
 .whatsapp-loading, .whatsapp-saved { display: flex; align-items: center; gap: 8px; font-size: 12px; }
 .whatsapp-saved { color: #83ceaa; }
+.whatsapp-registration { display: grid; gap: 8px; padding: 16px 0; }
+.whatsapp-registration strong { display: flex; align-items: center; gap: 6px; font-size: 20px; }
+.whatsapp-registration[data-state="registered"] strong { color: #83ceaa; }
+.whatsapp-registration small { color: var(--muted-foreground); font-size: 12px; }
+.whatsapp-confirm { width: 100%; margin-top: 12px; }
 .whatsapp-invite .whatsapp-pending { font-size: 12px; margin: 14px 0 0; }
 .light .whatsapp-invite { background: #ebf8f0; }
 .light .whatsapp-invite h3 { color: #123825; }

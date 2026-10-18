@@ -565,10 +565,13 @@ export function createService(c: Config, network: typeof fetch = fetch) {
         "recovery",
         "whatsapp_preferences",
         "whatsapp_preferences_save",
+        "whatsapp_confirm_joined",
         "article",
       ];
       if (!allowed.includes(action))
         throw new HttpError(400, "Unknown action.");
+      if (action === "whatsapp_confirm_joined")
+        return respond(await rpc("ss_whatsapp_confirm_joined", {}, s.access_token));
       if (action === "whatsapp_preferences" || action === "whatsapp_preferences_save") {
         if (action === "whatsapp_preferences_save" && typeof payload.opt_in !== "boolean")
           throw new HttpError(400, "Choose whether to receive WhatsApp alerts.");
