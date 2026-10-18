@@ -58,6 +58,14 @@ outbox, passing CI and verified production rollout. Use
 
 ## Daily discovery and review
 
+The 10:45 UTC follow-up found a first-review notification defect: the collector
+stores JSON `evaluation: null`, which the trigger's JSON extraction incorrectly
+treated as an existing review. The additive `whatsapp_null_first_evaluation`
+migration uses text extraction to recognize both missing and JSON-null pending
+evaluations. Database regressions cover first delivery, metadata refreshes and
+existing-review suppression even without an outbox row. It performs no backfill
+or reevaluation and preserves the original activation cutoff and paired host.
+
 At 09:20 UTC, 88 watches were active, collection had just stored a fresh link,
 37 retained links were newly discovered over the preceding 24 hours and 156 had
 recent review timestamps. Collector/evaluator/internal-review jobs run every
