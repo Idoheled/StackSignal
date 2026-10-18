@@ -1,7 +1,8 @@
 # WhatsApp rollout checkpoint
 
 **Paired, fixed group configured, and real article/release delivery verified.
-Production dispatch remains paused pending owner approval of the private UI.
+The owner approved the private UI and authorized production promotion.
+Production dispatch remains paused until Columbus passes live verification.
 Resource provisioning is retired. No further phone pairing is needed.**
 
 ## Verified delivery — October 18, 2026
@@ -48,8 +49,8 @@ branch. Superseded dependency PRs #1–#3 were closed and their temporary branch
 removed; their diffs and history remain on GitHub. They contained only package
 and lockfile proposals. Feature PR #4 targets `dev`; only main can deploy the
 public app. [Branch conventions](BRANCHING.md) explain the integration/release
-path. The private preview is owner-only; main/public UI remain unchanged until
-explicit owner approval.
+path. The approved private preview remains owner-only; production promotion
+follows the new Columbus verification gate.
 
 ## Existing host and retired provisioning
 
@@ -70,8 +71,31 @@ provisioning mode. The [dormant toolkit](../ops/oci/README.md) and
 Never rerun installation, reset the manifest or relink the working account.
 
 Collector, evaluator and internal-review schedules remain active and unchanged.
-The only pending operational gate is the production notification release:
-approve the private version, promote the reviewed release to main, run the
+The pending operational gate is the production notification release:
+verify Columbus, promote the reviewed release to main, run the
 guarded activation transaction with a fresh watermark and verify the first
 newly admitted production event. [Operations](WHATSAPP_SETUP.md) documents
 activation, pausing and recovery.
+
+## Columbus and daily-pipeline repair — October 18
+
+The new-content trigger is applied as migration `20261018084521`. It admits only
+new discoveries on their first useful review after activation, excluding old
+pending links and reevaluations. Local tests include exact-group filtering
+before message handling, fixed outbound targets, English/Hebrew prefixes,
+no-tools Ollama prompts, trusted article context and restart deduplication.
+
+The first Columbus maintenance attempts failed to reconnect and rolled back;
+their green workflow status means an encrypted report was produced, not a
+successful rollout. Private startup diagnostics identified unreadable plugin
+source after a root-owned replacement. The installer now preserves service
+ownership and keeps adapter imports inside the managed package capture boundary.
+Live retesting is required before activation; paired credentials are retained.
+
+The scheduled internal reviewer was blocked by evidence slicing through a
+UTF-16 surrogate pair. Unicode-safe contiguous slicing restored actual HTTP
+success and processed 563 pending links, including 154 useful approvals. These
+historical approvals were not broadcast. Discovery recorded 37 new links over
+the preceding 24 hours. Gemini is reachable but currently returns configuration
+errors; its request repair is being verified under existing quota/pacing caps.
+Do not infer provider success from a successful scheduler invocation.

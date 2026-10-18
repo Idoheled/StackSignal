@@ -233,3 +233,26 @@ or review history. Cron stayed paused; a temporary future admission watermark
 blocked ordinary new admissions during the manual test. Global enablement was
 then restored to false and the watermark to its prior null value. Receipt IDs
 remain in the protected database and host ledger.
+
+## 2026-10-18 — Columbus rollout and scheduled-review repair
+
+Owner approval of the private registration UI authorizes promotion through dev
+to main. The additive first-review/new-discovery admission migration is applied
+as `20261018084521`; activation still uses a fresh timestamp rather than a backlog
+replay. The guarded activation transaction additionally requires recorded live
+Columbus verification. Resource claiming stays disabled and has no cron job.
+
+Scheduled discovery remained active (37 discoveries over the audited 24-hour
+window). Internal-review HTTP calls were failing despite successful cron SQL
+submission. A contiguous-evidence slice split a Unicode surrogate pair, causing
+PostgreSQL JSONB to reject the whole review batch. Unicode-safe slicing restored
+success and processed 563 pending inputs, with 154 useful approvals. Historical
+items were not broadcast because notification admission stayed paused.
+
+Columbus uses the existing paired socket and local qwen3:4b, with a hash-pinned
+pre-decryption group filter, fixed outbound destinations, no generic agents or
+tools, and durable question IDs. Initial live installs rolled back on reconnect
+failure. Encrypted startup reports exposed service-file ownership and plugin
+source-capture constraints, which the reproducible installer now preserves.
+Final rollout evidence belongs in the current WhatsApp checkpoint; a successful
+maintenance workflow alone is not evidence of a successful runtime update.

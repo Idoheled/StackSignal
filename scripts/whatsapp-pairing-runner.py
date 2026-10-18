@@ -94,7 +94,8 @@ def main():
                 result=json.loads(raw)
                 if result.get("session")!=request["session"] or result.get("status")!="private_result":raise RuntimeError("Invalid private deployment result")
                 print("MAINTENANCE_ENCRYPTED:"+json.dumps({k:result[k] for k in ("status","session","nonce","encrypted","tag")},separators=(",",":")),flush=True)
-                print(json.dumps({"status":"columbus_report_ready","provisioning_enabled":False}),flush=True)
+                if result.get('operation_ok') is not True:raise RuntimeError('Columbus verification incomplete; inspect the encrypted report')
+                print(json.dumps({"status":"columbus_verified","provisioning_enabled":False}),flush=True)
                 return
             if request.get("operation") in ("activation_test","delivery_readiness"):
                 STAGE="verify_group_and_test"

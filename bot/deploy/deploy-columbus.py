@@ -29,7 +29,8 @@ def command(args,data=None,timeout=120):
 def publish():
  script="import {readFileSync} from 'node:fs';import {encryptPrivateResult} from '/opt/stacksignal-pairing/bot/deploy/pair-phone.mjs';const x=JSON.parse(readFileSync(0,'utf8'));console.log(JSON.stringify(encryptPrivateResult(x.result,x.request)));"
  raw=command(['/opt/node/bin/node','--input-type=module','-e',script],json.dumps({'request':request,'result':report}).encode())
- print(raw.decode().strip())
+ envelope=json.loads(raw);envelope['operation_ok']=report.get('status')=='ready'
+ print(json.dumps(envelope))
 
 def connected():
  for attempt in range(15):

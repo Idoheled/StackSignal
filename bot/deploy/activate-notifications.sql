@@ -8,8 +8,9 @@ begin
   if not exists(select 1 from public.oci_provisioner_state
     where deployment_id='stacksignal-whatsapp-bot-il-jerusalem-1'
       and cron_enabled=false and lease_id is null
-      and manifest->'whatsapp'->>'delivery_verified'='true') then
-    raise exception 'Verified existing-host delivery checkpoint required';
+      and manifest->'whatsapp'->>'delivery_verified'='true'
+      and manifest->'whatsapp'->>'columbus_verified'='true') then
+    raise exception 'Verified existing-host delivery and Columbus boundary required';
   end if;
   if not exists(select 1 from ss_private.whatsapp_configuration
     where singleton and not enabled and invite_url is not null) then
