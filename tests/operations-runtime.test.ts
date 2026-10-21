@@ -36,3 +36,11 @@ test('the independent watchdog persists one incident and a recovery, without cal
   await watchdog(store,{secret,origin,now:now+400002,getContext:async()=>({monitor_checked_at:new Date(now+400002).toISOString()})});assert.equal(store.db.prepare('select count(*) n from deliveries').get().n,2);
  }finally{store.close();}
 });
+
+test('scheduler checks completed work, allowing only a bounded rollout warmup',()=>{
+ const now=Date.now(),at=new Date(now).toISOString(),old=new Date(now-25*60000).toISOString();
+ const snapshot={diagnostics_started_at:old,runs:[{stage:'collection',last_success:at},{stage:'evaluation',last_success:old},{stage:'internal_review',last_success:at}]};
+ assert.equal(assessHealth(snapshot,null,true,now).find(s=>s.key==='scheduler')?.status,'degraded');
+ assert.equal(assessHealth({...snapshot,diagnostics_started_at:at},null,true,now).find(s=>s.key==='scheduler')?.status,'waiting');
+ assert.equal(assessHealth({...snapshot,runs:['collection','evaluation','internal_review'].map(stage=>({stage,last_success:at}))},null,true,now).find(s=>s.key==='scheduler')?.status,'healthy');
+});

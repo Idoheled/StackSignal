@@ -27,7 +27,7 @@ test('operations RPC authorization, catalog truth, incident deduplication and bo
   await assert.rejects(db.query('select * from ss_private.ops_incidents'),/permission/);
   await db.exec('reset role');await db.query("update ss_private.whatsapp_configuration set enabled=true,active_from=now()");
   const conditions=[{code:'evaluation_degraded',severity:'warning',summary:'Evaluation: one overdue item.'}];
-  const observe=async c=>db.query('select ss_ops_observe($1,$2)',[JSON.stringify({stages:[]}),JSON.stringify(c)]);
+  const observe=async (c,observation={stages:[]})=>db.query('select ss_ops_observe($1,$2)',[JSON.stringify(observation),JSON.stringify(c)]);
   await observe(conditions);assert.equal((await db.query('select count(*)::int n from ss_private.ops_events')).rows[0].n,0);
   await db.exec("update ss_private.ops_incidents set first_seen=now()-interval '6 minutes'");await observe(conditions);await observe(conditions);
   assert.equal((await db.query('select count(*)::int n from ss_private.ops_events')).rows[0].n,1);
@@ -50,6 +50,47 @@ test('operations RPC authorization, catalog truth, incident deduplication and bo
   await db.query("insert into ss_articles(url,title,discovered_at,reference_meta) values('https://docs.example/delayed-review','Delayed first review',now()-interval '5 minutes',$1)",[JSON.stringify({evaluation:{...review,evaluated_at:new Date(Date.now()-180000).toISOString()}})]);
   await db.exec("delete from ss_private.whatsapp_outbox where article_id=(select id from ss_articles where url='https://docs.example/delayed-review');set role service_role");
   assert.equal((await db.query('select ss_ops_snapshot() x')).rows[0].x.notifications.admission_gaps,1,'monitor must cover earlier discoveries first evaluated after monitoring began');
+
+
+  await db.exec('reset role');
+  // Keep the original failing and healthy evidence, even after the delivery body is cleared.
+  const fault=[{code:'collection_degraded',severity:'warning',summary:'Collection: 68 pending; 56 overdue.'}];
+  await observe(fault,{jobs:{pending:68,stuck:56},stages:[{key:'collection',status:'degraded',detail:'56 overdue'}]});
+  await db.exec("update ss_private.ops_incidents set first_seen=now()-interval '6 minutes' where code='collection_degraded' and resolved_at is null");
+  await observe(fault,{jobs:{pending:50,stuck:20},stages:[{key:'collection',status:'degraded',detail:'20 overdue'}]});
+  await observe([],{jobs:{pending:19,stuck:0},stages:[{key:'collection',label:'Collection',status:'healthy',detail:'19 pending; 0 overdue; 0 failed.'}]});
+  const incident=(await db.query("select * from ss_private.ops_incidents where code='collection_degraded' order by first_seen desc limit 1")).rows[0];
+  assert.equal(incident.opening_evidence.jobs.pending,68);assert.equal(incident.latest_evidence.jobs.pending,50);assert.equal(incident.recovery_evidence.jobs.stuck,0);
+  const recovery=(await db.query("select payload from ss_private.ops_events where incident_id=$1 and phase='recovery'",[incident.id])).rows[0].payload;
+  assert.equal(recovery.code,'collection_recovered');assert.match(recovery.summary,/0 overdue/);assert(!recovery.summary.includes('56 overdue'));
+  assert.equal((await db.query('select count(*)::int n from ss_private.ops_metrics')).rows[0].n,1,'samples in the same five-minute bucket are compacted');
+
+  const job=(await db.query("insert into ss_jobs(kind,payload) values('article',$1) returning id",[JSON.stringify({url:'https://kubernetes.io/sensitive-private-query?secret=never-log',text:'NEVER-RETAIN-THIS-PAYLOAD'})])).rows[0].id;
+  await db.query("update ss_jobs set status='running',attempts=1,locked_at=now() where id=$1",[job]);
+  await db.query("update ss_jobs set status='pending',last_error='Source exceeds size limit' where id=$1",[job]);
+  await db.query('delete from ss_jobs where id=$1',[job]);
+  const trace=(await db.query('select * from ss_private.ops_trace_events where job_id=$1 order by id',[job])).rows;
+  assert.deepEqual(trace.map(x=>x.phase),['queued','running','pending','removed']);assert.equal(trace[2].error_code,'source_size_limit');assert(trace[2].duration_ms>=0);
+  assert(!JSON.stringify(trace).includes('NEVER-RETAIN'));assert(!JSON.stringify(trace).includes('https://'));
+  const run=crypto.randomUUID();await db.exec('set role service_role');
+  await db.query("select ss_ops_run_start($1,'collection')",[run]);await db.query("select ss_ops_run_finish($1,'succeeded',32)",[run]);await db.query("select ss_ops_run_finish($1,'failed',0)",[run]);
+  await db.exec('reset role');assert.equal((await db.query('select status,processed from ss_private.ops_runs where id=$1',[run])).rows[0].processed,32,'finished run is immutable through service RPC');
+  await db.exec("insert into ss_jobs(kind,payload) select 'article','{}' from generate_series(1,40);set role service_role");
+  assert.equal((await db.query('select * from ss_claim_jobs(32)')).rows.length,32,'burst capacity is bounded at 32');
+  await db.exec('reset role;delete from ss_jobs');
+  const entity=crypto.randomUUID();await db.query("insert into ss_private.ops_trace_events(stage,entity_id,phase) select 'collection',$1,'running' from generate_series(1,101)",[entity]);
+  await as(owner);
+  const page=(await db.query('select ss_admin_diagnostics(null,$1) x',[entity])).rows[0].x;
+  assert.equal(page.events.length,100);assert(page.next_cursor);
+  const older=(await db.query('select ss_admin_diagnostics(null,$1,null,$2) x',[entity,page.next_cursor])).rows[0].x;
+  assert.equal(older.events.length,1);assert(!page.events.some(e=>e.id===older.events[0].id));
+  await as(reader);await assert.rejects(db.query('select ss_admin_diagnostics()'),/Administrator required/);
+  await assert.rejects(db.query("select ss_ops_run_start($1,'collection')",[crypto.randomUUID()]),/permission denied/);
+  await db.exec('reset role');
+  await db.exec("insert into ss_private.ops_metrics values(now()-interval '31 days',now()-interval '31 days','{}');insert into ss_private.ops_trace_events(stage,entity_id,phase,occurred_at) values('collection',gen_random_uuid(),'removed',now()-interval '15 days');insert into ss_private.ops_runs(id,stage,started_at) values(gen_random_uuid(),'collection',now()-interval '31 days');delete from ss_limits where key like 'budget:ops-retention:%'");
+  await observe([]);assert.equal((await db.query("select count(*)::int n from ss_private.ops_metrics where bucket<now()-interval '30 days'")).rows[0].n,0);
+  assert.equal((await db.query("select count(*)::int n from ss_private.ops_trace_events where occurred_at<now()-interval '14 days'")).rows[0].n,0);
+  assert.equal((await db.query("select count(*)::int n from ss_private.ops_runs where started_at<now()-interval '30 days'")).rows[0].n,0);
 
  }finally{await db.close();}
 });

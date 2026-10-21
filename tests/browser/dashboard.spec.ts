@@ -13,6 +13,7 @@ for(const width of[360,1280])test(`administrator BI is usable and honest at ${wi
    else if(['sources','folders','trash'].includes(action))json=[];
    // PostgreSQL jsonb_object_agg returns null for a genuinely empty job queue.
    else if(action==='admin')json={members:[],invites:[],audit:[],profile:{queries:[],repo_queries:[],priorities:{}},jobs:null,usage:[]};
+   else if(action==='admin_diagnostics')json={events:[{id:1,occurred_at:at,stage:payload.stage||'collection',entity_id:'50000000-0000-4000-8000-000000000001',phase:'failed',attempt:4,error_code:'source_size_limit',duration_ms:1800}],runs:[{id:'60000000-0000-4000-8000-000000000001',stage:'collection',status:'succeeded',started_at:at,duration_ms:2000,processed:32}]};
    else if(action==='admin_dashboard'){
     calls++;json={checked_at:at,window_days:payload.window_days,observation:{observed_at:at,snapshot:{stages:[{key:'database',label:'Database',status:'healthy',detail:'Authenticated check passed.'},{key:'evaluation',label:'Evaluation',status:'waiting',detail:'Quota wait is expected.'}],reviews:{pending:3},sources:{overdue:0},notifications:{sent:8,pending:0},evaluation:{usage:{used_24h:9,used_month:40},daily_ceiling:16,monthly_ceiling:496}}},totals:{retained_links:744,reviewed_links:700,discoveries_24h:49,active_sources:88,members:3,active_members:3,whatsapp_registered:3,reads:12,bookmarks:5,database_bytes:16000000},trends:[{day:'2026-10-17',discovered:20,reviewed:18},{day:'2026-10-18',discovered:49,reviewed:30}],topics:[{topic:'Inference',n:40},{topic:'Networking',n:25}],users:[{id:'member-fixture',username:'fixture_user',display_name:'Fixture User',role:'reader',active:true,whatsapp_registration:'registered',reads:4,saved:2,recorded_actions:7,last_activity:at}],incidents:[{id:'resolved-fixture',code:'collection_degraded',summary:'One overdue job recovered.',severity:'warning',first_seen:at,resolved_at:at}],recoveries:[{kind:'superseded_source_failure',affected:1,created_at:at}]};
    }
@@ -20,6 +21,12 @@ for(const width of[360,1280])test(`administrator BI is usable and honest at ${wi
   await route.fulfill({json});
  });
  await page.goto('/?view=admin');
+ await expect(page.getByRole('heading',{name:'Historical diagnostics',exact:true})).toBeVisible();
+ await expect(page.getByText('source_size_limit',{exact:true})).toBeVisible();
+ await page.getByLabel('Diagnostic stage',{exact:true}).selectOption('discovery');
+ await page.getByRole('button',{name:'Search diagnostics',exact:true}).click();
+ await expect(page.getByRole('cell',{name:'discovery failed',exact:true})).toBeVisible();
+
  await expect(page.getByRole('heading',{name:'Platform overview',exact:true})).toBeVisible();
  await expect(page.getByText('All monitored stages are operational',{exact:true})).toBeVisible();
  await expect(page.getByRole('cell',{name:'Fixture User fixture_user'})).toBeVisible();
