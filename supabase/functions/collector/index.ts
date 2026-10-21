@@ -13,7 +13,7 @@ import { canonicalLink } from "../../../lib/links.ts";
 import { githubItems, githubAPIForLink, isPrerelease } from "../_shared/github.ts";
 import { repositorySearchURL, DEFAULT_REPO_QUERIES } from "../../../lib/source-config.ts";
 import { relevance } from "../_shared/relevance.ts";
-import { webCandidate, webSearchRequest, lowValueDiscovery } from "../_shared/web-discovery.ts";
+import { webCandidate, webSearchRequest, lowValueDiscovery, discoveryListing } from "../_shared/web-discovery.ts";
 import { EVALUATOR_VERSION, EVALUATION_MODEL, publicInput, publicTeam, evaluationRequest, parseEvaluation, effectiveScore, evaluationCandidates, candidateLane, nextEvaluationAt, samePublicInput, batchEvaluationRequest, parseBatchEvaluation, MAX_BATCH_SIZE, DAILY_REQUEST_CAP, MONTHLY_REQUEST_CAP, EVALUATION_TIMEOUT_MS, evaluationFailure, evaluationBatchSize, geminiFailureDetail, evaluationBatchRecovery } from "../_shared/evaluation.ts";
 import { repositoryHealth, repositoryAdmitted, articleRepositoryAdmitted, repositoryName, trendingProjects } from "../_shared/repository-health.ts";
 import { openshiftWatchURL, openshiftTags, openshiftItem } from "../_shared/openshift.ts";
@@ -295,7 +295,7 @@ async function evaluateSweep(profile: any) {
       method:"POST",redirect:"error",signal:AbortSignal.timeout(EVALUATION_TIMEOUT_MS),headers:{"Content-Type":"application/json","x-goog-api-key":env("GEMINI_API_KEY")},body:JSON.stringify(batchEvaluationRequest(inputs,team)),
     });
     if(!response.ok) {
-      const detail=geminiFailureDetail(await bodyText(response,8192).catch(()=>""));
+      const detail=geminiFailureDetail(await bodyText(response,8192).catch(()=>""),response.status);
       const reason="Gemini HTTP "+response.status+" ("+detail+")";
       const recovery=evaluationBatchRecovery(response.status,detail,batch.length);
       const failures=await Promise.all(batch.map(row=>failedEvaluation(row,reason,response.status,response.headers.get("retry-after"),recovery&&!response.headers.has("retry-after")?recovery.retry_ms:undefined)));
@@ -537,6 +537,7 @@ async function sourceJob(job: any, profile: any) {
   }
 }
 async function articleJob(job: any, profile: any) {
+  if (discoveryListing(job.payload.url)) return;
   const repository=new URL(job.payload.url);
   const repo=repository.hostname==="github.com" && repository.pathname.match(/^\/([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+)\/?$/);
   if(repo) {
@@ -703,7 +704,7 @@ async function trendingDiscovery(window:string,profile:any) {
   await db("ss_settings?on_conflict=key","POST",{key:"discovery_health",value:{...previous[0]?.value,["trending_"+window+"_success"]:new Date().toISOString(),trending_last_error:null}},"resolution=merge-duplicates,return=representation");
 }
 Deno.serve(async (request) => {
-  const headers = {
+  const headers: Record<string,string> = {
     "Content-Type": "application/json",
     "Cache-Control": "no-store",
   };
@@ -716,16 +717,29 @@ Deno.serve(async (request) => {
   )
     return new Response('{"error":"Unauthorized"}', { status: 401, headers });
   let count = 0;
+  const started = Date.now(), runId = crypto.randomUUID();
+  let stage = 'collection';
+  // Diagnostic failure must never prevent useful work. No payloads or secrets in logs.
+  const finish = async (status: 'succeeded'|'failed') => {
+    const duration_ms = Date.now() - started;
+    console.info(JSON.stringify({event:'pipeline_run',trace_id:runId,stage,status,duration_ms,processed:count}));
+    try { await rpc('ss_ops_run_finish',{run_id:runId,outcome:status,processed:count}); } catch { console.warn('pipeline_run_diagnostics_unavailable'); }
+  };
   try {
     const body = await request.json().catch(()=>({}));
+    stage = body.mode === 'internal_review' ? 'internal_review' : body.mode === 'evaluation' ? 'evaluation' : 'collection';
+    headers['X-StackSignal-Trace-Id'] = runId;
+    try { await rpc('ss_ops_run_start',{run_id:runId,stage_name:stage}); } catch { console.warn('pipeline_run_diagnostics_unavailable'); }
     if(body.mode === "internal_review") {
       const settings=await db("ss_settings?key=eq.profile&select=value");
       const result=await internalSweep(settings[0].value);
+      await finish('succeeded');
       return new Response(JSON.stringify({ok:true,mode:"internal_review",...result}),{headers});
     }
     if(body.mode === "evaluation") {
       const settings=await db("ss_settings?key=eq.profile&select=value");
       await evaluateSweep(settings[0].value);
+      await finish('succeeded');
       return new Response(JSON.stringify({ok:true,mode:"evaluation"}),{headers});
     }
     const day = new Date().toISOString().slice(0, 10);
@@ -752,14 +766,14 @@ Deno.serve(async (request) => {
       for (const [index, query] of (profile.queries || []).slice(0,20).entries())
         await rpc("ss_queue_item", { job_kind: "discovery", item: { query,
           lane: "web", window: (Math.floor(Date.now()/86400000)+index)%4===0 ? "explore" : "recent", scheduled_day: day } });
-    const jobs = await rpc("ss_claim_jobs", { batch_size: 8 });
-    const start = Date.now();
+    const jobs = await rpc("ss_claim_jobs", { batch_size: 32 });
     for (const job of jobs) {
-      if (Date.now() - start > 85000) {
+      if (Date.now() - started > 85000) {
         await db("ss_jobs?id=eq." + job.id, "PATCH", {
           status: "pending",
           attempts: Math.max(0, job.attempts - 1),
-          available_at: new Date(Date.now() + 300000).toISOString(),
+          available_at: new Date(Date.now() + 60000).toISOString(),
+          locked_at: null,
         });
         continue;
       }
@@ -791,10 +805,12 @@ Deno.serve(async (request) => {
       }
     }
     // A separate authenticated cron invocation evaluates; collection never waits on Google.
+    await finish('succeeded');
     return new Response(JSON.stringify({ ok: true, processed: count }), {
       headers,
     });
   } catch {
+    await finish('failed');
     return new Response('{"error":"Collector run failed"}', {
       status: 503,
       headers,

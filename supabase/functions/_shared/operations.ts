@@ -7,6 +7,11 @@ export function assessHealth(s:any, bot:any, website:boolean, now=Date.now()): S
  const add=(key:string,label:string,bad:boolean,detail:string,last_success?:string|null,wait=false)=>stages.push({key,label,status:bad?'degraded':wait?'waiting':'healthy',detail,last_success});
  add('discovery','Discovery',Number(s.sources?.overdue)>0||Number(s.sources?.errors)>0,`${Number(s.sources?.active)||0} active watches; ${Number(s.sources?.overdue)||0} overdue checks; ${Number(s.sources?.errors)||0} source errors.`,s.sources?.last_success);
  add('collection','Collection',Number(s.jobs?.stuck)>0||Number(s.jobs?.failed)>0,`${Number(s.jobs?.pending)||0} pending; ${Number(s.jobs?.stuck)||0} overdue; ${Number(s.jobs?.failed)||0} unresolved failed jobs.`);
+ if(s.diagnostics_started_at){
+  const warming=!stale(s.diagnostics_started_at,20*60000);
+  const missing=['collection','evaluation','internal_review'].filter(key=>!s.runs?.some((r:any)=>r.stage===key&&!stale(r.last_success,20*60000)));
+  add('scheduler','Scheduled processing',!warming&&missing.length>0,missing.length?`No recent successful run: ${missing.join(', ')}.`:'Collection, evaluation and local review completed within 20 minutes.',null,warming&&missing.length>0);
+ }
  const e=s.evaluation||{},expected=['budget_wait','pacing_wait','cooldown','batching_wait','reservation_wait'].includes(e.state);
  const evalBad=Number(s.reviews?.overdue)>0||(['configuration_error','missing_key'].includes(e.state)&&s.profile?.gemini_mode!=='off')||(s.profile?.gemini_mode!=='off'&&stale(e.coverage?.checked_at,20*60000));
  add('evaluation','Evaluation',evalBad,`${Number(s.reviews?.pending)||0} pending reviews; ${Number(s.reviews?.overdue)||0} older than the 25-hour review threshold. ${['configuration_error','missing_key'].includes(e.state)?'Provider configuration/request validation needs attention. ':''}${expected?'Quota, batching or retry wait is expected.':''}`,e.last_success,expected||s.profile?.gemini_mode==='off');

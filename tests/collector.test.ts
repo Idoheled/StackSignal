@@ -455,3 +455,26 @@ test("24-hour local failover is independent of Gemini configuration and commits 
   assert(!batches.flat().some((x:any)=>x.id==="fresh"));assert(health.some(x=>x.value.internal_review?.after_hours===24));
  } finally {globalThis.fetch=previous;delete environment.GEMINI_API_KEY;}
 });
+
+test('paper listings are excluded while individual papers remain eligible',async()=>{
+ const {webCandidate,discoveryListing}=await import('../supabase/functions/_shared/web-discovery.ts');
+ assert(discoveryListing('https://huggingface.co/papers?q=Cached+inference'));
+ assert(discoveryListing('https://huggingface.co/papers/'));
+ assert(!discoveryListing('https://huggingface.co/papers/2610.12345'));
+ assert.equal(webCandidate({url:'https://huggingface.co/papers?q=Cached+inference',title:'Cached inference papers',content:'GPU inference networking KV cache serving disaggregated prefill decode optimization. '.repeat(3)}, {},'inference','explore'),null);
+});
+
+test('authenticated run tracing records failed work without raw payloads or credentials',async()=>{
+ const previous=globalThis.fetch,records:any[]=[];
+ globalThis.fetch=async(input,init)=>{
+  const url=new URL(String(input)),body=init?.body?JSON.parse(String(init.body)):undefined;
+  if(url.pathname.endsWith('ss_ops_run_start')||url.pathname.endsWith('ss_ops_run_finish')){records.push(body);return Response.json(null);}
+  return new Response('',{status:503});
+ };
+ try{
+  const response=await handler(new Request('https://collector.example',{method:'POST',headers:{'x-collector-secret':secret}}));
+  assert.equal(response.status,503);assert.equal(records.length,2);assert.equal(records[1].outcome,'failed');
+  assert.equal(records[0].run_id,response.headers.get('X-StackSignal-Trace-Id'));
+  assert.equal(records[1].run_id,records[0].run_id);assert(!JSON.stringify(records).includes(secret));
+ }finally{globalThis.fetch=previous;}
+});

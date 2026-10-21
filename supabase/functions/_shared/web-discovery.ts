@@ -2,6 +2,12 @@ import { canonicalLink } from "../../../lib/links.ts";
 import { TRUSTED_HOSTS, dateISO, textOnly } from "./content.ts";
 import { relevance } from "./relevance.ts";
 
+/** Listing/search pages are navigation, not a discovered technical document. */
+export function discoveryListing(input: string) {
+  const u = new URL(input);
+  return u.hostname === 'huggingface.co' && /^\/papers\/?$/.test(u.pathname);
+}
+
 export function lowValueDiscovery(title: string, text: string, url = "") {
   return /\b(portfolio|curriculum vitae|my resume|personal website|job vacancy|we are hiring|stock price|share price|price target|coupon|giveaway)\b/i.test(title + " " + text.slice(0, 800)) ||
     /\/(?:careers|jobs|vacancies)(?:\/|$)/i.test(url);
@@ -28,7 +34,7 @@ export function webCandidate(result: any, profile: any, query: string, lane: str
   const parsed = new URL(url);
   const title = textOnly(result.title).slice(0, 500).trim();
   const text = textOnly(result.content).slice(0, 4000).trim();
-  if (!title || text.length < 60 || lowValueDiscovery(title, text, url)) return null;
+  if (!title || text.length < 60 || lowValueDiscovery(title, text, url) || discoveryListing(url)) return null;
   // A useful snippet must match the team's technical context, not just the search provider's query score.
   if (relevance(title, text, profile).score < 45 && !(lane === "explore" && text.length >= 120)) return null;
   const repository = parsed.hostname === "github.com" && parsed.pathname.match(/^\/([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+)\/?$/)?.[1];

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { publicTeam, publicInput, evaluationRequest, parseEvaluation, effectiveScore, evaluationCandidates, MAX_INPUT_BYTES, nextEvaluationAt, samePublicInput, batchEvaluationRequest, parseBatchEvaluation, MAX_BATCH_SIZE, evaluationFailure, evaluationBatchSize } from "../supabase/functions/_shared/evaluation.ts";
+import { publicTeam, publicInput, evaluationRequest, parseEvaluation, effectiveScore, evaluationCandidates, MAX_INPUT_BYTES, nextEvaluationAt, samePublicInput, batchEvaluationRequest, parseBatchEvaluation, MAX_BATCH_SIZE, evaluationFailure, evaluationBatchSize, geminiFailureDetail } from "../supabase/functions/_shared/evaluation.ts";
 const text = "This reproducible guide configures KV cache offloading and compares latency under controlled request concurrency. ";
 const input = publicInput({title:"Cache engineering",kind:"Discovery",reference_meta:{link_status:"search_result"}},text)!;
 const result = {topic:"Inference",score:90,confidence:"high",depth:"advanced",decision:"useful",summary:"Cache offloading guidance.",reason:"Relevant cache engineering.",action:"Review the concurrency comparison.",evidence:"configures KV cache offloading"};
@@ -105,4 +105,9 @@ test('provider-rejected batches shrink within quota while key failures and singl
  for(const detail of['key_invalid','key_expired','billing_restriction','model_configuration'])assert.equal(evaluationBatchRecovery(400,detail,7),null);
  assert.equal(evaluationBatchRecovery(400,'invalid_request',1),null);assert.equal(evaluationBatchRecovery(429,'quota',7),null);
  assert.throws(()=>batchEvaluationRequest(Array.from({length:10},(_,i)=>({id:String(i),input})),publicTeam({})),/Invalid batch/);
+});
+
+test('provider 503 is not presented as a request configuration error',()=>{
+ assert.equal(geminiFailureDetail('{"error":{"message":"provider unavailable"}}',503),'provider_unavailable');
+ assert.equal(geminiFailureDetail('not json',429),'quota');
 });
