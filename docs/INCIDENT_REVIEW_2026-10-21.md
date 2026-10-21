@@ -63,3 +63,28 @@ these past incidents; completed jobs had been deleted without diagnostic spans.
   projects, all six Python deployment guard suites and the new diagnostics
   component lint check. CI browser/build verification and production rollout
   follow; deployment evidence is appended only after actual execution.
+
+## Rollout verification
+
+- PR [#28](https://github.com/Idoheled/StackSignal/pull/28) merged into dev as
+  `0b24a81c32086f3d97c964b19951b6a8b4bbc98c`. Quality run
+  [39548248008](https://github.com/Idoheled/StackSignal/actions/runs/39548248008)
+  passed all 130 tests, the build/security boundary and 42 browser checks.
+  Desktop and mobile dashboard screenshots were inspected.
+- Applied `durable_pipeline_diagnostics` to hosted Supabase. The repository
+  migration filename follows the actual hosted migration version
+  `20261021051721`; its SQL is unchanged from the tested CLI-generated file.
+- Collector v34 and dispatcher v3 are active; context remains v4. Bot/VM
+  credentials, installed boundary adapter, pairing and runtime were not modified.
+- Archived the one failed non-content listing job with resolution
+  `Policy exclusion: search/listing destination; no article or notification created`.
+  Its diagnostic removal event retains `source_size_limit` and its original job ID.
+- Three authenticated live verification requests completed at 05:18 UTC:
+  collection `c0108811-f927-493a-85a2-8d1d4ac24158` (773 ms), evaluation
+  `b29e8e08-8640-43e4-81d4-47eb208100df` (1,360 ms), local review
+  `8da17c5e-a80d-4c7b-9bf6-64da1228736c` (1,380 ms). All HTTP 200, no timeout.
+  Evaluation correctly waited on its existing quota; no quota reset occurred.
+- At 05:19 UTC the scheduled-processing stage was healthy; collection had no
+  failed or overdue jobs. The existing incident resolved at 05:18 with the current
+  summary: `1 pending; 0 overdue; 0 unresolved failed jobs.` Delivery confirmation
+  and final production release are recorded in the release PR/deployment checks.
