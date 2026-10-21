@@ -11,7 +11,10 @@ export const MONTHLY_REQUEST_CAP = 496;
 export const MAX_INPUT_BYTES = 6000;
 export const MAX_OUTPUT_TOKENS = 650;
 /** Fixed diagnostics only: provider error text can contain credential/input echoes. */
-export function geminiFailureDetail(value:string) {
+export function geminiFailureDetail(value:string, status=0) {
+  if(status>=500)return "provider_unavailable";
+  if(status===429)return "quota";
+  if(status===408)return "provider_timeout";
   if(!value.trim())return "empty_error_response";
   let text="";try{const error=JSON.parse(value)?.error;text=String(error?.message||"")+" "+JSON.stringify(error?.details||[]);}catch{return "invalid_error_response";}
   if(/API[_ ]KEY[_ ]EXPIRED|API key expired/i.test(text))return "key_expired";

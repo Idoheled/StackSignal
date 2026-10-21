@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## [0.3.3] - 2026-10-21
+
+- Retain private health measurements, pipeline run traces and lifecycle events, with administrator-only historical search and queue trends.
+- Show current healthy counts in recovery notifications and preserve opening/failure/recovery evidence separately.
+- Drain collection bursts with bounded fair batches of up to 32 jobs; reject non-content Hugging Face papers listings and label provider 5xx failures correctly.
+
 ## [0.3.2] - 2026-10-18
 
 - Use English-first replies for the installed local model after an isolated

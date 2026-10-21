@@ -150,3 +150,43 @@ Do not re-enable resource allocation, reset provider quotas, re-pair WhatsApp,
 change the group or replay sent/uncertain events to investigate an incident.
 Check `operations.ok` in dispatcher responses as well as content delivery counts;
 HTTP 200 alone is not proof of a health observation or WhatsApp delivery.
+
+## Historical investigation
+
+**Admin → Dashboard → Historical diagnostics** filters transition records by UTC
+calendar day, pipeline stage, or a job/article/source/event UUID. Cursor pagination
+can retrieve older matching rows; results are limited to 100 per page. Scheduled
+runs show a separate trace ID, start/end time, result, duration and processed-job
+count. The collector returns `X-StackSignal-Trace-Id` and writes the same redacted
+ID/result/timing to its provider log. A run that never finishes becomes abandoned
+after ten minutes. Do not treat pg_cron's HTTP enqueue success as job completion.
+
+| Data | Retention and limits |
+| --- | --- |
+| Health measurements | Latest observation per five-minute bucket; 30 days |
+| Queue graph | Hourly peaks of retained samples; missing samples stay absent/null |
+| Job, watch, review, request and delivery transitions | 14 days, capped at 100,000 rows |
+| Scheduled run records | 30 days, capped at 20,000 rows |
+| Incident evidence | Opening, latest failing and recovery measurements; existing 30-day resolved-incident retention |
+
+Retention runs hourly inside the existing minute monitor; no extra scheduler,
+paid monitoring service or resource allocation is introduced. Tables are private,
+RLS enabled and inaccessible directly even to application service clients. Only
+bounded service RPCs and administrator/MFA-gated diagnostic RPCs expose data.
+Traces retain IDs, stage/phase, attempt, duration and a fixed error code. They do
+not retain source text, URLs, titles, personal notes, raw provider errors,
+credentials, phone numbers or WhatsApp messages. Trace identifiers can outlive a
+deleted source/article until retention expires; they cannot recover its content.
+A completed job can be linked to its retained article by `article_id`; watch jobs
+and their source events share `source_id`. Evaluation request IDs locate provider
+attempt spans; article review and notification spans share `article_id`.
+
+Use the incident ID and observation timestamp first, then inspect queue peaks and
+matching transition IDs. Compare a failure with its later successful attempt and
+confirmed notification receipt. For stale collectors, inspect scheduled runs and
+provider logs using the run trace ID. If historical detail predates diagnostics,
+report the evidence gap explicitly. Never replay an uncertain WhatsApp send or
+reset evaluation quotas as an investigation shortcut.
+
+See [the October 20–21 incident review](INCIDENT_REVIEW_2026-10-21.md) for the
+initial investigation, evidence limits and release verification.
