@@ -740,6 +740,43 @@ test("PostgreSQL access, isolation, invitation and concurrency invariants", asyn
       await as(reader);await fails(()=>db.query("select ss_promote_overdue_link_jobs(500)"),"permission denied");
     });
 
+    await t.test("terminal source disposition archives only leased, unused automatic search results",async()=>{
+      await db.exec("reset role");
+      const lock="2026-11-05T01:10:04.690000Z", stale="2026-11-05T01:05:00Z";
+      const meta={origin:"discovery",discovery_lane:"web_search",search_provider:"Tavily",link_status:"search_result",public_evaluation_input:{title:"Fixture",text:"A public search excerpt.",scope:"search_snippet"}};
+      const fixture=async(name,{articleMeta=meta,attempts=2,status="running",lastError="Source returned HTTP 404",kind="article",jobMeta={}}={})=>{
+        const url=`https://docs.nvidia.com/nim/terminal-${name}`;
+        const a=(await db.query("insert into ss_articles(url,title,reference_meta) values($1,'Unavailable fixture',$2) returning id",[url,JSON.stringify(articleMeta)])).rows[0].id;
+        const j=(await db.query("insert into ss_jobs(kind,payload,status,attempts,last_error,locked_at) values($1,$2,$3,$4,$5,$6) returning id",[kind,JSON.stringify({url,...jobMeta}),status,attempts,lastError,lock])).rows[0].id;
+        return {a,j};
+      };
+      const archive=async({j},time=lock,code=404)=>(await db.query("select public.ss_archive_unavailable_article_job($1,$2,$3) x",[j,time,code])).rows[0].x;
+      const candidate=await fixture("repeat-404"), legacy=await fixture("legacy-failure",{attempts:4,status:"failed"});
+      const gone=await fixture("gone",{attempts:1,lastError:null});
+      const protectedEntry=await fixture("annotated");
+      await db.query("insert into ss_notes(article_id,user_id,body,visibility) values($1,$2,'Retain my notes','private')",[protectedEntry.a,owner]);
+      const submitted=await fixture("submitted",{articleMeta:{...meta,origin:"manual"},jobMeta:{id:crypto.randomUUID()}});
+      const first404=await fixture("first-404",{attempts:1,lastError:null});
+      const watch=await fixture("watch",{kind:"source"});
+      await as(reader);
+      await fails(()=>archive(candidate),"permission denied");
+      await db.exec("reset role; set role service_role");
+      assert.equal(await archive(candidate,stale),false);
+      assert.equal(await archive(candidate,lock,503),false);
+      for(const row of [protectedEntry,submitted,first404,watch]) assert.equal(await archive(row),false);
+      assert.equal(await archive(candidate),true);
+      assert.equal(await archive(candidate),false,"a repeated call cannot duplicate archive records");
+      assert.equal(await archive(legacy),true);
+      assert.equal(await archive(gone,lock,410),true);
+      await db.exec("reset role");
+      assert.equal((await db.query("select count(*)::int n from ss_jobs where id=any($1::uuid[])",[[candidate.j,legacy.j,gone.j]])).rows[0].n,0);
+      assert.equal((await db.query("select count(*)::int n from ss_private.ops_archived_jobs where id=any($1::uuid[])",[[candidate.j,legacy.j,gone.j]])).rows[0].n,3);
+      assert.deepEqual((await db.query("select article_id,phase,error_code from ss_private.ops_trace_events where job_id=$1 and phase='source_unavailable'",[candidate.j])).rows,[{article_id:candidate.a,phase:"source_unavailable",error_code:"source_not_found"}]);
+      assert.equal((await db.query("select review_state from ss_articles where id=$1",[candidate.a])).rows[0].review_state,"archived");
+      assert.equal((await db.query("select count(*)::int n from ss_articles where id=any($1::uuid[]) and deleted_at is null",[[protectedEntry.a,submitted.a,first404.a,watch.a]])).rows[0].n,4);
+      assert.equal((await db.query("select count(*)::int n from ss_private.whatsapp_outbox where article_id=any($1::uuid[])",[[candidate.a,legacy.a,gone.a]])).rows[0].n,0);
+    });
+
     await t.test("legacy slash aliases preserve another retained article's history and cohort on cleanup",async()=>{
       await db.exec("reset role");
       const base='https://kubernetes.io/alias-regression';
