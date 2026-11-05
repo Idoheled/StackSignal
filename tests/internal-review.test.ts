@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {internalReview,immediateInternalReview} from "../supabase/functions/_shared/internal-review.ts";
+import {commitInternalReviewBatches,internalReview,immediateInternalReview} from "../supabase/functions/_shared/internal-review.ts";
 const now=Date.now();
 const row=(text:string,url="https://docs.vllm.ai/engineering")=>({url,title:"Cache engineering",topic:"Inference",input:{title:"Cache engineering",scope:"publisher_excerpt",text}});
 test("local evidence rules require a source-bound mechanism and distinguish unknown from irrelevant",()=>{
@@ -44,4 +44,41 @@ test("public evidence never splits a Unicode character at PostgreSQL JSON bounda
  }
  const value=internalReview(row('a'.repeat(139)+'🚀 irrelevant text with no engineering evidence'));
  assert(value.assessment.evidence.isWellFormed());assert(value.assessment.summary.isWellFormed());
+});
+
+test("removing a publisher AI summary never splices nonadjacent fragments into evidence",()=>{
+ const authored="As GPU clusters scale, the implementation configures KV cache offloading to NVMe and measures TTFT for concurrent requests. This configuration documents how to deploy the gateway and isolate its memory.";
+ const text="Like Discuss (0) L T F R E AI-Generated Summary Generic promotional copy with no original procedure. Learn more "+authored;
+ const review=internalReview(row(text,"https://developer.nvidia.com/blog/cluster-engineering"),{},now);
+ assert.equal(review.assessment.decision,"useful","authored evidence remains eligible");
+ assert(text.includes(review.assessment.evidence),"the database evidence gate must find an exact original-source substring");
+ assert(authored.includes(review.assessment.evidence),"the quote must not cross the removed-summary boundary");
+});
+
+test("unsupported provenance and evidence shorter than the database minimum stay uncertain",()=>{
+ const substantial=row("The implementation configures GPU KV cache offloading to NVMe. The benchmark measures throughput and TTFT in concurrent deployments.");
+ const unknown=internalReview({...substantial,input:{...substantial.input,scope:"unknown"}},{},now);
+ const short=internalReview(row(" ".repeat(180)+"🚀".repeat(9)),{},now);
+ for(const r of [unknown,short]){
+  assert.equal(r.assessment.decision,"insufficient_evidence");
+  assert.equal(r.assessment.evidence,"");
+  assert.equal(r.assessment.confidence,"low");
+ }
+});
+
+test("validation isolation bounds extra database work and leaves deferred rows unchanged",async()=>{
+ const rejected=new Error("validation"), rows=Array.from({length:500},(_,i)=>i);
+ let attempts=0;
+ const result=await commitInternalReviewBatches(rows,async()=>{attempts++;throw rejected;},error=>error===rejected,Infinity);
+ assert(attempts<50,"a large group of invalid inputs cannot fan out into hundreds of writes");
+ assert.equal(result.committed+result.skipped+result.rejected+result.deferred,rows.length);
+ assert(result.deferred>0);
+ const transient=new Error("database unavailable");
+ attempts=0;
+ await assert.rejects(commitInternalReviewBatches(rows,async()=>{attempts++;throw transient;},error=>error===rejected,Infinity),e=>e===transient);
+ assert.equal(attempts,1,"a systemic outage must not cause batch bisection");
+ attempts=0;
+ const expired=await commitInternalReviewBatches(rows,async()=>{attempts++;return {committed:0,skipped:0};},()=>false,1,()=>1);
+ assert.equal(attempts,0);
+ assert.equal(expired.deferred,rows.length);
 });

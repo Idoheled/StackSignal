@@ -230,7 +230,7 @@ test("semantic sweep is cached, comparison-only, private-context safe and pauses
   const excerpt="This reproducible guide configures KV cache offloading and compares latency under controlled request concurrency.";
   const source={title:"Cache engineering",text:excerpt,scope:"search_snippet"};
   let mode="shadow", daily=4, provider=200, calls=0, row:any={discovered_at:"2026-10-10T00:00:00Z",url:"https://kubernetes.io/public-guide",id:"public-article",score:70,kind:"Discovery",content_hash:"a".repeat(64),reference_meta:{repo_health:healthFixture,public_evaluation_input:source}};
-  let health:any={}, used=0, race=false, lastAttempt:string|undefined;
+  let health:any={}, used=0, race=false, fallbackDuringRequest=false, lastAttempt:string|undefined;
   const writes:any[]=[];
   globalThis.fetch=async(input,init)=>{
     const url=new URL(String(input)), body=init?.body?JSON.parse(String(init.body)):undefined;
@@ -240,7 +240,10 @@ test("semantic sweep is cached, comparison-only, private-context safe and pauses
       assert.equal(new Headers(init?.headers).get("x-goog-api-key"),"test-only-gemini-key");
       assert.equal(init?.redirect,"error");assert.equal(body.generationConfig.maxOutputTokens,900);assert.equal(body.generationConfig.thinkingConfig.thinkingLevel,"LOW");
       assert(!JSON.stringify(body).includes("private.internal"));assert.equal("tools" in body,false);
-      if(provider!==200) return new Response("provider details should not be exposed",{status:provider});
+      if(provider!==200) {
+        if(fallbackDuringRequest)row={...row,reference_meta:{...row.reference_meta,evaluation:{evaluator:"policy",decision:"useful"}}};
+        return new Response("provider details should not be exposed",{status:provider});
+      }
       return Response.json({modelVersion:"gemini-3.8-flash",candidates:[{finishReason:"STOP",content:{parts:[{text:JSON.stringify({results:[{id:"public-article",assessment:{topic:"Inference",score:90,confidence:"high",depth:"advanced",decision:"useful",summary:"Cache comparison.",reason:"Applicable engineering.",action:"Review controlled latency measurements.",evidence:"configures KV cache offloading"}}]})}]}}],usageMetadata:{promptTokenCount:500,candidatesTokenCount:100}});
     }
     assert.equal(url.hostname,"database.example");
@@ -254,8 +257,9 @@ test("semantic sweep is cached, comparison-only, private-context safe and pauses
     if(url.pathname.endsWith("ss_evaluation_candidates")) return Response.json(row.reference_meta.evaluation ? [] : [row]);
     if(url.pathname.endsWith("ss_evaluation_usage")) return Response.json({used_24h:used,used_month:used,last_attempt:lastAttempt});
     if(url.pathname.endsWith("ss_reserve_evaluation_batch")) {assert(body.daily_max<=16);assert(body.monthly_max<=496);used++;return Response.json({request_id:used,items:body.items});}
+    if(url.pathname.endsWith("ss_merge_evaluation_health")) {health={...health,...body.patch};return new Response(null,{status:204});}
     if(url.pathname.endsWith("ss_settings")) {
-      if(body) {if(body.key==="evaluation_health") health=body.value;return Response.json([body]);}
+      if(body) return Response.json([body]);
       if(url.searchParams.get("key")==="eq.profile") return Response.json([{value:{gemini_mode:mode,gemini_daily_limit:daily,gemini_monthly_limit:100,repo_discovery:false,interests:"vLLM, private.internal",search_monthly_limit:0}}]);
       if(url.searchParams.get("key")==="eq.evaluation_health") return Response.json([{value:health}]);
       return Response.json([]);
@@ -267,7 +271,10 @@ test("semantic sweep is cached, comparison-only, private-context safe and pauses
         assert.equal(url.searchParams.get("order"),"discovered_at.asc,id.asc");
         if(row.reference_meta.evaluation) return Response.json([]);
       }
-      if(body) {writes.push(body);row={...row,...body};return Response.json([row]);}
+      if(body) {
+        if(url.searchParams.get("reference_meta->>evaluation")==="is.null" && row.reference_meta.evaluation)return Response.json([]);
+        writes.push(body);row={...row,...body};return Response.json([row]);
+      }
       return Response.json([{...row,...(race && url.searchParams.has("id")?{content_hash:"changed"}:{})}]);
     }
     throw Error("Unexpected "+url.pathname);
@@ -289,6 +296,10 @@ test("semantic sweep is cached, comparison-only, private-context safe and pauses
     daily=4;provider=503;used=0;health={};row.reference_meta.evaluation_failed_at=undefined;await run();
     assert.equal(health.state,"cooldown");
     assert(Date.parse(health.cooldown_until)<=Date.now()+901000,"transient capacity errors back off for fifteen minutes, not a day");
+    health={};used=0;fallbackDuringRequest=true;row.reference_meta.evaluation_failed_at=undefined;
+    await run();
+    assert.equal(row.reference_meta.evaluation.evaluator,"policy","late provider failure cannot erase a locally committed review");
+    assert.equal(row.reference_meta.evaluation_failed_at,undefined);
   } finally {globalThis.fetch=originalFetch;delete environment.GEMINI_API_KEY;}
 });
 
@@ -315,9 +326,10 @@ test("multi-link batches save independent valid reviews and withhold an invalid 
     if(u.pathname.endsWith("ss_evaluation_candidates")) return Response.json(rows.filter((r:any)=>!r.reference_meta.evaluation&&!r.reference_meta.evaluation_failed_at));
     if(u.pathname.endsWith("ss_evaluation_usage")) return Response.json({used_24h:reservations,used_provider_day:reservations,used_month:reservations});
     if(u.pathname.endsWith("ss_reserve_evaluation_batch")) {reservations++;return Response.json({request_id:reservations,items:body.items});}
+    if(u.pathname.endsWith("ss_merge_evaluation_health")) {health={...health,...body.patch};return new Response(null,{status:204});}
     if(u.pathname.endsWith("ss_settings")) {
       if(u.searchParams.get("key")?.startsWith("eq.repo_health:")) return Response.json([{value:healthFixture}]);
-      if(body) {if(body.key==="evaluation_health") health=body.value;return Response.json([body]);}
+      if(body) return Response.json([body]);
       return Response.json([{value:u.searchParams.get("key")==="eq.profile" ? {gemini_mode:"rerank",gemini_daily_limit:16,gemini_monthly_limit:496,repo_discovery:false,search_monthly_limit:0} : health}]);
     }
     if(u.pathname.endsWith("ss_articles")) {
@@ -395,8 +407,9 @@ test("independent evaluator isolates rejected batches without abandoning pending
       assert.equal(sources.length,1);
       return Response.json({candidates:[{finishReason:"STOP",content:{parts:[{text:JSON.stringify({results:sources.map((x:any)=>({id:x.id,assessment:{topic:"Inference",score:90,confidence:"high",depth:"advanced",decision:"useful",summary:"Controlled cache benchmark.",reason:"Relevant cache engineering.",action:"Compare concurrency settings.",evidence:"configures KV cache offloading"}}))})}]}}]});
     }
+    if(u.pathname.endsWith("ss_merge_evaluation_health")) {health={...health,...body.patch};return new Response(null,{status:204});}
     if(u.pathname.endsWith("ss_settings")) {
-      if(body) {if(body.key==="evaluation_health") health=body.value;return Response.json([body]);}
+      if(body) return Response.json([body]);
       return Response.json([{value:u.searchParams.get("key")==="eq.profile" ? {gemini_mode:"rerank",gemini_daily_limit:16,gemini_monthly_limit:496,repo_discovery:false} : health}]);
     }
     if(u.pathname.endsWith("ss_evaluation_usage")) return Response.json({used_month:used,used_24h:used,used_provider_day:used});
@@ -442,7 +455,8 @@ test("24-hour local failover is independent of Gemini configuration and commits 
  globalThis.fetch=async(input,init)=>{
   const u=new URL(String(input)),body=init?.body?JSON.parse(String(init.body)):undefined;
   assert.equal(u.hostname,"database.example","local failover must never contact Google or any external model");
-  if(u.pathname.endsWith("ss_settings")){if(body){health.push(body);return Response.json([body]);}return Response.json([{value:u.searchParams.get("key")==="eq.profile" ? {gemini_mode:"off",gemini_daily_limit:0} : {}}]);}
+  if(u.pathname.endsWith("ss_settings"))return Response.json([{value:{gemini_mode:"off",gemini_daily_limit:0}}]);
+  if(u.pathname.endsWith("ss_merge_evaluation_health")){health.push(body.patch);return Response.json(null);}
   if(u.pathname.endsWith("ss_promote_overdue_link_jobs")){assert.equal(body.batch_size,500);return Response.json({promoted:0,cleared:0});}
   if(u.pathname.endsWith("ss_internal_review_candidates")) {assert.equal(body.batch_size,500);return Response.json(rows);}
   if(u.pathname.endsWith("ss_commit_internal_reviews")){batches.push(body.items);assert(body.items.every((x:any)=>x.evaluator==="policy"&&x.completion_path==="sla_failover"));return Response.json({committed:body.items.length,skipped:0});}
@@ -451,9 +465,100 @@ test("24-hour local failover is independent of Gemini configuration and commits 
  };
  try {
   const response=await handler(new Request("https://collector.example",{method:"POST",headers:{"x-collector-secret":secret},body:JSON.stringify({mode:"internal_review"})}));
-  assert.equal(response.status,200);assert.equal((await response.json()).committed,201);assert.deepEqual(batches.map(x=>x.length),[200,1]);
-  assert(!batches.flat().some((x:any)=>x.id==="fresh"));assert(health.some(x=>x.value.internal_review?.after_hours===24));
+  assert.equal(response.status,200);assert.equal((await response.json()).committed,201);assert.deepEqual(batches.map(x=>x.length),[50,50,50,50,1]);
+  assert(!batches.flat().some((x:any)=>x.id==="fresh"));assert(health.some(x=>x.internal_review?.after_hours===24));
  } finally {globalThis.fetch=previous;delete environment.GEMINI_API_KEY;}
+});
+
+test("one rejected fallback assessment cannot roll back unrelated reviews or suppress the heartbeat",async()=>{
+ const previous=globalThis.fetch;
+ const text="The implementation configures GPU KV cache offloading to NVMe, and its benchmark measures TTFT and throughput. The deployment documents isolated memory and concurrent gateway traffic.";
+ const rows=Array.from({length:51},(_,i)=>({id:String(i),url:"https://kubernetes.io/local-"+i,topic:"Inference",discovered_at:new Date(Date.now()-25*3600000).toISOString(),content_hash:String(i),reference_meta:{public_evaluation_input:{title:"Public cache implementation",scope:"publisher_excerpt",text}}}));
+ const poisoned="1", committed=new Set<string>();
+ let attemptCount=0, lastHealth:any, finished:any;
+ globalThis.fetch=async(input,init)=>{
+  const u=new URL(String(input)),body=init?.body?JSON.parse(String(init.body)):undefined;
+  if(u.pathname.endsWith("ss_settings"))return Response.json([{value:{}}]);
+  if(u.pathname.endsWith("ss_promote_overdue_link_jobs"))return Response.json({promoted:0,cleared:0});
+  if(u.pathname.endsWith("ss_internal_review_candidates"))return Response.json(rows);
+  if(u.pathname.endsWith("ss_commit_internal_reviews")){
+   attemptCount++;
+   if(body.items.some((item:any)=>item.id===poisoned))return Response.json({code:"P0001",message:"Evidence is not grounded in the public input"},{status:400});
+   for(const item of body.items){assert(!committed.has(item.id),"successfully committed batches must not be replayed");committed.add(item.id);}
+   return Response.json({committed:body.items.length,skipped:0});
+  }
+  if(u.pathname.endsWith("ss_evaluation_pipeline"))return new Response(null,{status:503});
+  if(u.pathname.endsWith("ss_review_coverage"))return Response.json({checked_at:"test"});
+  if(u.pathname.endsWith("ss_merge_evaluation_health")){lastHealth=body.patch;return Response.json(null);}
+  if(u.pathname.endsWith("ss_ops_run_start"))return Response.json(null);
+  if(u.pathname.endsWith("ss_ops_run_finish")){finished=body;return Response.json(null);}
+  throw Error("Unexpected "+u.pathname);
+ };
+ try{
+  const response=await handler(new Request("https://collector.example",{method:"POST",headers:{"x-collector-secret":secret},body:JSON.stringify({mode:"internal_review"})}));
+  assert.equal(response.status,200);
+  const result=await response.json();
+  assert.equal(result.committed,50);assert.equal(result.rejected,1);assert.equal(result.deferred,0);
+  assert.equal(committed.size,50);assert(!committed.has(poisoned),"do not rewrite or discard an isolated item");
+  assert(attemptCount<20);
+  assert.equal(lastHealth.internal_review.rejected,1);
+  assert.equal(lastHealth.coverage.checked_at,"test");
+  assert(lastHealth.internal_review.last_run);
+  assert.equal(finished.processed,50);
+ }finally{globalThis.fetch=previous;}
+});
+
+test("collection dispositions isolate dead search hits without hiding source failures",async()=>{
+ const previous=globalThis.fetch;
+ const url="https://docs.nvidia.com/nim/test-missing.html";
+ const lease="2026-11-05T01:10:04.690000+00:00";
+ let job:any,status:number,disposition:boolean;
+ const archives:any[]=[],updates:any[]=[],sourceUpdates:any[]=[];
+ globalThis.fetch=async(input,init)=>{
+  const u=new URL(String(input)),body=init?.body?JSON.parse(String(init.body)):undefined;
+  if(u.hostname==="docs.nvidia.com") return new Response(null,{status,headers:status===429?{"retry-after":"60"}:undefined});
+  if(u.pathname.endsWith("ss_archive_unavailable_article_job")){archives.push(body);return Response.json(disposition);}
+  if(u.pathname.endsWith("ss_take_budget")) return Response.json(false);
+  if(u.pathname.endsWith("ss_claim_jobs")) return Response.json([job]);
+  if(u.pathname.endsWith("ss_feedback_weights")) return Response.json({});
+  if(u.pathname.endsWith("ss_settings")) return Response.json([{value:{repo_discovery:false,search_monthly_limit:0}}]);
+  if(u.pathname.endsWith("ss_articles")) return Response.json([]);
+  if(u.pathname.endsWith("ss_sources")) {
+   if(body) sourceUpdates.push(body);
+   return Response.json([{id:"watch",url,active:true,type:"html",revision:1}]);
+  }
+  if(u.pathname.endsWith("ss_jobs")){updates.push({method:init?.method,body});return Response.json(null);}
+  return Response.json(null);
+ };
+ const run=async(nextStatus:number,attempts:number,last_error:string|null,archived=true,kind="article")=>{
+  status=nextStatus;disposition=archived;
+  job={id:"job",kind,attempts,last_error,locked_at:lease,payload:{url,source_id:kind==="source"?"watch":undefined}};
+  archives.length=0;updates.length=0;sourceUpdates.length=0;
+  const response=await handler(new Request("https://collector.example",{method:"POST",headers:{"x-collector-secret":secret}}));
+  assert.equal(response.status,200);
+  return response.json();
+ };
+ try {
+  await run(404,1,null);
+  assert.equal(archives.length,0,"a first 404 can be transient");
+  assert.equal(updates[0].body.status,"pending");
+  await run(404,2,"Source returned HTTP 503");
+  assert.equal(archives.length,0,"require consecutive 404 evidence");
+  assert.equal((await run(404,2,"Source returned HTTP 404")).processed,1);
+  assert.deepEqual(archives,[{job_id:"job",expected_lock:lease,http_status:404}]);
+  assert.equal(updates.length,0,"database disposition is atomic");
+  await run(410,1,null);
+  assert.equal(archives[0].http_status,410);
+  await run(404,4,"Source returned HTTP 404",false);
+  assert.equal(updates[0].body.status,"failed","ineligible or stale candidates remain real failures");
+  await run(429,4,"Source returned HTTP 404");
+  assert.equal(archives.length,0);assert.equal(updates[0].body.status,"pending");assert.equal(updates[0].body.attempts,3);
+  await run(503,2,"Source returned HTTP 404");
+  assert.equal(archives.length,0);assert.equal(updates[0].body.status,"pending");
+  await run(404,4,"Source returned HTTP 404",true,"source");
+  assert.equal(archives.length,0);assert.equal(updates[0].body.status,"failed");
+  assert.equal(sourceUpdates[0].last_error_kind,"error");
+ } finally {globalThis.fetch=previous;}
 });
 
 test('paper listings are excluded while individual papers remain eligible',async()=>{
@@ -475,6 +580,8 @@ test('authenticated run tracing records failed work without raw payloads or cred
   const response=await handler(new Request('https://collector.example',{method:'POST',headers:{'x-collector-secret':secret}}));
   assert.equal(response.status,503);assert.equal(records.length,2);assert.equal(records[1].outcome,'failed');
   assert.equal(records[0].run_id,response.headers.get('X-StackSignal-Trace-Id'));
-  assert.equal(records[1].run_id,records[0].run_id);assert(!JSON.stringify(records).includes(secret));
+  assert.equal(records[1].run_id,records[0].run_id);
+  assert.equal(records[1].failure_code,'database_unavailable');assert.equal(records[1].failure_step,'ss_take_budget');
+  assert(!JSON.stringify(records).includes(secret));
  }finally{globalThis.fetch=previous;}
 });

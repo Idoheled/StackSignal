@@ -35,6 +35,10 @@ aggregate bot telemetry; public `/healthz` remains a liveness endpoint.
 
 Expected quota, pacing, batching and reservation waits are displayed as waits.
 They do not bypass the existing Gemini limits or imply a stuck evaluation.
+Reviews past the deadline still degrade evaluation during provider cooldown.
+Local review isolates invalid inputs in bounded batches; inspect isolated and
+deferred counts alongside the remaining backlog. Scheduled run diagnostics
+record fixed failure codes and operation names rather than raw SQL or payloads.
 Missing public evidence remains withheld. Ollama HTTP health does not certify
 answer quality; deployment separately checks actual technical generations and
 identity/language routing. Synthetic samples are reviewed inside the encrypted
