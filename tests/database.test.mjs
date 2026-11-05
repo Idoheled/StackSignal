@@ -748,7 +748,7 @@ test("PostgreSQL access, isolation, invitation and concurrency invariants", asyn
         const url=`https://docs.nvidia.com/nim/terminal-${name}`;
         const a=(await db.query("insert into ss_articles(url,title,reference_meta) values($1,'Unavailable fixture',$2) returning id",[url,JSON.stringify(articleMeta)])).rows[0].id;
         const j=(await db.query("insert into ss_jobs(kind,payload,status,attempts,last_error,locked_at) values($1,$2,$3,$4,$5,$6) returning id",[kind,JSON.stringify({url,...jobMeta}),status,attempts,lastError,lock])).rows[0].id;
-        return {a,j};
+        return {a,j,url};
       };
       const archive=async({j},time=lock,code=404)=>(await db.query("select public.ss_archive_unavailable_article_job($1,$2,$3) x",[j,time,code])).rows[0].x;
       const candidate=await fixture("repeat-404"), legacy=await fixture("legacy-failure",{attempts:4,status:"failed"});
@@ -758,12 +758,15 @@ test("PostgreSQL access, isolation, invitation and concurrency invariants", asyn
       const submitted=await fixture("submitted",{articleMeta:{...meta,origin:"manual"},jobMeta:{id:crypto.randomUUID()}});
       const first404=await fixture("first-404",{attempts:1,lastError:null});
       const watch=await fixture("watch",{kind:"source"});
+      const sharedWatch=await fixture("shared-watch");
+      await db.query("insert into ss_sources(name,url,type,topic) values('Active matching watch',$1,'page','Inference')",[sharedWatch.url]);
+      const discovery=(await db.query("update ss_articles set discovered_at=now()-interval '26 hours' where id=$1 returning discovered_at",[candidate.a])).rows[0].discovered_at;
       await as(reader);
       await fails(()=>archive(candidate),"permission denied");
       await db.exec("reset role; set role service_role");
       assert.equal(await archive(candidate,stale),false);
       assert.equal(await archive(candidate,lock,503),false);
-      for(const row of [protectedEntry,submitted,first404,watch]) assert.equal(await archive(row),false);
+      for(const row of [protectedEntry,submitted,first404,watch,sharedWatch]) assert.equal(await archive(row),false);
       assert.equal(await archive(candidate),true);
       assert.equal(await archive(candidate),false,"a repeated call cannot duplicate archive records");
       assert.equal(await archive(legacy),true);
@@ -773,8 +776,47 @@ test("PostgreSQL access, isolation, invitation and concurrency invariants", asyn
       assert.equal((await db.query("select count(*)::int n from ss_private.ops_archived_jobs where id=any($1::uuid[])",[[candidate.j,legacy.j,gone.j]])).rows[0].n,3);
       assert.deepEqual((await db.query("select article_id,phase,error_code from ss_private.ops_trace_events where job_id=$1 and phase='source_unavailable'",[candidate.j])).rows,[{article_id:candidate.a,phase:"source_unavailable",error_code:"source_not_found"}]);
       assert.equal((await db.query("select review_state from ss_articles where id=$1",[candidate.a])).rows[0].review_state,"archived");
-      assert.equal((await db.query("select count(*)::int n from ss_articles where id=any($1::uuid[]) and deleted_at is null",[[protectedEntry.a,submitted.a,first404.a,watch.a]])).rows[0].n,4);
+      assert.equal((await db.query("select count(*)::int n from ss_articles where id=any($1::uuid[]) and deleted_at is null",[[protectedEntry.a,submitted.a,first404.a,watch.a,sharedWatch.a]])).rows[0].n,5);
       assert.equal((await db.query("select count(*)::int n from ss_private.whatsapp_outbox where article_id=any($1::uuid[])",[[candidate.a,legacy.a,gone.a]])).rows[0].n,0);
+
+      const archivedUrl="https://docs.nvidia.com/nim/ordinary-archive";
+      const ordinary=(await db.query("insert into ss_articles(url,title,deleted_at) values($1,'Ordinary archive',now()) returning id",[archivedUrl])).rows[0].id;
+      const submit=(url)=>action("submit",{url,title:"Retry the publisher",teach:false});
+      await as(reader);await fails(()=>submit(candidate.url),"Read-only account");
+      await as(owner,"aal1");await fails(()=>submit(candidate.url),"MFA");
+      await as(owner);
+      await db.exec("reset role; set role anon");
+      await fails(()=>submit(candidate.url),"permission denied");
+      await db.exec("reset role; set role service_role");
+      const serviceJob=(await db.query("insert into ss_jobs(kind,payload) values('article',$1) returning payload",[JSON.stringify({id:legacy.a,url:legacy.url})])).rows[0];
+      assert.equal(serviceJob.payload.terminal_restore_job_id,undefined,"a service job cannot restore even with a stale authenticated claim");
+      await db.exec("reset role");
+      assert.equal((await db.query("select review_state from ss_articles where id=$1",[legacy.a])).rows[0].review_state,"archived");
+
+      const publisher={title:"Publisher material",text:"Independent publisher evidence refreshed during quarantine.",scope:"publisher_excerpt"};
+      await db.query("update ss_articles set reference_meta=reference_meta||jsonb_build_object('public_evaluation_input',$2::jsonb) where id=$1",[gone.a,JSON.stringify(publisher)]);
+      await as(owner);await submit(candidate.url);await submit(gone.url);await submit(archivedUrl);
+      await db.exec("reset role");
+      const restored=(await db.query("select review_state,reference_meta,discovered_at from ss_articles where id=$1",[candidate.a])).rows[0];
+      assert.equal(restored.review_state,"awaiting_input");
+      assert.equal(restored.discovered_at.getTime(),discovery.getTime(),"explicit retry cannot restart the discovery clock");
+      assert.equal(restored.reference_meta.public_extraction_requested,"queued");
+      for(const key of ["public_evaluation_input","collection_error_code","collection_failed_at"]) assert.equal(restored.reference_meta[key],undefined);
+      assert.deepEqual((await db.query("select reference_meta->'public_evaluation_input' x from ss_articles where id=$1",[gone.a])).rows[0].x,publisher);
+      assert.equal((await db.query("select review_state from ss_articles where id=$1",[ordinary])).rows[0].review_state,"archived");
+      assert.equal((await db.query("select count(*)::int n from ss_bookmarks where article_id=$1 and created_by=$2",[candidate.a,owner])).rows[0].n,1);
+      const retry=(await db.query("select id,payload from ss_jobs where payload->>'id'=$1",[candidate.a])).rows[0];
+      assert.deepEqual(retry.payload,{id:candidate.a,url:candidate.url,terminal_restore_job_id:retry.id});
+      const fallbackReady=async()=>(await db.query("select ss_internal_review_candidates(500) x")).rows[0].x.some(a=>a.id===candidate.a);
+      assert.equal(await fallbackReady(),false,"old discovery gets a bounded window to obtain new evidence");
+      await db.query("update ss_jobs set status='failed' where id=$1",[retry.id]);
+      assert.equal(await fallbackReady(),true,"a failed retry no longer holds local review");
+      await db.query("update ss_jobs set status='running',locked_at=now(),payload=payload||jsonb_build_object('url',$2::text) where id=$1",[retry.id,legacy.url]);
+      assert.equal(await fallbackReady(),true,"only an exact URL match can hold local review");
+      await db.query("update ss_jobs set created_at=now()-interval '16 minutes',payload=payload||jsonb_build_object('url',$2::text) where id=$1",[retry.id,candidate.url]);
+      assert.equal(await fallbackReady(),true,"a stale running retry cannot hold local review indefinitely");
+      assert.equal((await db.query("select count(*)::int n from ss_private.whatsapp_outbox where article_id=any($1::uuid[])",[[candidate.a,legacy.a,gone.a]])).rows[0].n,0,"restoration is not a review or notification");
+      assert.equal((await db.query("select count(*)::int n from ss_private.ops_archived_jobs where id=$1",[candidate.j])).rows[0].n,1,"restore preserves prior archive evidence");
     });
 
     await t.test("legacy slash aliases preserve another retained article's history and cohort on cleanup",async()=>{

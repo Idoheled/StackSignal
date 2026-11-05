@@ -48,6 +48,10 @@
   watched and claimed work outside that path. Preserve a trace and send
   no content notification for the archived item. Transient fetch errors
   retain their existing retry and alert paths.
+- An explicit authenticated submission can restore this specific archive.
+  A matching new collection job has up to 15 minutes to capture fresh
+  evidence before normal fallback review resumes. Keep the original
+  discovery time, useful publisher evidence and prior archive trail.
 - Keep the configured Gemini pacing, cooldown, Pacific-day and rolling
   quotas. Provider and publisher failures can recur; the safeguards isolate
   them from unrelated valid work and surface remaining overdue reviews.
@@ -58,4 +62,13 @@ The regression suite exercises exact quote grounding across a removed
 summary, one invalid row among valid peers, deadline and outage behavior,
 health merge and redaction, provider/fallback races, service-only access,
 lease matching, and terminal collection disposition without notification.
-See the release PR for deployment and post-recovery evidence.
+
+The hosted migration `20261105211125_resilient_review_pipeline` applied
+before collector v35 and WhatsApp dispatcher v4. The platform-context
+function and OCI runtime did not change. At 23:13 Israel time, one
+authenticated local sweep returned HTTP 200, committed 18 reviews and
+reported no rejected or deferred rows. The exact former blocker was
+approved with the verified original-text quote. The snapshot showed
+75 pending reviews, zero overdue reviews and zero failed collection jobs.
+The unavailable job was archived with its trace. See the release PR for
+subsequent scheduled-run, delivery and deployment evidence.

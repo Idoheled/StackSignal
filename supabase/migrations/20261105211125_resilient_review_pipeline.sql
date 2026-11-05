@@ -69,6 +69,7 @@ begin
  if not found then return false;end if;
  if (j.status='failed' and j.last_error is distinct from observed_error)
     or (http_status=404 and (j.attempts<2 or j.last_error is distinct from observed_error))
+    or exists(select 1 from public.ss_sources where active and url=candidate_url)
     or exists(select 1 from public.ss_bookmarks where article_id=a.id)
     or exists(select 1 from public.ss_feedback where article_id=a.id)
     or exists(select 1 from public.ss_notes where article_id=a.id)
@@ -94,3 +95,52 @@ begin
 end;$$;
 revoke all on function public.ss_archive_unavailable_article_job(uuid,timestamptz,integer) from public,anon,authenticated;
 grant execute on function public.ss_archive_unavailable_article_job(uuid,timestamptz,integer) to service_role;
+
+-- The authenticated submit RPC is the only member path that inserts an article
+-- job with an exact {id,url} payload. Automatic jobs and ordinary archives stay
+-- unchanged. Restore within the submit transaction before it saves the bookmark.
+create function ss_private.restore_unavailable_article_on_submit() returns trigger
+language plpgsql security definer set search_path='' as $$
+begin
+ if new.kind<>'article' or new.status<>'pending' or new.attempts<>0 or new.locked_at is not null
+    or current_setting('role',true) is distinct from 'authenticated'
+    or jsonb_typeof(new.payload) is distinct from 'object' then return new;end if;
+ if new.payload-'id'-'url'<>'{}'::jsonb or not (new.payload ?& array['id','url'])
+    or coalesce(new.payload->>'id','') !~ '^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$'
+    or jsonb_typeof(new.payload->'url') is distinct from 'string'
+    or auth.uid() is null or not ss_private.member_ok()
+    or coalesce(ss_private.role(),'') not in('admin','maintainer') then return new;end if;
+ update public.ss_articles a
+ set deleted_at=null,reference_meta=(
+   case when a.reference_meta->'public_evaluation_input'->>'scope'='search_snippet'
+        then a.reference_meta-'public_evaluation_input' else a.reference_meta end
+   )-'collection_error_code'-'collection_failed_at'||jsonb_build_object('public_extraction_requested','queued')
+ where a.id=(new.payload->>'id')::uuid and a.url=new.payload->>'url'
+   and a.deleted_at is not null and a.reference_meta->>'evaluation' is null
+   and a.reference_meta->>'public_extraction_requested'='unavailable'
+   and a.reference_meta->>'collection_error_code' in('source_not_found','source_gone')
+   and a.reference_meta->>'collection_failed_at' is not null;
+ if found then new.payload:=new.payload||jsonb_build_object('terminal_restore_job_id',new.id);end if;
+ return new;
+end;$$;
+revoke all on function ss_private.restore_unavailable_article_on_submit() from public,anon,authenticated,service_role;
+create trigger ss_restore_unavailable_article_on_submit before insert on public.ss_jobs
+ for each row execute function ss_private.restore_unavailable_article_on_submit();
+
+-- Give an explicit restored link one bounded collection window before the
+-- original 24-hour fallback clock applies again. No new discovery or review time.
+create or replace function public.ss_internal_review_candidates(batch_size int default 200) returns jsonb
+language sql stable security definer set search_path='' as $$
+ select coalesce(jsonb_agg(x),'[]') from (
+  select a.id,a.url,a.title,a.topic,a.kind,a.discovered_at,a.content_hash,a.reference_meta,a.review_state
+  from public.ss_articles a where a.deleted_at is null
+    and a.review_state in('awaiting_input','awaiting_evaluation','retry_wait','needs_attention')
+    and not exists(select 1 from public.ss_jobs j where j.kind='article' and j.status in('pending','running')
+      and j.created_at>now()-interval '15 minutes' and j.payload->>'terminal_restore_job_id'=j.id::text
+      and j.payload->>'id'=a.id::text and j.payload->>'url'=a.url)
+  order by (a.discovered_at<=now()-interval '24 hours') desc,(a.reference_meta->>'alert_kind'='release') desc nulls last,a.discovered_at,a.id
+  limit least(greatest(batch_size,1),500)
+ )x;
+$$;
+revoke all on function public.ss_internal_review_candidates(int) from public,anon,authenticated;
+grant execute on function public.ss_internal_review_candidates(int) to service_role;
