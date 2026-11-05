@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## [0.3.4] - 2026-11-05
+
+- Keep local reviews grounded in contiguous captured public text and isolate malformed items in bounded batches, so valid reviews continue during provider outages.
+- Atomically merge evaluator health, protect committed reviews from late provider errors, and show redacted failure steps in scheduled run history.
+- Archive confirmed dead, unused automatic search results with a trace while preserving manual, reviewed, saved and watched sources.
+
 ## [0.3.3] - 2026-10-21
 
 - Retain private health measurements, pipeline run traces and lifecycle events, with administrator-only historical search and queue trends.

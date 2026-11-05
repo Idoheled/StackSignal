@@ -17,9 +17,15 @@ import { webCandidate, webSearchRequest, lowValueDiscovery, discoveryListing } f
 import { EVALUATOR_VERSION, EVALUATION_MODEL, publicInput, publicTeam, evaluationRequest, parseEvaluation, effectiveScore, evaluationCandidates, candidateLane, nextEvaluationAt, samePublicInput, batchEvaluationRequest, parseBatchEvaluation, MAX_BATCH_SIZE, DAILY_REQUEST_CAP, MONTHLY_REQUEST_CAP, EVALUATION_TIMEOUT_MS, evaluationFailure, evaluationBatchSize, geminiFailureDetail, evaluationBatchRecovery } from "../_shared/evaluation.ts";
 import { repositoryHealth, repositoryAdmitted, articleRepositoryAdmitted, repositoryName, trendingProjects } from "../_shared/repository-health.ts";
 import { openshiftWatchURL, openshiftTags, openshiftItem } from "../_shared/openshift.ts";
-import { internalReview, immediateInternalReview, INTERNAL_REVIEW_DELAY_MS } from "../_shared/internal-review.ts";
+import { commitInternalReviewBatches, internalReview, immediateInternalReview, INTERNAL_REVIEW_DELAY_MS, INTERNAL_REVIEW_VERSION } from "../_shared/internal-review.ts";
 class Deferred extends Error { retryAt: number; constructor(message: string, retryAt = Date.now() + 3600000) { super(message); this.retryAt = retryAt; } }
 class SourceTooLarge extends Error { constructor() { super("Source exceeds size limit"); } }
+class SourceHttpError extends Error {
+  readonly status: number;
+  constructor(status: number) { super("Source returned HTTP " + status); this.status = status; }
+}
+// Only a missing destination itself qualifies, not a related API or a watched source.
+class ArticleSourceUnavailable extends SourceHttpError {}
 const env = (k: string) => Deno.env.get(k) || "";
 const SUPABASE = env("SUPABASE_URL"),
   KEY = env("SUPABASE_SERVICE_ROLE_KEY");
@@ -39,19 +45,56 @@ async function digest(s: string) {
     .map((x) => x.toString(16).padStart(2, "0"))
     .join("");
 }
+const reviewValidationMessages = new Set([
+  "Invalid assessment",
+  "Invalid assessment fields",
+  "Local review is not due",
+  "Local reviewer must use captured public input",
+  "Invalid uncertainty",
+  "Evidence is not grounded in the public input",
+  "Accepted review does not pass policy",
+]);
+class DatabaseOperationError extends Error {
+  constructor(
+    readonly operation: string,
+    readonly status: number,
+    readonly failureCode: string,
+    readonly reviewValidation = false,
+  ) {
+    super("Database operation failed");
+  }
+}
 async function db(path: string, method = "GET", body?: unknown, prefer = "return=representation") {
-  const r = await fetch(SUPABASE + "/rest/v1/" + path, {
-    method,
-    headers: {
-      apikey: KEY,
-      Authorization: "Bearer " + KEY,
-      "Content-Type": "application/json",
-      Prefer: prefer,
-    },
-    body: body === undefined ? undefined : JSON.stringify(body),
-    signal: AbortSignal.timeout(12000),
-  });
-  if (!r.ok) throw new Error("Database operation failed");
+  const operation = /^rpc\/(ss_[a-z0-9_]+)$/.exec(path)?.[1] || "database_request";
+  let r: Response;
+  try {
+    r = await fetch(SUPABASE + "/rest/v1/" + path, {
+      method,
+      headers: {
+        apikey: KEY,
+        Authorization: "Bearer " + KEY,
+        "Content-Type": "application/json",
+        Prefer: prefer,
+      },
+      body: body === undefined ? undefined : JSON.stringify(body),
+      signal: AbortSignal.timeout(12000),
+    });
+  } catch (error) {
+    throw new DatabaseOperationError(operation, 0, (error as Error).name === "TimeoutError" ? "database_timeout" : "database_transport");
+  }
+  if (!r.ok) {
+    let validation = false;
+    if (operation === "ss_commit_internal_reviews" && r.status === 400) {
+      try {
+        const rejection = JSON.parse(await bodyText(r, 2048));
+        validation = rejection?.code === "P0001" && reviewValidationMessages.has(rejection?.message);
+      } catch { /* Only known, bounded validation errors are safe to bisect. */ }
+    } else {
+      await r.body?.cancel().catch(() => undefined);
+    }
+    throw new DatabaseOperationError(operation, r.status,
+      validation ? "review_validation" : r.status >= 500 ? "database_unavailable" : "database_rejected", validation);
+  }
   return r.status === 204 ? null : await r.json();
 }
 const rpc = (name: string, body: unknown = {}) =>
@@ -147,7 +190,7 @@ async function fetchPublic(input: string, etag?: string, maxBytes=2_000_000, lan
     }
     if (!res.ok) {
       await res.body?.cancel();
-      throw new Error("Source returned HTTP " + res.status);
+      throw new SourceHttpError(res.status);
     }
     return {
       url,
@@ -189,9 +232,7 @@ async function queueRepoHealthChecks() {
   }
 }
 async function evaluationHealth(patch: any) {
-  const old = await db("ss_settings?key=eq.evaluation_health&select=value");
-  await db("ss_settings?on_conflict=key", "POST", { key: "evaluation_health",
-    value: { ...old[0]?.value, ...patch }, updated_at: new Date().toISOString() }, "resolution=merge-duplicates,return=representation");
+  await rpc("ss_merge_evaluation_health", { patch });
 }
 const eligibleEvaluation = "deleted_at=is.null&reference_meta->>public_evaluation_input=not.is.null";
 const pendingEvaluation = eligibleEvaluation + "&reference_meta->>evaluation=is.null&reference_meta->>evaluation_failed_at=is.null";
@@ -212,7 +253,8 @@ async function failedEvaluation(row: any, reason="Evaluation validation failed",
   const validationFailures=Number(row.reference_meta?.evaluation_validation_failures||0)+1;
   const failure=evaluationFailure(reason,status ? failures : /timeout|timed out|network|fetch failed|connection/i.test(reason) ? failures : validationFailures,status,retryAfter);
   if(retryDelayMs!==undefined)failure.retryAt=Math.min(failure.retryAt??Infinity,Date.now()+retryDelayMs);
-  await db("ss_articles?id=eq."+row.id+"&content_hash=eq."+encodeURIComponent(row.content_hash)+"&deleted_at=is.null", "PATCH",
+  // A fallback may finish while Gemini is in flight. Its committed review wins.
+  await db("ss_articles?id=eq."+row.id+"&content_hash=eq."+encodeURIComponent(row.content_hash)+"&deleted_at=is.null&reference_meta->>evaluation=is.null", "PATCH",
     {reference_meta:{...row.reference_meta,evaluation_failed_at:new Date().toISOString(),evaluation_failures:failures,
       evaluation_validation_failures:failure.kind==="validation" ? validationFailures : Number(row.reference_meta?.evaluation_validation_failures||0),
       evaluation_error:reason.slice(0,200),evaluation_error_kind:failure.kind,evaluation_retry_at:failure.retryAt ? new Date(failure.retryAt).toISOString() : null}});
@@ -224,10 +266,11 @@ async function queueMissingPublicInputs() {
   for(const row of incomplete) {
     let approved=false; try { approved=!!safeURL(row.url,hosts) && !new URL(row.url).pathname.toLowerCase().endsWith(".pdf"); } catch { /* Unapproved references stay private and unfetched. */ }
     if(approved) await rpc("ss_queue_item",{job_kind:"article",item:{url:row.url,kind:row.kind,topic:row.topic}});
-    await db("ss_articles?id=eq."+row.id+(row.content_hash ? "&content_hash=eq."+encodeURIComponent(row.content_hash) : "&content_hash=is.null"),"PATCH",{reference_meta:{...row.reference_meta,public_extraction_requested:approved ? "queued" : "unsupported"}});
+    await db("ss_articles?id=eq."+row.id+(row.content_hash ? "&content_hash=eq."+encodeURIComponent(row.content_hash) : "&content_hash=is.null")+"&deleted_at=is.null&reference_meta->>evaluation=is.null&reference_meta->>public_extraction_requested=is.null","PATCH",{reference_meta:{...row.reference_meta,public_extraction_requested:approved ? "queued" : "unsupported"}});
   }
 }
 async function internalSweep(profile:any) {
+  const deadline=Date.now()+60_000;
   const collection=await rpc("ss_promote_overdue_link_jobs",{batch_size:500});
   const rows=await rpc("ss_internal_review_candidates",{batch_size:500});
   const items=[];
@@ -239,9 +282,17 @@ async function internalSweep(profile:any) {
     items.push({id:row.id,content_hash:row.content_hash,captured_input:row.reference_meta.public_evaluation_input||null,input:row.reference_meta.public_evaluation_input||null,
       ...reviewed,evaluator:"policy",completion_path:overdue ? "sla_failover" : "priority_fresh"});
   }
-  const result={committed:0,skipped:0};
-  for(let i=0;i<items.length;i+=200) { const out=await rpc("ss_commit_internal_reviews",{items:items.slice(i,i+200)});result.committed+=out.committed;result.skipped+=out.skipped; }
-  await evaluationHealth({internal_review:{...result,promoted:collection.promoted,cleared_jobs:collection.cleared,version:"dry-evidence-v1",after_hours:24,last_run:new Date().toISOString()},pipeline:await rpc("ss_evaluation_pipeline"),coverage:await evaluationCoverage()});
+  const result=await commitInternalReviewBatches(items,
+    batch=>rpc("ss_commit_internal_reviews",{items:batch}),
+    error=>error instanceof DatabaseOperationError && error.reviewValidation,
+    deadline);
+  const lastRun=new Date().toISOString();
+  const [pipeline,coverage]=await Promise.allSettled([rpc("ss_evaluation_pipeline"),evaluationCoverage()]);
+  await evaluationHealth({
+    internal_review:{...result,promoted:collection.promoted,cleared_jobs:collection.cleared,version:INTERNAL_REVIEW_VERSION,after_hours:24,last_run:lastRun},
+    ...(pipeline.status==="fulfilled" ? {pipeline:pipeline.value} : {}),
+    ...(coverage.status==="fulfilled" ? {coverage:coverage.value} : {}),
+  });
   return result;
 }
 async function evaluateSweep(profile: any) {
@@ -588,7 +639,15 @@ async function articleJob(job: any, profile: any) {
     throw new Error(
       "PDF saved as a reference; automatic PDF extraction is not enabled",
     );
-  const res = await fetchPublic(job.payload.url);
+  let res;
+  try {
+    res = await fetchPublic(job.payload.url);
+  } catch (error) {
+    if (error instanceof SourceHttpError && (error.status === 404 || error.status === 410)) {
+      throw new ArticleSourceUnavailable(error.status);
+    }
+    throw error;
+  }
   const m = /\.md(?:$|\?)/i.test(res.url) ? {title:res.text.match(/^#\s+(.+)$/m)?.[1] || job.payload.title || new URL(res.url).pathname.split("/").at(-1),text:res.text,summary:res.text.slice(0,600),author:null,published_at:null,updated_at:null} : htmlMeta(res.text);
   await ingest(
     {
@@ -720,10 +779,12 @@ Deno.serve(async (request) => {
   const started = Date.now(), runId = crypto.randomUUID();
   let stage = 'collection';
   // Diagnostic failure must never prevent useful work. No payloads or secrets in logs.
-  const finish = async (status: 'succeeded'|'failed') => {
+  const finish = async (status: 'succeeded'|'failed', error?: unknown) => {
     const duration_ms = Date.now() - started;
-    console.info(JSON.stringify({event:'pipeline_run',trace_id:runId,stage,status,duration_ms,processed:count}));
-    try { await rpc('ss_ops_run_finish',{run_id:runId,outcome:status,processed:count}); } catch { console.warn('pipeline_run_diagnostics_unavailable'); }
+    const failure_step = status === 'succeeded' ? null : error instanceof DatabaseOperationError ? error.operation : 'collector_runtime';
+    const failure_code = status === 'succeeded' ? null : error instanceof DatabaseOperationError ? error.failureCode : 'runtime_error';
+    console.info(JSON.stringify({event:'pipeline_run',trace_id:runId,stage,status,duration_ms,processed:count,failure_step,failure_code}));
+    try { await rpc('ss_ops_run_finish',{run_id:runId,outcome:status,processed:count,failure_step,failure_code}); } catch { console.warn('pipeline_run_diagnostics_unavailable'); }
   };
   try {
     const body = await request.json().catch(()=>({}));
@@ -733,6 +794,7 @@ Deno.serve(async (request) => {
     if(body.mode === "internal_review") {
       const settings=await db("ss_settings?key=eq.profile&select=value");
       const result=await internalSweep(settings[0].value);
+      count=result.committed;
       await finish('succeeded');
       return new Response(JSON.stringify({ok:true,mode:"internal_review",...result}),{headers});
     }
@@ -787,6 +849,15 @@ Deno.serve(async (request) => {
         await db("ss_jobs?id=eq." + job.id, "DELETE");
         count++;
       } catch (e) {
+        if (e instanceof ArticleSourceUnavailable && job.locked_at &&
+          (e.status === 410 || (job.attempts >= 2 && job.last_error === e.message))) {
+          // The database checks provenance, lease and user data in one transaction.
+          // If disposition cannot be confirmed, the normal retry/failure path still applies.
+          const archived = await rpc("ss_archive_unavailable_article_job", {
+            job_id: job.id, expected_lock: job.locked_at, http_status: e.status,
+          }).catch(() => false);
+          if (archived === true) { count++; continue; }
+        }
         if (job.kind === "discovery" && !(["repository","trending"].includes(job.payload.lane)))
           await webHealth({ state: e instanceof Deferred ? "deferred" : "error", last_error: (e as Error).message.slice(0,200) });
         if (job.kind === "discovery" && ["repository","trending"].includes(job.payload.lane)) {
@@ -809,8 +880,8 @@ Deno.serve(async (request) => {
     return new Response(JSON.stringify({ ok: true, processed: count }), {
       headers,
     });
-  } catch {
-    await finish('failed');
+  } catch (error) {
+    await finish('failed',error);
     return new Response('{"error":"Collector run failed"}', {
       status: 503,
       headers,

@@ -3,7 +3,7 @@ import {useEffect,useState} from 'react';
 import {act} from '@/lib/client';
 
 type TraceEvent={id:string;occurred_at:string;stage:string;entity_id:string;phase:string;attempt:number;error_code?:string;duration_ms?:number;job_id?:string;article_id?:string;source_id?:string};
-type Run={id:string;stage:string;status:string;started_at:string;duration_ms?:number;processed:number};
+type Run={id:string;stage:string;status:string;started_at:string;duration_ms?:number;processed:number;failure_step?:string|null;failure_code?:string|null};
 type Diagnostics={events?:TraceEvent[];runs?:Run[];next_cursor?:string};
 type Filters={stage:string;day:string;entity_id:string};
 export default function AdminDiagnostics({preview=false}:{preview?:boolean}){
@@ -31,6 +31,6 @@ export default function AdminDiagnostics({preview=false}:{preview?:boolean}){
   {!events.length&&<p className="bi-empty">{loading?'Loading diagnostics…':'No recorded transitions match this search. Earlier history cannot be reconstructed.'}</p>}
   <div className="bi-controls"><button className="secondary-button" disabled={loading||!cursor} onClick={()=>{setLoading(true);setCursor(null);}}>Latest results</button><button className="secondary-button" disabled={loading||!data?.next_cursor} onClick={()=>{setLoading(true);setCursor(data?.next_cursor||null);}}>Older results</button><span className="subtle">Up to 100 transitions per page · default last 24 hours</span></div>
   <h4>Scheduled pipeline runs</h4><p className="bi-footnote">Latest 30 runs in the selected window. A successful cron trigger alone does not prove successful processing.</p>
-  <div className="table-scroll"><table><thead><tr><th>Started · local</th><th>Trace ID</th><th>Stage</th><th>Result</th><th>Duration</th><th>Processed</th></tr></thead><tbody>{runs.map(r=><tr key={r.id}><td>{new Date(r.started_at).toLocaleString()}</td><td><code>{r.id}</code></td><td>{r.stage}</td><td>{r.status}</td><td>{r.duration_ms==null?'—':`${r.duration_ms} ms`}</td><td>{r.processed}</td></tr>)}</tbody></table></div>
+  <div className="table-scroll"><table><thead><tr><th>Started · local</th><th>Trace ID</th><th>Stage</th><th>Result</th><th>Duration</th><th>Processed</th></tr></thead><tbody>{runs.map(r=><tr key={r.id}><td>{new Date(r.started_at).toLocaleString()}</td><td><code>{r.id}</code></td><td>{r.stage}</td><td>{r.status}{r.failure_code&&<small className="cell-detail">{r.failure_code.replaceAll('_',' ')}{r.failure_step&&<> · <code>{r.failure_step}</code></>}</small>}</td><td>{r.duration_ms==null?'—':`${r.duration_ms} ms`}</td><td>{r.processed}</td></tr>)}</tbody></table></div>
  </article>;
 }

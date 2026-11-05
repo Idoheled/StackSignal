@@ -74,7 +74,16 @@ test('operations RPC authorization, catalog truth, incident deduplication and bo
   assert(!JSON.stringify(trace).includes('NEVER-RETAIN'));assert(!JSON.stringify(trace).includes('https://'));
   const run=crypto.randomUUID();await db.exec('set role service_role');
   await db.query("select ss_ops_run_start($1,'collection')",[run]);await db.query("select ss_ops_run_finish($1,'succeeded',32)",[run]);await db.query("select ss_ops_run_finish($1,'failed',0)",[run]);
+  const failedRun=crypto.randomUUID();
+  await db.query("select ss_ops_run_start($1,'internal_review')",[failedRun]);
+  await assert.rejects(db.query("select ss_ops_run_finish($1,'failed',0,'ss_commit_internal_reviews','unexpected secret')",[failedRun]),/Invalid run result/);
+  await db.query("select ss_ops_run_finish($1,'failed',0,'ss_commit_internal_reviews','review_validation')",[failedRun]);
+  await db.query("select ss_merge_evaluation_health($1)",[JSON.stringify({state:'cooldown',usage:{used_24h:4}})]);
+  await db.query("select ss_merge_evaluation_health($1)",[JSON.stringify({internal_review:{committed:5}})]);
+  const merged=(await db.query("select value from ss_settings where key='evaluation_health'")).rows[0].value;
+  assert.equal(merged.state,'cooldown');assert.equal(merged.usage.used_24h,4);assert.equal(merged.internal_review.committed,5);
   await db.exec('reset role');assert.equal((await db.query('select status,processed from ss_private.ops_runs where id=$1',[run])).rows[0].processed,32,'finished run is immutable through service RPC');
+  assert.deepEqual((await db.query('select failure_step,failure_code from ss_private.ops_runs where id=$1',[failedRun])).rows[0],{failure_step:'ss_commit_internal_reviews',failure_code:'review_validation'});
   await db.exec("insert into ss_jobs(kind,payload) select 'article','{}' from generate_series(1,40);set role service_role");
   assert.equal((await db.query('select * from ss_claim_jobs(32)')).rows.length,32,'burst capacity is bounded at 32');
   await db.exec('reset role;delete from ss_jobs');
@@ -86,6 +95,8 @@ test('operations RPC authorization, catalog truth, incident deduplication and bo
   assert.equal(older.events.length,1);assert(!page.events.some(e=>e.id===older.events[0].id));
   await as(reader);await assert.rejects(db.query('select ss_admin_diagnostics()'),/Administrator required/);
   await assert.rejects(db.query("select ss_ops_run_start($1,'collection')",[crypto.randomUUID()]),/permission denied/);
+  await assert.rejects(db.query("select ss_merge_evaluation_health('{}')"),/permission denied/);
+  await assert.rejects(db.query("select ss_ops_run_finish($1,'failed',0,'ss_commit_internal_reviews','review_validation')",[failedRun]),/permission denied/);
   await db.exec('reset role');
   await db.exec("insert into ss_private.ops_metrics values(now()-interval '31 days',now()-interval '31 days','{}');insert into ss_private.ops_trace_events(stage,entity_id,phase,occurred_at) values('collection',gen_random_uuid(),'removed',now()-interval '15 days');insert into ss_private.ops_runs(id,stage,started_at) values(gen_random_uuid(),'collection',now()-interval '31 days');delete from ss_limits where key like 'budget:ops-retention:%'");
   await observe([]);assert.equal((await db.query("select count(*)::int n from ss_private.ops_metrics where bucket<now()-interval '30 days'")).rows[0].n,0);
