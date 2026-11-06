@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-06
+
+- Discover production incident analyses, substantive open-source launches and evidence-backed GitHub issue highlights from watched projects.
+- Rank similar signals using personal votes and taught links. Use owner feedback and active watches to steer a bounded share of public search.
+
 ## [0.3.4] - 2026-11-05
 
 - Keep local reviews grounded in contiguous captured public text and isolate malformed items in bounded batches, so valid reviews continue during provider outages.

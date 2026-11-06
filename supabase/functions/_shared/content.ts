@@ -21,6 +21,8 @@ export const TRUSTED_HOSTS = [
   "nvidia.com",
   "www.nvidia.com",
   "kubernetes.io",
+  "cloud.google.com",
+  "render.com",
   "huggingface.co",
   "www.redhat.com",
   "redhat.com",
@@ -153,7 +155,8 @@ export function htmlMeta(html: string) {
       "",
   ).slice(0, 500);
   const abstract=html.match(/<blockquote\b[^>]*class=["\'][^"\']*\babstract\b[^"\']*["\'][^>]*>([\s\S]*?)<\/blockquote>/i)?.[1];
-  const text = textOnly(abstract || html).slice(0, 50000);
+  const article = textOnly(html.match(/<article\b[^>]*>([\s\S]*?)<\/article>/i)?.[1] || "");
+  const text = (abstract ? textOnly(abstract) : article.length >= 180 ? article : textOnly(html)).slice(0, 50000);
   return {
     title,
     author:

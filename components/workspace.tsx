@@ -617,7 +617,7 @@ function Hub({
       a.hidden ? "Restore this signal?" : "Mark this as not relevant?",
       a.hidden
         ? "Return it to your feed."
-        : "This hides the link for you and adjusts your topic preferences. You can restore it in Hidden signals.",
+        : "This hides the link for you and moves similar signals lower in your feed. You can restore it in Hidden signals.",
       async () => {
         await perform("feedback", {
           article_id: a.id,
@@ -1058,6 +1058,7 @@ function Hub({
                           "Release",
                           "Pull request",
                           "Issue",
+                          "Incident",
                           "Article",
                           "Benchmark",
                           "Paper",
@@ -1334,8 +1335,8 @@ function Hub({
                     </span>
                     <h4>Make the signal yours.</h4>
                     <p>
-                      Helpful votes and submissions improve your ranking over
-                      time. Every recommendation tells you why it appeared.
+                      Helpful votes and submissions lift similar signals. Marking a
+                      signal as not relevant moves similar results lower in your feed.
                     </p>
                     {canWrite && (
                       <button onClick={() => setDialog({ type: "submit" })}>

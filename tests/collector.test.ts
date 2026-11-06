@@ -585,3 +585,97 @@ test('authenticated run tracing records failed work without raw payloads or cred
   assert(!JSON.stringify(records).includes(secret));
  }finally{globalThis.fetch=previous;}
 });
+
+test("incident and launch discovery preserve review provenance and ignore routine issue search hits", async () => {
+  const { webCandidate } = await import("../supabase/functions/_shared/web-discovery.ts");
+  const { engineeringQueries } = await import("../supabase/functions/_shared/engineering-discovery.ts");
+  const candidates = [
+    {url:"https://cloud.google.com/blog/products/networking/the-three-layer-gke-network-mystery",
+      title:"A three-layer GKE network mystery", content:"Packet capture exposed a TCP state machine problem under Envoy connection reuse. A Linux kernel patch fixed the stalled sessions."},
+    {url:"https://render.com/blog/a-hidden-dns-dependency-in-kubernetes",
+      title:"A hidden DNS dependency behind a Kubernetes outage", content:"The incident became a service outage because CoreDNS initialization needed the API server after a restart. Isolating CoreDNS reduced the failure domain."},
+    {url:"https://vllm.ai/blog/2026-11-04-introducing-kinference",
+      title:"Introducing Kinference, a vLLM control plane", content:"This open source inference control plane uses Kubernetes Gateway API. KV cache aware routing was compared with service routing in a latency benchmark."},
+  ].map(result => webCandidate(result, {}, "public query", "recent"));
+  assert.deepEqual(candidates.map(c => c?.reference_meta.engineering_class), ["incident","incident","project_launch"]);
+  assert.deepEqual(candidates.slice(0,2).map(c => c?.kind),["Incident","Incident"]);
+  assert(candidates.every(c => c?.reference_meta.link_status === "search_result"));
+  assert.equal(webCandidate({url:"https://github.com/vllm-project/vllm/issues/4",title:"vLLM help",content:"How do I install Kubernetes, enable a GPU, and deploy vLLM with KV cache offload?"},{}, "public query","recent"),null);
+  const day = 86_400_000;
+  const focused = engineeringQueries({"gpu-fabric":4, "cluster-dns":-2, "private sentinel":99}, day);
+  assert.match(focused[1], /NCCL RDMA RoCE/);
+  assert(!focused.some(query => query.includes("private sentinel")));
+  assert.match(engineeringQueries({"gpu-fabric":-4}, day)[1], /open source inference control plane/);
+});
+
+test("watched issue scans queue only bounded public highlights and advance the cursor after success", async () => {
+  const previous = globalThis.fetch;
+  const sourceId = "10000000-0000-4000-8000-000000000008";
+  const source = {id:sourceId,url:"https://api.github.com/repos/vLLM-project/vLLM/releases",name:"vLLM releases",
+    active:true,type:"github",revision:7,topic:"Inference"};
+  const repo = "vllm-project/vllm";
+  const job = {id:"job",kind:"discovery",attempts:1,payload:{lane:"github_issues",source_id:sourceId}};
+  const issue = (number: number, overrides = {}) => ({number,html_url:`https://github.com/${repo}/issues/${number}`,
+    title:"vLLM production regression stalls inference workers", labels:[{name:"regression"}], state:"open",
+    created_at:new Date(Date.now()-86_400_000).toISOString(),updated_at:new Date(Date.now()-180_000).toISOString(),
+    body:"A reproducible CUDA graph crash follows a rolling vLLM upgrade. The stack trace points to a stale memory pointer in the worker after graph replay. A minimal reproducer uses the same GPU and image with prefix caching enabled and submits the same prompt twice.",
+    ...overrides});
+  let batches: any[] = [], cursors: any[] = [], updates: any[] = [], queueOk = false, publisherCalls = 0;
+  environment.GITHUB_READ_TOKEN = "test-only-github-key";
+  globalThis.fetch = async (input, init) => {
+    const url = new URL(String(input)), body = init?.body ? JSON.parse(String(init.body)) : undefined;
+    if (url.hostname === "api.github.com") {
+      publisherCalls++;
+      assert.equal(url.pathname,`/repos/${repo}/issues`);
+      assert.equal(url.searchParams.get("state"),"all");
+      assert.equal(url.searchParams.get("per_page"),"30");
+      assert.equal(new Headers(init?.headers).get("Authorization"),null);
+      return Response.json([issue(10,{pull_request:{}}),issue(12,{labels:[{name:"question"}]}),
+        issue(13,{state_reason:"duplicate"}),issue(14,{html_url:"https://github.com/another/repo/issues/14"}),
+        issue(15,{updated_at:new Date(Date.now()-30*86_400_000).toISOString()}),issue(20),issue(21),issue(22)]);
+    }
+    if(url.pathname.endsWith("ss_take_budget")) return Response.json(!/^(maintenance|issue-discovery|repository-discovery|trending-discovery):/.test(body.budget_key));
+    if(url.pathname.endsWith("ss_claim_jobs")) return Response.json([job]);
+    if(url.pathname.endsWith("ss_enqueue_sources")) return Response.json(null);
+    if(url.pathname.endsWith("ss_settings")) return Response.json(body ? [body] :
+      [{value:url.searchParams.get("key")?.startsWith("eq.repo_health:") ? healthFixture : {search_monthly_limit:0}}]);
+    if(url.pathname.endsWith("ss_articles")) return Response.json([]);
+    if(url.pathname.endsWith("ss_sources")) {
+      if (body) {
+        assert.equal(url.searchParams.get("revision"),"eq.7");
+        cursors.push(body);
+      }
+      return Response.json([source]);
+    }
+    if(url.pathname.endsWith("ss_queue_items")) {
+      batches.push(body.items);
+      return queueOk ? Response.json(body.items.length) : new Response(null,{status:503});
+    }
+    if(url.pathname.endsWith("ss_jobs")) {updates.push({method:init?.method,body});return Response.json(null);}
+    throw Error("Unexpected " + url.pathname);
+  };
+  const run=()=>handler(new Request("https://collector.example",{method:"POST",headers:{"x-collector-secret":secret}}));
+  try {
+    assert.equal((await run()).status,200);
+    assert.equal(cursors.length,0,"a failed queue write must leave the scan window open");
+    assert.equal(updates[0].body.status,"pending");
+    queueOk = true;
+    assert.equal((await run()).status,200);
+    assert.equal(cursors.length,1);
+    assert.equal(cursors[0].issue_scan_repository,repo);
+    assert.deepEqual(batches[1].map(item=>item.url),[20,21].map(n=>`https://github.com/${repo}/issues/${n}`));
+    for (const item of batches[1]) {
+      assert.equal(item.kind,"Issue");
+      assert.equal(item.reference_meta.engineering_class,"repository_issue");
+      assert.equal(item.reference_meta.alert_kind,undefined);
+      assert.equal(item.reference_meta.source_revision,7);
+      assert(!item.text.startsWith("Status:"),"only the public issue body is evidence");
+    }
+    source.active = false;
+    await run();
+    assert.equal(publisherCalls,2,"a paused watch never fetches issues");
+  } finally {
+    globalThis.fetch = previous;
+    delete environment.GITHUB_READ_TOKEN;
+  }
+});

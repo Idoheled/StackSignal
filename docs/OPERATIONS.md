@@ -1,5 +1,26 @@
 # StackSignal operations checkpoint — October 11, 2026
 
+
+## Engineering discovery and feedback — November 6, 2026
+
+Hosted migration `20261106082008_engineering_discovery_feedback` updates feed
+ranking and adds the watch scan watermark. The migration preserved all 1,405
+retained articles at rollout. The shared discovery preference RPC is executable
+by the collector service role. Member and anonymous roles have no execution grant.
+
+Collector version 36 was active at 08:20:43 UTC with all 14 source files matching
+the tested feature. At 08:25 UTC the next natural collection, evaluation and
+internal review invocations succeeded. Four watched repositories advanced their
+issue watermark and eight more jobs were pending under the hourly issue budget.
+Tavily had used all 24 requests for the UTC day before rollout. The next daily
+cycle can schedule the new incident and project queries within the same quotas.
+
+The existing Worker can use the additive database changes. The Incident filter
+and updated feedback text ship through the normal Worker release workflow. If
+collection regresses, restore the version 35 collector bundle. Preserve the
+migration history and use a forward correction for feed behavior.
+
+
 ## WhatsApp pairing and announcement — October 18, 2026
 
 Phone-code linking succeeded. At 07:26 UTC the verified StackSignal group
