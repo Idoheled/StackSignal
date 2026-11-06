@@ -2,7 +2,7 @@
 
 [Documentation hub](README.md) · [Discovery and scoring](DISCOVERY.md) · [Architecture](ARCHITECTURE.md) · [Coverage](COVERAGE.md)
 
-Tavily adds genuine internet search alongside the existing feeds, documentation watches and GitHub release/project APIs. Search uses only administrator-authored public technical queries. Private notes, chats, usernames and internal deployment identifiers are not used to generate provider requests.
+Tavily adds genuine internet search alongside the existing feeds, documentation watches and GitHub release/project APIs. Search uses administrator-authored public technical queries and a fixed catalog for engineering discovery. Private notes, chats, usernames and internal deployment identifiers are not used to generate provider requests.
 
 ## Deployed status
 
@@ -24,14 +24,18 @@ References: [credits and pricing](https://docs.tavily.com/documentation/api-cred
 
 The prepared profile has 20 focused queries spanning serving, memory/cache, networking, hardware, OpenShift/operators, resource placement, routing/token policy, benchmarks, observability, provisioning and emerging research. Defaults live in [source-config.ts](../lib/source-config.ts); administrators edit the live profile without a code deployment.
 
-Queries are scheduled daily and deduplicated through the queue. On each day, a rotating three quarters use a recent-week window; one quarter searches without a date window to discover useful older work. Each query rotates into exploration over four days. Every response is bounded to eight results. Unknown publication dates stay unknown; exploration results appear in New to radar based on first discovery.
+Queries are scheduled daily and deduplicated through the queue. Two engineering
+queries supplement the saved profile within the same daily and monthly limits.
+One rotates through incident topics and periodically searches older reports. The
+other alternates between new project searches and a fixed public query selected
+by owner feedback and active watches. On each day, a rotating three quarters use a recent-week window; one quarter searches without a date window to discover useful older work. Each query rotates into exploration over four days. Every response is bounded to eight results. Unknown publication dates stay unknown; exploration results appear in New to radar based on first discovery.
 
 Queue capacity, retries, provider throttling and quotas affect delivery. A five-minute tick is not a five-minute web freshness guarantee. Quota errors defer work; they do not consume a normal failure attempt. Paused search makes no provider calls, and jobs for removed queries are skipped.
 
 ## Selection and provenance
 
 1. Validate result structure, canonical HTTPS identity, size bounds and usable public text.
-2. Reject private/credentialed URLs, portfolio/hiring/finance/promotional noise and snippets with insufficient technical relevance.
+2. Reject private or credentialed URLs, noise, and snippets with insufficient technical relevance. Automatic GitHub issue discovery uses the separate repository evidence gate.
 3. Deduplicate canonical URLs, including tracking variants, against stored articles.
 4. Apply the existing technical profile/relevance rules; never interpret the provider's query score as factual quality.
 5. Preserve snippet, query, search window, publisher hostname and search-reported publication date when valid.

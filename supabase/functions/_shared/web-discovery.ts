@@ -1,5 +1,6 @@
 import { canonicalLink } from "../../../lib/links.ts";
 import { TRUSTED_HOSTS, dateISO, textOnly } from "./content.ts";
+import { engineeringClass } from "./engineering-discovery.ts";
 import { relevance } from "./relevance.ts";
 
 /** Listing/search pages are navigation, not a discovered technical document. */
@@ -32,17 +33,21 @@ export function webCandidate(result: any, profile: any, query: string, lane: str
   let url: string;
   try { url = canonicalLink(result.url); } catch { return null; }
   const parsed = new URL(url);
+  // Automatic GitHub issue discovery uses the repository evidence gate.
+  if (parsed.hostname === "github.com" && /^\/[^/]+\/[^/]+\/(issues|pull)(?:\/|$)/.test(parsed.pathname)) return null;
   const title = textOnly(result.title).slice(0, 500).trim();
   const text = textOnly(result.content).slice(0, 4000).trim();
   if (!title || text.length < 60 || lowValueDiscovery(title, text, url) || discoveryListing(url)) return null;
+  const engineering = engineeringClass(title, text);
   // A useful snippet must match the team's technical context, not just the search provider's query score.
-  if (relevance(title, text, profile).score < 45 && !(lane === "explore" && text.length >= 120)) return null;
+  if (!engineering && relevance(title, text, profile).score < 45 && !(lane === "explore" && text.length >= 120)) return null;
   const repository = parsed.hostname === "github.com" && parsed.pathname.match(/^\/([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+)\/?$/)?.[1];
   return {
     title, url, text, summary: text.slice(0, 600), source: parsed.hostname,
-    kind: repository ? "Repository" : "Discovery",
+    kind: repository ? "Repository" : engineering === "incident" ? "Incident" : "Discovery",
     published_at: dateISO(typeof result.published_date === "string" ? result.published_date : null),
     reference_meta: {
+      ...(engineering ? { engineering_class: engineering } : {}),
       origin: "discovery", discovery_lane: "web_search", search_provider: "Tavily",
       search_query: query.slice(0, 300), search_window: lane,
       source_tier: TRUSTED_HOSTS.includes(parsed.hostname) ? "known_publisher" : "open_web",

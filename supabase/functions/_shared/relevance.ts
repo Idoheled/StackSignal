@@ -26,9 +26,6 @@ export function relevance(title: string, text: string, profile: any = {}, item: 
   const watched = item.reference_meta?.alert_kind === "release";
   if (watched) score = Math.max(score, item.priority === "core" ? 88 : 80);
   else if (score >= 45) score += item.priority === "core" ? 5 : item.priority === "explore" ? -3 : 0;
-  const tagWeights = profile._tagWeights || {};
-  const learned = Math.max(-8, Math.min(8, local.tags.reduce((n, t) => n + (Number(tagWeights[t]) || 0), 0)));
-  score += learned;
   const reason = watched
     ? `New ${item.reference_meta.prerelease ? "prerelease" : "release"} from a project your administrator follows. Read the release notes for applicability.`
     : matches.length ? `Matches your stack: ${matches.join(", ")}. ${signals.length ? "Signals: " + signals.join(", ").toLowerCase() + "." : ""}`
@@ -36,6 +33,6 @@ export function relevance(title: string, text: string, profile: any = {}, item: 
   const sentences = text.match(/[^.!?\n]+[.!?]?/g) || [];
   const excerpt = sentences.find(s => s.length >= 35 && local.tags.some(t => s.toLowerCase().includes(t))) || "";
   return { ...local, score: Math.max(0, Math.min(98, Math.round(score))),
-    reason: reason + (learned ? " Team feedback also informs this match." : ""),
+    reason,
     evidence: excerpt.trim().slice(0, 155), signals };
 }

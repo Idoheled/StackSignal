@@ -12,6 +12,7 @@ import {
 import { canonicalLink } from "../../../lib/links.ts";
 import { githubItems, githubAPIForLink, isPrerelease } from "../_shared/github.ts";
 import { repositorySearchURL, DEFAULT_REPO_QUERIES } from "../../../lib/source-config.ts";
+import { engineeringClass, engineeringQueries, githubIssueHighlights, isEngineeringQuery, issueScanWindow } from "../_shared/engineering-discovery.ts";
 import { relevance } from "../_shared/relevance.ts";
 import { webCandidate, webSearchRequest, lowValueDiscovery, discoveryListing } from "../_shared/web-discovery.ts";
 import { EVALUATOR_VERSION, EVALUATION_MODEL, publicInput, publicTeam, evaluationRequest, parseEvaluation, effectiveScore, evaluationCandidates, candidateLane, nextEvaluationAt, samePublicInput, batchEvaluationRequest, parseBatchEvaluation, MAX_BATCH_SIZE, DAILY_REQUEST_CAP, MONTHLY_REQUEST_CAP, EVALUATION_TIMEOUT_MS, evaluationFailure, evaluationBatchSize, geminiFailureDetail, evaluationBatchRecovery } from "../_shared/evaluation.ts";
@@ -134,7 +135,7 @@ async function bodyText(res: Response, maxBytes=2_000_000) {
   }
   return new TextDecoder().decode(bytes);
 }
-async function fetchPublic(input: string, etag?: string, maxBytes=2_000_000, lane: "source" | "enrichment" = "enrichment") {
+async function fetchPublic(input: string, etag?: string, maxBytes=2_000_000, lane: "source" | "enrichment" = "enrichment", anonymousGitHub = false) {
   let url = safeURL(input, hosts);
   for (let hop = 0; hop < 4; hop++) {
     // Exact operator-controlled host allowlist is the trust boundary; arbitrary submitted domains are never fetched.
@@ -153,7 +154,7 @@ async function fetchPublic(input: string, etag?: string, maxBytes=2_000_000, lan
         "application/json, application/rss+xml, application/atom+xml, text/html;q=0.9",
     };
     if (etag) headers["If-None-Match"] = etag;
-    if (host === "api.github.com" && env("GITHUB_READ_TOKEN"))
+    if (host === "api.github.com" && !anonymousGitHub && env("GITHUB_READ_TOKEN"))
       headers.Authorization = "Bearer " + env("GITHUB_READ_TOKEN");
     // Reserve most unauthenticated requests for existing watches. Bulk extraction and
     // health probes share the smaller lane, then still consume the global ceiling.
@@ -402,6 +403,7 @@ async function ingest(item: any, profile: any) {
     return;
   }
   const u = new URL(url);
+  const githubIssue = u.hostname === "github.com" && /^\/[^/]+\/[^/]+\/issues\/\d+$/.test(u.pathname) && !u.search;
   if (item.kind === "Release") {
     const tag = item.reference_meta?.tag || u.pathname.split("/releases/tag/")[1];
     item.reference_meta = { ...item.reference_meta, prerelease: isPrerelease({ prerelease: item.reference_meta?.prerelease, tag_name: tag }) };
@@ -414,10 +416,12 @@ async function ingest(item: any, profile: any) {
   const repo=repositoryName(url);
   if(repo && !item.reference_meta?.repo_health) item.reference_meta={...item.reference_meta,repository:repo,repo_health:await repoHealth(repo)};
   let old = await db(
-    "ss_articles?url=eq." +
-      encodeURIComponent(url) +
+    "ss_articles?url=" + (githubIssue ? "ilike." : "eq.") +
+      encodeURIComponent(githubIssue ? url.replaceAll("_", "\\_") : url) +
       "&select=id,url,title,kind,topic,content_hash,published_at,updated_at,reference_meta",
   );
+  if (githubIssue && old.length > 1) old = [old.find((row: { url: string }) => row.url === url) || old[0]];
+  if (githubIssue && old[0]) url = old[0].url;
   // Retained legacy URLs may precede trailing-slash canonicalization.
   if(!old[0] && !u.search && !url.endsWith("/"))old=await db("ss_articles?url=eq."+encodeURIComponent(url+"/")+"&select=id,url,title,kind,topic,content_hash,published_at,updated_at,reference_meta");
   const hash = await digest(
@@ -439,12 +443,13 @@ async function ingest(item: any, profile: any) {
   const { signals, ...local } = relevance(item.title, full, profile, item);
   const a = { ...local, summary:"", analysis_status:"rules" };
   const captured = publicInput(item, full);
+  const engineering = captured && engineeringClass(captured.title, captured.text, item.kind);
   const changedInput = !samePublicInput(captured,old[0]?.reference_meta?.public_evaluation_input);
   const record = {
     url,
     title: String(item.title || old[0]?.title || u.hostname).slice(0, 500),
     source: item.source || u.hostname,
-    kind: item.kind || old[0]?.kind || "Article",
+    kind: engineering === "incident" && !["Issue", "Pull request", "Release", "Commit", "Paper"].includes(item.kind) ? "Incident" : item.kind || old[0]?.kind || "Article",
     author: item.author || null,
     published_at: published,
     updated_at: item.updated_at || old[0]?.updated_at || null,
@@ -454,6 +459,7 @@ async function ingest(item: any, profile: any) {
     content_hash: hash,
     reference_meta: {
       ...old[0]?.reference_meta, ...item.reference_meta, signals,
+      ...(engineering ? { engineering_class: engineering } : {}),
       public_evaluation_input: captured,
       ...(changedInput ? {evaluation:null,evaluation_failed_at:null,evaluation_retry_at:null,evaluation_failures:0,evaluation_validation_failures:0,evaluation_error_kind:null,evaluation_error:null} : {}),
       link_status: old[0]?.reference_meta?.link_status === "title-match" ? "title-match" : item.reference_meta?.link_status === "search_result" ? "search_result" : "checked",
@@ -654,6 +660,7 @@ async function articleJob(job: any, profile: any) {
       ...m,
       url: job.payload.url,
       title: m.title || job.payload.title,
+      public_title: m.title || new URL(res.url).hostname,
       source: new URL(res.url).hostname,
       kind: job.payload.kind,
       topic: job.payload.topic,
@@ -670,7 +677,7 @@ async function discovery(profile: any) {
   const seconds = Math.ceil((nextMonth - Date.now()) / 1000);
   for (const q of (profile.queries || []).slice(0, 20)) {
     if (typeof q !== "string" || q.length > 300) continue;
-    if (profile._allowedQueries && !profile._allowedQueries.includes(q)) continue;
+    if (profile._allowedQueries && !profile._allowedQueries.includes(q) && !isEngineeringQuery(q)) continue;
     const lane = profile._searchLane === "explore" ? "explore" : "recent";
     if (!(await budget("web-search-day:" + date.toISOString().slice(0, 10), 24, 86400)))
       throw new Deferred("Daily web search ceiling reached", Date.UTC(date.getUTCFullYear(),date.getUTCMonth(),date.getUTCDate()+1));
@@ -721,6 +728,58 @@ async function discovery(profile: any) {
       last_accepted: accepted, last_filtered: filtered, last_duplicates: duplicates });
   }
 }
+async function issueDiscovery(payload: { source_id: string }, profile: { repo_discovery?: boolean }) {
+  if (profile.repo_discovery === false || !/^[a-f0-9-]{36}$/i.test(payload.source_id)) return;
+  const [source] = await db("ss_sources?id=eq." + payload.source_id);
+  const repo = source?.active && source.type === "github" && watchedReleaseRepository(source.url);
+  if (!repo) return;
+  const hourly = Math.floor(Date.now() / 3600000);
+  if (!await budget("github-issues:" + hourly, 4, 3600))
+    throw new Deferred("GitHub issue scan budget reached", (hourly + 1) * 3600000 + 1000);
+
+  const until = Date.now() - 60_000;
+  const since = issueScanWindow(source.issue_scan_repository === repo ? source.issue_scan_at : null, until);
+  const params = new URLSearchParams({
+    state: "all", sort: "updated", direction: "desc", per_page: "30",
+    since: new Date(since).toISOString(),
+  });
+  const meta = { origin: "source_watch", discovery_lane: "github_issues", source_id: source.id, source_revision: source.revision };
+  const endpoint = "https://api.github.com/repos/" + repo + "/issues";
+  const health = await repoHealth(repo);
+  if (articleRepositoryAdmitted("https://github.com/" + repo, { ...meta, repo_health: health }, profile)) {
+    let list: unknown;
+    try {
+      list = JSON.parse((await fetchPublic(endpoint + "?" + params, undefined, 2_000_000, "enrichment", true)).text);
+    } catch (error) {
+      // A deleted, private or issues-disabled repository has no public issue stream.
+      if (!(error instanceof SourceHttpError) || ![404, 410].includes(error.status)) throw error;
+      list = [];
+    }
+    const items = githubIssueHighlights(list, repo, since, until).flatMap(({ issue }) =>
+      githubItems(issue, { ...source, url: endpoint + "/" + issue.number }).map(item => ({
+        ...item, url: "https://github.com/" + repo + "/issues/" + issue.number, text: textOnly(issue.body).slice(0, 12000),
+        reference_meta: { ...item.reference_meta, ...meta, engineering_class: "repository_issue", public_extraction_requested: "complete", repo_health: health },
+      })),
+    );
+    if (items.length) await queueSourceItems(items);
+  }
+  // Commit the source-level watermark only after the bounded snapshot is queued.
+  await db("ss_sources?id=eq." + source.id + "&revision=eq." + source.revision, "PATCH", {
+    issue_scan_at: new Date(until).toISOString(), issue_scan_repository: repo,
+  });
+}
+
+function watchedReleaseRepository(url: string) {
+  return /^https:\/\/api\.github\.com\/repos\/([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+)\/releases(?:\?|$)/i.exec(url)?.[1].toLowerCase();
+}
+
+async function enqueueIssueScans() {
+  const sources: { id: string; url: string }[] = await db("ss_sources?active=eq.true&type=eq.github&url=like.https://api.github.com/repos/*/releases*&select=id,url&order=issue_scan_at.asc.nullsfirst,id.asc&limit=24");
+  for (const source of sources.filter(source => watchedReleaseRepository(source.url)).slice(0,12)) {
+    await rpc("ss_queue_item", { job_kind: "discovery", item: { lane: "github_issues", query: source.id, source_id: source.id } });
+  }
+}
+
 async function webHealth(patch: any) {
   const old = await db("ss_settings?key=eq.web_discovery_health&select=value");
   if (patch.configured && patch.monthly_ceiling > 0 && !patch.state &&
@@ -809,25 +868,29 @@ Deno.serve(async (request) => {
       await rpc("ss_maintenance");
     await rpc("ss_enqueue_sources");
     const settings = await db("ss_settings?key=eq.profile&select=value");
-    const profile = { ...settings[0].value, _tagWeights: await rpc("ss_feedback_weights") };
+    const profile = settings[0].value;
     const webEnabled = !!env("TAVILY_API_KEY") && Number(profile.search_monthly_limit) > 0;
     await webHealth({ configured: !!env("TAVILY_API_KEY"), monthly_ceiling: Math.min(Number(profile.search_monthly_limit)||0,800),
       daily_ceiling: 24, ...(webEnabled ? {} : { state: env("TAVILY_API_KEY") ? "paused" : "missing_key" }) });
     try { await queueRepoHealthChecks(); } catch { /* Queue public health checks without interrupting collection. */ }
     try { await queueMissingPublicInputs(); } catch { /* Public extraction progresses independently of Gemini capacity. */ }
+    if (profile.repo_discovery !== false && await budget("issue-discovery:" + day, 1, 86400)) await enqueueIssueScans();
     if(profile.repo_discovery!==false && profile.trending_discovery!==false && await budget("trending-discovery:"+day,1,86400))
       for(const window of ["daily","weekly"]) await rpc("ss_queue_item",{job_kind:"discovery",item:{lane:"trending",window,scheduled_day:day}});
     if (profile.repo_discovery !== false && await budget("repository-discovery:" + day, 1, 86400)) {
       for (const query of (profile.repo_queries || DEFAULT_REPO_QUERIES).slice(0,12))
         await rpc("ss_queue_item", { job_kind: "discovery", item: { lane: "repository", query } });
     }
-    if (
-      webEnabled &&
-      (await budget("discovery-run:" + day, 1, 86400))
-    )
-      for (const [index, query] of (profile.queries || []).slice(0,20).entries())
-        await rpc("ss_queue_item", { job_kind: "discovery", item: { query,
-          lane: "web", window: (Math.floor(Date.now()/86400000)+index)%4===0 ? "explore" : "recent", scheduled_day: day } });
+    if (webEnabled && await budget("discovery-run:" + day, 1, 86400)) {
+      const focus = await rpc("ss_discovery_preferences");
+      const queries = [...new Set([...engineeringQueries(focus), ...(profile.queries || []).slice(0,20)])];
+      for (const [index, query] of queries.entries()) {
+        const rotation = Math.floor(Date.now() / 86_400_000);
+        const explore = isEngineeringQuery(query) ? index === 0 && rotation % 7 === 0 : (rotation + index) % 4 === 0;
+        const window = explore ? "explore" : "recent";
+        await rpc("ss_queue_item", { job_kind: "discovery", item: { query, lane: "web", window, scheduled_day: day } });
+      }
+    }
     const jobs = await rpc("ss_claim_jobs", { batch_size: 32 });
     for (const job of jobs) {
       if (Date.now() - started > 85000) {
@@ -841,6 +904,7 @@ Deno.serve(async (request) => {
       }
       try {
         if (job.kind === "source") await sourceJob(job, profile);
+        else if (job.kind === "discovery" && job.payload.lane === "github_issues") await issueDiscovery(job.payload, profile);
         else if (job.kind === "discovery")
           await (job.payload.lane === "trending" ? trendingDiscovery(job.payload.window,profile) : job.payload.lane === "repository" ? repoDiscovery(job.payload.query, profile) : discovery({ ...profile, queries: [job.payload.query], _allowedQueries: profile.queries, _searchLane: job.payload.window }));
         else if (job.kind === "analyze") await ingest(job.payload, profile);
@@ -858,7 +922,7 @@ Deno.serve(async (request) => {
           }).catch(() => false);
           if (archived === true) { count++; continue; }
         }
-        if (job.kind === "discovery" && !(["repository","trending"].includes(job.payload.lane)))
+        if (job.kind === "discovery" && !["repository","trending","github_issues"].includes(job.payload.lane))
           await webHealth({ state: e instanceof Deferred ? "deferred" : "error", last_error: (e as Error).message.slice(0,200) });
         if (job.kind === "discovery" && ["repository","trending"].includes(job.payload.lane)) {
           const previous = await db("ss_settings?key=eq.discovery_health&select=value");

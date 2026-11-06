@@ -2,7 +2,7 @@
 
 [Documentation hub](README.md) · [Web-search operations](WEB_DISCOVERY.md) · [Architecture](ARCHITECTURE.md) · [Coverage](COVERAGE.md)
 
-StackSignal separates **finding material**, **judging technical fit**, and **ordering your reading list**. Tavily searches the web; StackSignal applies its own rules and feedback. The match number is a relevance score, not a probability that an article is correct, useful or compatible with your environment.
+StackSignal separates **finding material**, **judging technical fit**, and **ordering your reading list**. Tavily searches the web and StackSignal applies its own rules and feedback. The match number is a relevance score, not a probability that an article is correct, useful or compatible with your environment.
 
 ## Current configuration
 
@@ -14,8 +14,9 @@ A separate installation starts with provider budgets at zero. The original seed 
 
 | Lane | Engine | What chooses the work | What it finds |
 | --- | --- | --- | --- |
-| Web discovery | Tavily Search REST API | Administrator-authored web queries | Documentation, articles, papers, tools, projects and news across public domains |
+| Web discovery | Tavily Search REST API | Administrator-authored queries plus two rotating engineering queries | Postmortems, new projects and other technical publications |
 | New GitHub projects | GitHub repository Search API | Separate administrator-authored repository queries | Public, non-fork, non-archived repositories pushed within the past 30 days |
+| Repository issue highlights | Public GitHub issue lists | Active GitHub release watches under the existing repository discovery policy | Reproducible or corroborated reports of impactful bugs and regressions |
 | Trending projects | GitHub daily and weekly Trending pages | First five repositories in publisher order, then maintenance and AI gates | Relevant projects beyond saved queries |
 | OpenShift releases | Official amd64 release-controller API | Editable OpenShift 4/5 stable and dev-preview watches | Accepted payloads and decoded changelogs, with RC/preview labeling |
 | Followed dependencies | GitHub release/issue/PR APIs | Explicit watches, interval, priority and channel | Releases and changes for selected projects; stable releases by default |
@@ -25,6 +26,33 @@ A separate installation starts with provider budgets at zero. The original seed 
 The website reads stored results. It does not initiate a new paid search for every visitor or every page refresh. Supabase Cron ticks every five minutes and the collector leases at most eight jobs per tick. Watch intervals, queue load and provider limits determine when each result arrives.
 
 GitHub project search alternates sorting by activity and stars on successive UTC days, returning at most six results per query. All GitHub suggestions additionally require current stars, actual watchers, release history, activity and declared-license checks. [Repository discovery](REPOSITORY_DISCOVERY.md) documents the thresholds, caching, Trending and OpenShift probes. These signals do not certify security or code quality. Search engines and RSS feeds are distinct from the optional Gemini classifier.
+
+### Engineering reports and preferences
+
+Issue scans are a separate queue lane from release watches. Each day the
+collector queues up to 12 active release watches, least recently scanned first.
+It uses the existing GitHub budget and limits issue scans to four starts per
+hour. Each scan checks up to 30 recently updated public issue records, including
+closed issues, and sends at most two to the normal review pipeline. Pull
+requests, duplicates, support, requests for features and reports with weak
+technical evidence are screened out. The first scan looks back at most 14 days.
+Later scans use a per-watch watermark advanced only after successful queuing.
+Busy repositories can have more activity than one bounded snapshot can cover.
+
+The relevance sort uses up to 160 recent explicit votes from the last 90 days.
+Helpful and taught submissions lift closely related items. Not relevant hides
+the original for that member and lowers similar items, especially content in
+the same format. Restoring the link removes the negative preference and
+restores any earlier helpful vote. An active watch modestly lifts its own
+entries. The review score, admission rules and Newest sort remain independent.
+
+Only the workspace owner's feedback steers shared search. Captured public
+excerpts and active watches map to a fixed set of technical facets. Member
+feedback reasons, titles supplied with submissions and private notes do not
+enter search requests. Shared search retains a rotating baseline for incidents
+and launches alongside the adaptive slot. Likes and watches do not approve a
+candidate or change its WhatsApp eligibility.
+
 
 ## 2. What the web searches are based on
 

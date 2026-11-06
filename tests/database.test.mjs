@@ -183,6 +183,75 @@ test("PostgreSQL access, isolation, invitation and concurrency invariants", asyn
     ).rows[0].id;
     const review={topic:"Platforms",score:90,confidence:"high",depth:"advanced",decision:"useful",evidence:"Reviewed public engineering excerpt",evaluated_at:new Date().toISOString()};
     await db.query("update ss_articles set reference_meta=$2::jsonb where id=$1",[article,JSON.stringify({review_commit:crypto.randomUUID(),evaluation:review})]);
+    await t.test("feedback ranks similar engineering content and owner signals steer shared discovery", async () => {
+      await db.exec("reset role");
+      const fixture = async (slug, headline, kind, excerpt) => {
+        const input = { title: headline, text: excerpt, scope: "publisher_excerpt" };
+        const meta = { review_commit: crypto.randomUUID(), evaluation: review, public_evaluation_input: input };
+        return (await db.query(
+          "insert into ss_articles(url,title,kind,topic,score,published_at,reference_meta) values($1,$2,$3,'Platforms',70,now(),$4) returning id",
+          ["https://kubernetes.io/" + slug, headline, kind, JSON.stringify(meta)],
+        )).rows[0].id;
+      };
+      const disliked = await fixture("interest-dns", "Interest fixture CoreDNS outage", "Incident", "CoreDNS needed etcd during recovery.");
+      const similar = await fixture("interest-dns-peer", "Interest fixture CoreDNS incident report", "Incident", "CoreDNS lost DNS resolution after restart.");
+      const adjacent = await fixture("interest-dns-doc", "Interest fixture CoreDNS configuration", "Article", "CoreDNS configuration reference.");
+      const unrelated = await fixture("interest-numa", "Interest fixture NUMA topology", "Article", "NUMA and PCIe placement.");
+      const ranks = async () => Object.fromEntries((await action("feed",{q:"Interest fixture",mode:"archive"})).items.map(item => [item.id,item.rank_score]));
+      const serviceFocus = async () => {
+        await db.exec("reset role; set role service_role");
+        const value = (await db.query("select ss_discovery_preferences() value")).rows[0].value;
+        await db.exec("reset role");
+        return value;
+      };
+
+      await as(owner);
+      const initial = await ranks();
+      assert.equal(initial[similar], initial[unrelated]);
+      await action("feedback", {article_id:disliked, liked:true, reason:"private reason sentinel"});
+      assert.equal((await ranks())[similar], initial[similar]+4);
+      await action("feedback", {article_id:disliked, hidden:true, confirmed:true});
+      const hidden = await ranks();
+      assert.equal(hidden[disliked], undefined);
+      assert.equal(hidden[similar], initial[similar]-4, "hide supersedes an earlier like");
+      assert.equal(hidden[adjacent], initial[adjacent]-1);
+      assert.equal(hidden[unrelated], initial[unrelated], "a broad topic match is insufficient");
+      await fails(() => db.query("select ss_discovery_preferences()"));
+      assert.equal((await serviceFocus())["cluster-dns"],-2);
+
+      await as(writer);
+      assert.equal((await ranks())[similar], initial[similar], "preferences belong to the voting member");
+      await action("feedback",{article_id:disliked,liked:true});
+      assert.equal((await ranks())[similar], initial[similar]+4);
+      assert.equal((await serviceFocus())["cluster-dns"],-2, "other votes cannot steer the shared search");
+
+      await as(owner);
+      await action("feedback",{article_id:disliked,hidden:false,confirmed:true});
+      assert.equal((await ranks())[similar], initial[similar]+4);
+      await action("feedback",{article_id:disliked,liked:false});
+      assert.equal((await ranks())[similar], initial[similar]);
+      const taught = await action("submit", {url:"https://kubernetes.io/interest-taught",title:"private title sentinel",teach:true});
+      assert.equal((await serviceFocus())["cluster-dns"],undefined, "submission text is not public evidence");
+
+      // Simulate the normal collector replacing placeholder metadata with publisher evidence.
+      await db.exec("set role service_role");
+      await db.query("update ss_articles set title='CoreDNS failure analysis',kind='Incident',reference_meta=reference_meta||$2 where id=$1",
+        [taught.id,JSON.stringify({public_evaluation_input:{title:"CoreDNS failure analysis",text:"CoreDNS and etcd restart dependency",scope:"publisher_excerpt"}})]);
+      assert.equal((await serviceFocus())["cluster-dns"],2);
+      await as(owner);
+      assert.equal((await ranks())[similar], initial[similar]+4);
+      const watch = await action("source_save", {name:"Source fixture",url:"https://kubernetes.io/roce/feed",type:"rss",topic:"Networking",interval_minutes:240});
+      const focus = await serviceFocus();
+      assert.equal(focus["gpu-fabric"],1);
+      assert(!JSON.stringify(focus).includes("sentinel"));
+      await as(owner);
+      await action("source_toggle", {id:watch.id,active:false,confirmed:true});
+      assert.equal((await serviceFocus())["gpu-fabric"],undefined);
+      await db.query("delete from ss_articles where id=any($1::uuid[])",[[disliked,similar,adjacent,unrelated,taught.id]]);
+      await db.query("delete from ss_sources where id=$1",[watch.id]);
+      await db.exec("delete from ss_jobs where payload->>'url'='https://kubernetes.io/interest-taught'");
+    });
+
     await as(writer);
     await action("save", { article_id: article, folder_id: child });
     const lib = await action("library", { folder: parent, q: "GPU" });
@@ -472,6 +541,7 @@ test("PostgreSQL access, isolation, invitation and concurrency invariants", asyn
     await fails(()=>db.query("select ss_feedback_weights()"));
     await fails(()=>db.query("select ss_queue_item('article','{}')"));
 
+    await db.exec("reset role");
     await db.exec("reset role");
     const frozen = (await db.query("insert into ss_articles(url,title,summary,content_hash,reference_meta) values('https://kubernetes.io/frozen-review','Original title','Original summary',$1,$2) returning id",["9".repeat(64),JSON.stringify({public_evaluation_input:{title:"Original title",text:"Reviewed public engineering excerpt with actionable GPU topology placement.",scope:"publisher_excerpt"}})])).rows[0].id;
     await db.query("insert into ss_private.review_cohort(url) values('https://kubernetes.io/frozen-review')");
