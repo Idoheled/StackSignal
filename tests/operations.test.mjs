@@ -153,7 +153,7 @@ test('operational request batches preserve completed stages and service-only aut
    revoke all on all functions in schema public from public,anon,authenticated;
    grant execute on all functions in schema public to service_role;
   `);
-  await db.exec(await readFile(new URL('../supabase/migrations/20261122063619_consolidate_operational_requests.sql',import.meta.url),'utf8'));
+  await db.exec(await readFile(new URL('../supabase/migrations/20261122071015_consolidate_operational_requests.sql',import.meta.url),'utf8'));
   const reset=async(failure='',denied=false,code='P0001')=>{
    await db.exec('reset role;truncate test_fixture.effects');
    await db.query("select set_config('test_fixture.failure',$1,false),set_config('test_fixture.denied',$2,false),set_config('test_fixture.failure_code',$3,false)",[failure,String(denied),code]);
