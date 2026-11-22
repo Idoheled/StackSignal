@@ -301,8 +301,15 @@ function Hub({
   }, [light]);
   useEffect(() => {
     if (preview) return;
-    const t = setInterval(() => setRefresh((x) => x + 1), 60000);
-    return () => clearInterval(t);
+    const refreshVisible = () => {
+      if (document.visibilityState === "visible") setRefresh((x) => x + 1);
+    };
+    const t = setInterval(refreshVisible, 60000);
+    document.addEventListener("visibilitychange", refreshVisible);
+    return () => {
+      clearInterval(t);
+      document.removeEventListener("visibilitychange", refreshVisible);
+    };
   }, [preview]);
   async function perform(action: string, p: any = {}) {
     if (!preview) return act(action, p);

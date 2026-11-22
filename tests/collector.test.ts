@@ -23,10 +23,16 @@ test("unchanged RSS feeds do not replay deleted links and changed feeds still qu
   if(url.pathname.endsWith("ss_feedback_weights"))return Response.json({});
   if(url.pathname.endsWith("ss_enqueue_sources"))return Response.json(null);
   if(url.pathname.endsWith("ss_queue_items")){batches++;return Response.json(body.items.length);}
-  if(url.pathname.endsWith("ss_articles"))return Response.json([]);
-  if(url.pathname.endsWith("ss_settings"))return Response.json(body?[body]:[{value:{repo_discovery:false,search_monthly_limit:0}}]);
-  if(url.pathname.endsWith("ss_sources")){if(body)source={...source,...body};return Response.json([source]);}
-  if(url.pathname.endsWith("ss_jobs"))return Response.json(body?[body]:[]);
+  if(url.pathname.endsWith("ss_articles")||url.pathname.endsWith("ss_public_input_candidates"))return Response.json([]);
+  if(url.pathname.endsWith("ss_settings")){
+   if(body){assert(new Headers(init?.headers).get('Prefer')?.includes('return=minimal'));return new Response(null,{status:201});}
+   return Response.json([{value:{repo_discovery:false,search_monthly_limit:0}}]);
+  }
+  if(url.pathname.endsWith("ss_sources")){
+   if(body){assert.equal(new Headers(init?.headers).get('Prefer'),'return=minimal');source={...source,...body};return new Response(null,{status:204});}
+   return Response.json([source]);
+  }
+  if(url.pathname.endsWith("ss_jobs")){assert.equal(new Headers(init?.headers).get('Prefer'),'return=minimal');return new Response(null,{status:204});}
   throw Error("Unexpected "+url.pathname);
  };
  const run=()=>handler(new Request("https://collector.example",{method:"POST",headers:{"x-collector-secret":secret}}));
@@ -48,15 +54,16 @@ test("collection enriches short public excerpts while Gemini is paused",async()=
   if(url.pathname.endsWith("ss_enqueue_sources"))return Response.json(null);
   if(url.pathname.endsWith("ss_queue_item")){queued.push(body);return Response.json(null);}
   if(url.pathname.endsWith("ss_settings"))return Response.json(body?[body]:[{value:{repo_discovery:false,search_monthly_limit:0,gemini_mode:"off"}}]);
-  if(url.pathname.endsWith("ss_articles")){
-   if(body){patched.push(body);return Response.json([body]);}
-   if(url.searchParams.get("select")==="url")return Response.json([]);
-   assert.equal(url.searchParams.has("reference_meta->>public_evaluation_input"),false);
+  if(url.pathname.endsWith("ss_public_input_candidates")){
    return Response.json([
     {id:"short",url:"https://developer.nvidia.com/blog/example/",reference_meta:{public_evaluation_input:{text:"Short RSS excerpt"}}},
-    {id:"full",url:"https://developer.nvidia.com/blog/full/",reference_meta:{public_evaluation_input:{text:"x".repeat(1800)}}},
     {id:"unsafe",url:"https://127.0.0.1/private",reference_meta:{}}
    ]);
+  }
+  if(url.pathname.endsWith("ss_articles")){
+   if(body){assert.equal(new Headers(init?.headers).get('Prefer'),'return=minimal');patched.push(body);return new Response(null,{status:204});}
+   assert.equal(url.searchParams.get("select"),"url","complete input metadata is never downloaded by the collection poll");
+   return Response.json([]);
   }
   throw Error("Unexpected "+url.pathname);
  };
@@ -255,6 +262,7 @@ test("semantic sweep is cached, comparison-only, private-context safe and pauses
     if(url.pathname.endsWith("ss_evaluation_pipeline")) return Response.json({});
     if(url.pathname.endsWith("ss_review_coverage")) return Response.json({});
     if(url.pathname.endsWith("ss_evaluation_candidates")) return Response.json(row.reference_meta.evaluation ? [] : [row]);
+    if(url.pathname.endsWith("ss_public_input_candidates")) return Response.json([]);
     if(url.pathname.endsWith("ss_evaluation_usage")) return Response.json({used_24h:used,used_month:used,last_attempt:lastAttempt});
     if(url.pathname.endsWith("ss_reserve_evaluation_batch")) {assert(body.daily_max<=16);assert(body.monthly_max<=496);used++;return Response.json({request_id:used,items:body.items});}
     if(url.pathname.endsWith("ss_merge_evaluation_health")) {health={...health,...body.patch};return new Response(null,{status:204});}
@@ -272,6 +280,7 @@ test("semantic sweep is cached, comparison-only, private-context safe and pauses
         if(row.reference_meta.evaluation) return Response.json([]);
       }
       if(body) {
+        if(body.reference_meta?.evaluation && body.reference_meta.evaluation_failed_at===null)assert.equal(new Headers(init?.headers).get("Prefer"),"return=representation","review compare-and-set requires an acknowledgement");
         if(url.searchParams.get("reference_meta->>evaluation")==="is.null" && row.reference_meta.evaluation)return Response.json([]);
         writes.push(body);row={...row,...body};return Response.json([row]);
       }

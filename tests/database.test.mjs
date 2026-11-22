@@ -903,6 +903,49 @@ test("PostgreSQL access, isolation, invitation and concurrency invariants", asyn
       assert.equal((await db.query("select ss_private.gemini_new_link($1) x",[base])).rows[0].x,true,"no identity remains when the last retained link is deleted");
     });
 
+    await t.test("public-input candidates preserve the scan window, UTF-16 cutoff and service-only access",async()=>{
+      await db.exec("reset role;begin");
+      try {
+        await db.query(`insert into ss_articles(url,title,discovered_at,reference_meta)
+          select 'https://kubernetes.io/egress-regression-'||n,'Transfer regression',
+           timestamp '1900-01-01' + n * interval '1 second',
+           jsonb_build_object('public_evaluation_input',jsonb_build_object('text',
+            case when n<=490 then repeat('x',1800)
+             when n=492 then repeat('💡',899)||'x'
+             when n=493 then repeat('💡',900)
+             when n=494 then null else 'Short public excerpt' end))
+          from generate_series(1,501)n`);
+        await db.query(`insert into ss_articles(url,title,discovered_at,reference_meta,deleted_at)
+          values
+          ('https://kubernetes.io/egress-excluded-queued','Excluded',timestamp '1800-01-01','{"public_extraction_requested":"queued"}',null),
+          ('https://kubernetes.io/egress-excluded-reviewed','Excluded',timestamp '1800-01-01','{"assistant_reviewed_at":"2026-01-01T00:00:00Z"}',null),
+          ('https://kubernetes.io/egress-excluded-evaluated','Excluded',timestamp '1800-01-01','{"evaluation":true}',null),
+          ('https://kubernetes.io/egress-excluded-deleted','Excluded',timestamp '1800-01-01','{}',now())`);
+        await db.exec('set role service_role');
+        const rows=(await db.query('select * from ss_public_input_candidates()')).rows;
+        assert.deepEqual(rows.map(r=>Number(r.url.split('-').at(-1))),[491,492,494,495,496,497,498,499]);
+        assert.equal(rows[1].reference_meta.public_evaluation_input.text.length,1799);
+        assert.deepEqual(Object.keys(rows[0]).sort(),['id','url','kind','topic','content_hash','reference_meta'].sort());
+        await db.exec('reset role');
+        assert.equal((await db.query("select count(*)::int n from ss_articles where url like 'https://kubernetes.io/egress-regression-%'")).rows[0].n,501,'candidate selection leaves all article rows intact');
+        await db.query(`update ss_articles set reference_meta=jsonb_build_object('public_evaluation_input',jsonb_build_object('text',repeat('x',1800)))
+          where url like 'https://kubernetes.io/egress-regression-%' and split_part(url,'regression-',2)::int between 491 and 499`);
+        await db.exec('set role service_role');
+        const tail=(await db.query('select url from ss_public_input_candidates()')).rows;
+        assert.deepEqual(tail.map(r=>r.url),['https://kubernetes.io/egress-regression-500'],'filtering must not admit row 501 outside the original oldest-500 window');
+        await db.exec('reset role');
+        const permissions=(await db.query(`select p.provolatile,p.prosecdef,p.proconfig,
+          has_function_privilege('anon',p.oid,'execute') as anon_access,
+          has_function_privilege('authenticated',p.oid,'execute') as member_access,
+          has_function_privilege('service_role',p.oid,'execute') as service_access
+          from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+          where n.nspname='public' and p.proname='ss_public_input_candidates'`)).rows[0];
+        assert.equal(permissions.provolatile,'s');assert.equal(permissions.prosecdef,false);
+        assert.equal(permissions.anon_access,false);assert.equal(permissions.member_access,false);assert.equal(permissions.service_access,true);
+        assert(permissions.proconfig.some(v=>v==='search_path=""'));
+      } finally {await db.exec('reset role;rollback');}
+    });
+
     console.log(
       "Verified: RLS, MFA gate, read-only restrictions, private notes, recursive title search, cycle prevention, trash/restore, confirmation, single-use invites, immediate revocation, bounded quotas, job leases.",
     );

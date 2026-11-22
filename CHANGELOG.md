@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-11-22
+
+- Reduce Supabase transfer by selecting only incomplete public inputs in the database, preserving the collection window, eight-item batch and existing schedules.
+- Avoid unused write-response payloads while retaining review race acknowledgements, and suspend feed refreshes in hidden browser tabs.
+- Combine adjacent health-monitor requests while preserving monitoring schedules, signed receipts and incident leases.
+- Document free-plan checks and the requirement to approve data cleanup separately.
+
 ## [0.4.0] - 2026-11-06
 
 - Discover production incident analyses, substantive open-source launches and evidence-backed GitHub issue highlights from watched projects.
