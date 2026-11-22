@@ -9,8 +9,11 @@ Deno.serve(async request=>{
   if(!await verifySignature(secret,'ops-context',body,request.headers))return new Response('{"error":"Unauthorized"}',{status:401,headers});
   const p=JSON.parse(body);
   if(!['latest_releases','health'].includes(p.operation)||!Number.isInteger(p.limit??7)||(p.limit??7)<1||(p.limit??7)>10)return new Response('{"error":"Invalid read-only request"}',{status:400,headers});
-  const permitted=await rpc('ss_rate_limit',{keys:['platform-context'],max_count:120,window_seconds:60});if(!permitted)return new Response('{"error":"Please retry shortly"}',{status:429,headers});
-  const context=await rpc('ss_platform_context',{item_limit:p.operation==='health'?1:p.limit??7});
+  const result=await rpc('ss_platform_context_limited',{item_limit:p.operation==='health'?1:p.limit??7});
+  if(result?.ok!==true)throw Error('Platform context unavailable');
+  if(result.permitted===false)return new Response('{"error":"Please retry shortly"}',{status:429,headers});
+  if(result.permitted!==true||!result.context)throw Error('Platform context unavailable');
+  const context=result.context;
   if(p.operation==='health')delete context.releases;
   const out=JSON.stringify(context);return new Response(out,{headers:{...headers,...await signedHeaders(secret,'ops-receipt',out)}});
  }catch{return new Response('{"error":"Platform context unavailable"}',{status:503,headers});}

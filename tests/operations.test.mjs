@@ -103,5 +103,103 @@ test('operations RPC authorization, catalog truth, incident deduplication and bo
   assert.equal((await db.query("select count(*)::int n from ss_private.ops_trace_events where occurred_at<now()-interval '14 days'")).rows[0].n,0);
   assert.equal((await db.query("select count(*)::int n from ss_private.ops_runs where started_at<now()-interval '30 days'")).rows[0].n,0);
 
+  await db.exec('set role service_role');
+  const batchedSnapshot=(await db.query('select ss_ops_reconcile_snapshot() result')).rows[0].result;
+  assert.equal(batchedSnapshot.ok,true);assert(batchedSnapshot.snapshot.checked_at);
+  const batchedEvents=(await db.query("select ss_ops_observe_claim('{\"stages\":[]}','[]',3) result")).rows[0].result;
+  assert.equal(batchedEvents.ok,true);assert(Array.isArray(batchedEvents.events));assert(batchedEvents.events.length<=3);
+  assert(batchedEvents.events.every(e=>e.id&&e.lease_id&&e.payload.kind==='platform_incident'));
+  const limitedContext=(await db.query('select ss_platform_context_limited(7) result')).rows[0].result;
+  assert.equal(limitedContext.ok,true);assert.equal(limitedContext.permitted,true);assert.equal(limitedContext.context.releases.length,7);
+
+ }finally{await db.close();}
+});
+
+test('operational request batches preserve completed stages and service-only authorization',async t=>{
+ const db=new PGlite();
+ try{
+  await db.exec(`
+   create role anon;create role authenticated;create role service_role;
+   create schema test_fixture;
+   create table test_fixture.effects(stage text,args jsonb);
+   create function test_fixture.record(stage text,args jsonb) returns void language plpgsql as $$
+   begin
+    insert into test_fixture.effects values(stage,args);
+    if current_setting('test_fixture.failure',true)=stage then
+     raise exception 'Sensitive upstream diagnostic: never return this' using errcode=coalesce(nullif(current_setting('test_fixture.failure_code',true),''),'P0001');
+    end if;
+   end;$$;
+   create function public.ss_ops_reconcile() returns jsonb language plpgsql security definer set search_path='' as $$
+   begin perform test_fixture.record('reconcile','{}');return '{}';end;$$;
+   create function public.ss_ops_snapshot() returns jsonb language plpgsql security definer set search_path='' as $$
+   begin
+    perform test_fixture.record('snapshot','{}');
+    return jsonb_build_object('checked_at','2026-11-22T00:00:00Z','reconciled',(select count(*) from test_fixture.effects where stage='reconcile'));
+   end;$$;
+   create function public.ss_ops_observe(observation jsonb,conditions jsonb) returns jsonb language plpgsql security definer set search_path='' as $$
+   begin perform test_fixture.record('observe',jsonb_build_object('observation',observation,'conditions',conditions));return '{}';end;$$;
+   create function public.ss_ops_claim_events(batch_size integer) returns table(id uuid,lease_id uuid,payload jsonb) language plpgsql security definer set search_path='' as $$
+   begin
+    perform test_fixture.record('claim',jsonb_build_object('batch_size',batch_size));
+    return query select gen_random_uuid(),gen_random_uuid(),jsonb_build_object('version',1,'kind','platform_incident') from generate_series(1,least(batch_size,5));
+   end;$$;
+   create function public.ss_rate_limit(keys text[],max_count integer,window_seconds integer) returns boolean language plpgsql security definer set search_path='' as $$
+   begin
+    perform test_fixture.record('rate',jsonb_build_object('keys',keys,'max_count',max_count,'window_seconds',window_seconds));
+    return current_setting('test_fixture.denied',true) is distinct from 'true';
+   end;$$;
+   create function public.ss_platform_context(item_limit integer) returns jsonb language plpgsql security definer set search_path='' as $$
+   begin perform test_fixture.record('context',jsonb_build_object('item_limit',item_limit));return jsonb_build_object('releases',jsonb_build_array('release'),'item_limit',item_limit);end;$$;
+   revoke all on all functions in schema public from public,anon,authenticated;
+   grant execute on all functions in schema public to service_role;
+  `);
+  await db.exec(await readFile(new URL('../supabase/migrations/20261122071015_consolidate_operational_requests.sql',import.meta.url),'utf8'));
+  const reset=async(failure='',denied=false,code='P0001')=>{
+   await db.exec('reset role;truncate test_fixture.effects');
+   await db.query("select set_config('test_fixture.failure',$1,false),set_config('test_fixture.denied',$2,false),set_config('test_fixture.failure_code',$3,false)",[failure,String(denied),code]);
+   await db.exec('set role service_role');
+  };
+  const effects=async()=>{await db.exec('reset role');return(await db.query('select * from test_fixture.effects')).rows;};
+  const cases=[
+   {name:'reconciliation and snapshot',sql:'select public.ss_ops_reconcile_snapshot() result',first:'reconcile',second:'snapshot',failure:{ok:false,error:'snapshot_unavailable'},verify:r=>{assert.equal(r.snapshot.reconciled,1);}},
+   {name:'observation and claim',sql:`select public.ss_ops_observe_claim('{"jobs":{"pending":2}}','[{"code":"collection_degraded"}]',3) result`,first:'observe',second:'claim',failure:{ok:false,error:'incident_claim_unavailable'},verify:r=>{assert.equal(r.events.length,3);assert(r.events.every(e=>e.id&&e.lease_id&&e.payload.kind==='platform_incident'));}},
+   {name:'rate counter and context',sql:'select public.ss_platform_context_limited(4) result',first:'rate',second:'context',failure:{ok:false,permitted:true,error:'context_unavailable'},verify:r=>{assert.equal(r.permitted,true);assert.deepEqual(r.context,{releases:['release'],item_limit:4});}},
+  ];
+  for(const c of cases){
+   await t.test(c.name+' succeeds in order',async()=>{
+    await reset();const result=(await db.query(c.sql)).rows[0].result;
+    assert.equal(result.ok,true);c.verify(result);
+    const recorded=await effects();assert.deepEqual(recorded.map(e=>e.stage),[c.first,c.second]);
+    if(c.first==='observe')assert.deepEqual(recorded.map(e=>e.args),[{observation:{jobs:{pending:2}},conditions:[{code:'collection_degraded'}]},{batch_size:3}]);
+    if(c.first==='rate')assert.deepEqual(recorded.map(e=>e.args),[{keys:['platform-context'],max_count:120,window_seconds:60},{item_limit:4}]);
+   });
+   await t.test(c.name+' preserves the first stage on a second-stage failure',async()=>{
+    await reset(c.second);assert.deepEqual((await db.query(c.sql)).rows[0].result,c.failure);
+    assert.deepEqual((await effects()).map(e=>e.stage),[c.first],'second-stage side effects roll back, completed first-stage writes commit');
+   });
+   await t.test(c.name+' aborts when the first stage fails',async()=>{
+    await reset(c.first);await assert.rejects(db.query(c.sql),/Sensitive upstream diagnostic/);
+    assert.deepEqual(await effects(),[],'a failed first stage cannot run the next stage');
+   });
+  }
+  await t.test('a denied rate token commits without reading context',async()=>{
+   await reset('',true);assert.deepEqual((await db.query('select public.ss_platform_context_limited(7) result')).rows[0].result,{ok:true,permitted:false});
+   assert.deepEqual((await effects()).map(e=>e.stage),['rate']);
+  });
+  await t.test('cancellation remains an error rather than being masked as success',async()=>{
+   await reset('snapshot',false,'57014');await assert.rejects(db.query(cases[0].sql),e=>e.code==='57014');
+   assert.deepEqual(await effects(),[],'connection/transaction cancellation still rolls back the combined request');
+  });
+  await t.test('wrappers have no definer elevation or public execution grant',async()=>{
+   await reset();await db.exec('reset role');
+   const metadata=(await db.query("select proname,prosecdef,proconfig from pg_proc where proname in('ss_ops_reconcile_snapshot','ss_ops_observe_claim','ss_platform_context_limited')")).rows;
+   assert.equal(metadata.length,3);assert(metadata.every(p=>p.prosecdef===false&&p.proconfig.includes('search_path=""')));
+   for(const role of['anon','authenticated']){
+    await db.exec('set role '+role);
+    for(const c of cases)await assert.rejects(db.query(c.sql),/permission denied/);
+    await db.exec('reset role');
+   }
+   assert.deepEqual(await effects(),[]);
+  });
  }finally{await db.close();}
 });
