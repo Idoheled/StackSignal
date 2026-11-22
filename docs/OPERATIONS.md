@@ -1,6 +1,19 @@
 # StackSignal operations checkpoint — October 11, 2026
 
 
+## Free-plan backend efficiency — November 22, 2026
+
+Hosted migrations `20261122071005_bound_public_input_transfer` and
+`20261122071015_consolidate_operational_requests` are applied. Repository filenames
+match the hosted migration history.
+
+Collector version 37, WhatsApp dispatcher version 5 and platform-context version 5
+were verified on their natural schedules. Deployed sources match the reviewed
+payloads; existing authentication configuration and schedules were preserved.
+
+The website release remains pending the repository review gate.
+
+
 ## Engineering discovery and feedback — November 6, 2026
 
 Hosted migration `20261106082008_engineering_discovery_feedback` updates feed

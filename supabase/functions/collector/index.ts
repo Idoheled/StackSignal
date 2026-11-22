@@ -65,7 +65,8 @@ class DatabaseOperationError extends Error {
     super("Database operation failed");
   }
 }
-async function db(path: string, method = "GET", body?: unknown, prefer = "return=representation") {
+async function db(path: string, method = "GET", body?: unknown,
+  prefer = method === "GET" || path.startsWith("rpc/") ? "return=representation" : "return=minimal") {
   const operation = /^rpc\/(ss_[a-z0-9_]+)$/.exec(path)?.[1] || "database_request";
   let r: Response;
   try {
@@ -96,7 +97,13 @@ async function db(path: string, method = "GET", body?: unknown, prefer = "return
     throw new DatabaseOperationError(operation, r.status,
       validation ? "review_validation" : r.status >= 500 ? "database_unavailable" : "database_rejected", validation);
   }
-  return r.status === 204 ? null : await r.json();
+  // INSERT/upsert may return 201 with an empty body under return=minimal;
+  // PATCH/DELETE normally return 204. Neither response is JSON to decode.
+  if (r.status === 204 || prefer.split(",").includes("return=minimal")) {
+    await r.body?.cancel().catch(() => undefined);
+    return null;
+  }
+  return await r.json();
 }
 const rpc = (name: string, body: unknown = {}) =>
   db("rpc/" + name, "POST", body);
@@ -212,12 +219,12 @@ async function repoHealth(name:string, suppliedReleases?:any[], lane: "source" |
     const value=JSON.parse((await fetchPublic("https://api.github.com/repos/"+name,undefined,2_000_000,lane)).text);
     if(value.private!==false) throw new Error("Only public repository metadata can be collected");
     metadata={captured_at:new Date().toISOString(),value};
-    await db("ss_settings?on_conflict=key","POST",{key:metadataKey,value:metadata},"resolution=merge-duplicates,return=representation");
+    await db("ss_settings?on_conflict=key","POST",{key:metadataKey,value:metadata},"resolution=merge-duplicates,return=minimal");
   }
   const releases=suppliedReleases || JSON.parse((await fetchPublic("https://api.github.com/repos/"+name+"/releases?per_page=20",undefined,2_000_000,lane)).text);
   if(!Array.isArray(releases)) throw new Error("Invalid repository release history");
   const health=repositoryHealth(metadata.value,releases);
-  await db("ss_settings?on_conflict=key","POST",{key,value:health},"resolution=merge-duplicates,return=representation");
+  await db("ss_settings?on_conflict=key","POST",{key,value:health},"resolution=merge-duplicates,return=minimal");
   return health;
 }
 async function queueRepoHealthChecks() {
@@ -262,7 +269,9 @@ async function failedEvaluation(row: any, reason="Evaluation validation failed",
   return failure;
 }
 async function queueMissingPublicInputs() {
-  const rows=await db("ss_articles?deleted_at=is.null&reference_meta->>evaluation=is.null&reference_meta->>public_extraction_requested=is.null&reference_meta->>assistant_reviewed_at=is.null&select=id,url,kind,topic,content_hash,reference_meta&order=discovered_at.asc,id.asc&limit=500");
+  // Filter the bounded oldest window inside PostgreSQL, so already-complete
+  // public inputs are not downloaded again on every collection/evaluation tick.
+  const rows=await rpc("ss_public_input_candidates");
   const incomplete=rows.filter((row:any)=>String(row.reference_meta?.public_evaluation_input?.text || "").length<1800).slice(0,8);
   for(const row of incomplete) {
     let approved=false; try { approved=!!safeURL(row.url,hosts) && !new URL(row.url).pathname.toLowerCase().endsWith(".pdf"); } catch { /* Unapproved references stay private and unfetched. */ }
@@ -381,7 +390,9 @@ async function evaluateSweep(profile: any) {
     const evaluation={...result,rules_score:rules,applied_score:score,mode,model:EVALUATION_MODEL,resolved_model,scope:input.scope,evaluator:"gemini",version:EVALUATOR_VERSION,cache_key:row.cache_key,evaluated_at,request_id:reservation.request_id};
     const patch:any={reference_meta:{...current.reference_meta,evaluation,evaluation_failed_at:null,evaluation_retry_at:null,evaluation_failures:0,evaluation_validation_failures:0,evaluation_error_kind:null,evaluation_error:null,review_commit:row.cache_key}};
     if(mode==="rerank" && result.confidence==="high" && result.decision!=="insufficient_evidence") Object.assign(patch,{score,analysis_status:"ai",summary:result.summary,reason:result.reason,evidence:result.evidence});
-    const updated=await db("ss_articles?id=eq."+row.id+"&content_hash=eq."+encodeURIComponent(row.content_hash)+"&deleted_at=is.null&reference_meta->>evaluation=is.null","PATCH",patch);
+    // The returned rows are a compare-and-set acknowledgement: an empty result
+    // means another reviewer/content update won. Preserve this response.
+    const updated=await db("ss_articles?id=eq."+row.id+"&content_hash=eq."+encodeURIComponent(row.content_hash)+"&deleted_at=is.null&reference_meta->>evaluation=is.null","PATCH",patch,"return=representation");
     if(!updated?.length)continue;
     reviewed++;
     // Non-selected terminal decisions are physically deleted by the database.
@@ -473,7 +484,7 @@ async function ingest(item: any, profile: any) {
     if(profile.gemini_mode==="rerank" && cached.confidence==="high" && cached.decision!=="insufficient_evidence") Object.assign(record,{score:applied,analysis_status:"ai",summary:cached.summary,reason:cached.reason,evidence:cached.evidence});
   }
   if (old[0]) await db("ss_articles?id=eq." + old[0].id, "PATCH", record);
-  else await db("ss_articles?on_conflict=url", "POST", record, "resolution=merge-duplicates,return=representation");
+  else await db("ss_articles?on_conflict=url", "POST", record, "resolution=merge-duplicates,return=minimal");
   if(!old[0] && item.kind==="Paper" && /^https:\/\/arxiv\.org\/abs\//.test(url)) await rpc("ss_queue_item",{job_kind:"article",item:{url,kind:"Paper",topic:record.topic}});
 }
 async function queueSourceItems(items: any[]) {
@@ -785,7 +796,7 @@ async function webHealth(patch: any) {
   if (patch.configured && patch.monthly_ceiling > 0 && !patch.state &&
       (!old[0]?.value?.state || ["missing_key","paused"].includes(old[0].value.state))) patch.state = "ready";
   await db("ss_settings?on_conflict=key", "POST", { key: "web_discovery_health",
-    value: { ...old[0]?.value, ...patch }, updated_at: new Date().toISOString() }, "resolution=merge-duplicates,return=representation");
+    value: { ...old[0]?.value, ...patch }, updated_at: new Date().toISOString() }, "resolution=merge-duplicates,return=minimal");
 }
 async function repoDiscovery(query: string, profile: any) {
   if (profile.repo_discovery === false) return;
@@ -811,7 +822,7 @@ async function repoDiscovery(query: string, profile: any) {
   const previous = await db("ss_settings?key=eq.discovery_health&select=value");
   await db("ss_settings?on_conflict=key", "POST", { key: "discovery_health", value: { ...previous[0]?.value,
     repository_last_success: new Date().toISOString(), repository_results: result.items.length,
-    repository_partial: !!result.incomplete_results, repository_last_error: null }, updated_at: new Date().toISOString() }, "resolution=merge-duplicates,return=representation");
+    repository_partial: !!result.incomplete_results, repository_last_error: null }, updated_at: new Date().toISOString() }, "resolution=merge-duplicates,return=minimal");
 }
 async function trendingDiscovery(window:string,profile:any) {
   if(profile.trending_discovery===false || profile.repo_discovery===false) return;
@@ -819,7 +830,7 @@ async function trendingDiscovery(window:string,profile:any) {
   const result=trendingProjects((await fetchPublic("https://github.com/trending?since="+window)).text);
   for(const x of result) await rpc("ss_queue_item",{job_kind:"article",item:{url:"https://github.com/"+x.repository,discovery_lane:"github_trending",reference_meta:{trending_period:window,trending_rank:x.rank,trending_checked_at:new Date().toISOString()}}});
   const previous=await db("ss_settings?key=eq.discovery_health&select=value");
-  await db("ss_settings?on_conflict=key","POST",{key:"discovery_health",value:{...previous[0]?.value,["trending_"+window+"_success"]:new Date().toISOString(),trending_last_error:null}},"resolution=merge-duplicates,return=representation");
+  await db("ss_settings?on_conflict=key","POST",{key:"discovery_health",value:{...previous[0]?.value,["trending_"+window+"_success"]:new Date().toISOString(),trending_last_error:null}},"resolution=merge-duplicates,return=minimal");
 }
 Deno.serve(async (request) => {
   const headers: Record<string,string> = {
@@ -927,7 +938,7 @@ Deno.serve(async (request) => {
         if (job.kind === "discovery" && ["repository","trending"].includes(job.payload.lane)) {
           const previous = await db("ss_settings?key=eq.discovery_health&select=value");
           await db("ss_settings?on_conflict=key", "POST", { key: "discovery_health", value: { ...previous[0]?.value,
-            [job.payload.lane==="trending" ? "trending_last_error" : "repository_last_error"]: (e as Error).message.slice(0,200) }, updated_at: new Date().toISOString() }, "resolution=merge-duplicates,return=representation");
+            [job.payload.lane==="trending" ? "trending_last_error" : "repository_last_error"]: (e as Error).message.slice(0,200) }, updated_at: new Date().toISOString() }, "resolution=merge-duplicates,return=minimal");
         }
         await db("ss_jobs?id=eq." + job.id, "PATCH", {
           status: e instanceof Deferred ? "pending" : job.attempts >= 4 ? "failed" : "pending",

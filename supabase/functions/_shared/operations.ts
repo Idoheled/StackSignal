@@ -37,11 +37,13 @@ export async function monitorOperations(config:DispatchConfig,rpc:RPC,send:typeo
   (async()=>{const r=await send(config.appOrigin+'/api/status',{redirect:'error',signal:AbortSignal.timeout(8000),headers:{'User-Agent':'Mozilla/5.0 StackSignal-CI'}});const s=JSON.parse(await readBoundedBody(r,4096));return r.ok&&s.configured===true;})(),
  ]);
  const bot=probes[0].status==='fulfilled'?probes[0].value:null, website=probes[1].status==='fulfilled'&&probes[1].value===true;
- await rpc('ss_ops_reconcile',{});
- const snapshot=await rpc('ss_ops_snapshot',{}) as any;
+ const reconciled=await rpc('ss_ops_reconcile_snapshot',{}) as any;
+ if(reconciled?.ok!==true||!reconciled.snapshot)throw Error('Health snapshot unavailable');
+ const snapshot=reconciled.snapshot;
  const stages=assessHealth(snapshot,bot,website);
- await rpc('ss_ops_observe',{observation:{...snapshot,bot,stages},conditions:stages.filter(x=>['degraded','down'].includes(x.status)).map(x=>({code:x.key+'_degraded',severity:x.status==='down'?'critical':'warning',summary:x.label+': '+x.detail}))});
- const events=await rpc('ss_ops_claim_events',{batch_size:3}) as any[];
+ const claimed=await rpc('ss_ops_observe_claim',{observation:{...snapshot,bot,stages},conditions:stages.filter(x=>['degraded','down'].includes(x.status)).map(x=>({code:x.key+'_degraded',severity:x.status==='down'?'critical':'warning',summary:x.label+': '+x.detail})),batch_size:3}) as any;
+ if(claimed?.ok!==true||!Array.isArray(claimed.events))throw Error('Health incident claim unavailable');
+ const events=claimed.events as any[];
  const counts={queued:0,sent:0,uncertain:0,retry:0};
  for(const e of events){let outcome:keyof typeof counts='retry',message_id:string|null=null;
   try {const event=validateOpsEvent({id:e.id,payload:e.payload},config.appOrigin),body=JSON.stringify(event);const r=await send(base+'/v1/ops',{method:'POST',redirect:'error',signal:AbortSignal.timeout(8000),headers:{'content-type':'application/json',...await signedHeaders(config.secret,'ops-event',body)},body});const text=await readBoundedBody(r,2048);if(![200,202,409].includes(r.status)||!await verifySignature(config.secret,'receipt',text,r.headers))throw Error('No signed health receipt');const receipt=validateReceipt(JSON.parse(text),e.id);if(r.status===409&&receipt.status!=='uncertain')throw Error('Invalid health receipt');outcome=receipt.status;message_id=receipt.message_id||null;}catch{/* Retry the same durable event ID only. */}
